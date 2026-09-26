@@ -1,0 +1,121 @@
+cabal-version: 2.2
+
+-- This file has been generated from package.yaml by hpack version 0.39.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           ficus
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/Meowcolm024/ficus#readme>
+homepage:       https://github.com/Meowcolm024/ficus#readme
+bug-reports:    https://github.com/Meowcolm024/ficus/issues
+author:         Meowcolm024
+maintainer:     Meowcolm024
+copyright:      2026 Meowcolm024
+license:        BSD-3-Clause
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/Meowcolm024/ficus
+
+library
+  exposed-modules:
+      Lib
+  other-modules:
+      Paths_ficus
+  autogen-modules:
+      Paths_ficus
+  hs-source-dirs:
+      src
+  default-extensions:
+      DataKinds
+      DerivingVia
+      GADTs
+      LambdaCase
+      MultiWayIf
+      NoStarIsType
+      OverloadedStrings
+      StrictData
+      TypeFamilies
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , megaparsec
+    , mtl
+    , text
+    , transformers
+    , vector
+  default-language: GHC2021
+
+executable ficus
+  main-is: Main.hs
+  other-modules:
+      Paths_ficus
+  autogen-modules:
+      Paths_ficus
+  hs-source-dirs:
+      app
+  default-extensions:
+      DataKinds
+      DerivingVia
+      GADTs
+      LambdaCase
+      MultiWayIf
+      NoStarIsType
+      OverloadedStrings
+      StrictData
+      TypeFamilies
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , ficus
+    , megaparsec
+    , mtl
+    , optparse-applicative
+    , text
+    , transformers
+    , vector
+  default-language: GHC2021
+
+test-suite ficus-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_ficus
+  autogen-modules:
+      Paths_ficus
+  hs-source-dirs:
+      test
+  default-extensions:
+      DataKinds
+      DerivingVia
+      GADTs
+      LambdaCase
+      MultiWayIf
+      NoStarIsType
+      OverloadedStrings
+      StrictData
+      TypeFamilies
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , ficus
+    , megaparsec
+    , mtl
+    , tasty
+    , tasty-hunit
+    , text
+    , transformers
+    , vector
+  default-language: GHC2021

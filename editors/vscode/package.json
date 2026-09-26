@@ -1,0 +1,27 @@
+{
+  "name": "ficus-language",
+  "displayName": "Ficus Language Support",
+  "description": "Lexical syntax highlighting for Ficus.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "ficus",
+        "aliases": ["Ficus", "ficus"],
+        "extensions": [".ficus"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ficus",
+        "scopeName": "source.ficus",
+        "path": "./syntaxes/ficus.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,257 @@
+{
+  "name": "Ficus",
+  "scopeName": "source.ficus",
+  "patterns": [
+    { "include": "#pragma" },
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#character" },
+    { "include": "#number" },
+    { "include": "#import-declaration" },
+    { "include": "#keyword" },
+    { "include": "#primitive-type" },
+    { "include": "#library-type" },
+    { "include": "#wildcard" },
+    { "include": "#operator" },
+    { "include": "#punctuation" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+    "pragma": {
+      "begin": "(\\{-#)",
+      "end": "(#-\\})",
+      "name": "meta.preprocessor.ficus",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.directive.begin.ficus" }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.directive.end.ficus" }
+      },
+      "patterns": [
+        { "include": "#string" },
+        { "include": "#character" },
+        { "include": "#number" },
+        {
+          "match": ",",
+          "name": "punctuation.separator.pragma.ficus"
+        },
+        {
+          "match": "\\bMAGIC\\b",
+          "name": "keyword.control.directive.magic.ficus"
+        },
+        {
+          "match": "\\b(?:NO_IMPLICIT_PRELUDE|DERIVE|DEPRECATED|OPTIONS)\\b",
+          "name": "keyword.control.directive.ficus"
+        },
+        {
+          "match": "\\bPRIVATE(?:[ \\t]+members)?\\b",
+          "name": "invalid.illegal.deferred-pragma.ficus"
+        },
+        { "include": "#identifier" }
+      ]
+    },
+    "import-declaration": {
+      "begin": "^(\\s*)(use)\\b",
+      "end": "(?=\\n(?![ \\t])|\\z)",
+      "name": "meta.import.ficus",
+      "beginCaptures": {
+        "2": { "name": "keyword.control.ficus" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#string" },
+        {
+          "match": "\\b(?:as|pub)\\b",
+          "name": "keyword.other.import.ficus"
+        },
+        { "include": "#import-type-members" },
+        { "include": "#import-all" },
+        { "include": "#punctuation" },
+        { "include": "#operator" },
+        { "include": "#identifier" }
+      ]
+    },
+    "import-type-members": {
+      "begin": "(?<![\\p{L}\\p{M}\\p{N}_'])((?:\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*|\\(:[!#$%&*+/<=>?@\\\\^|~:-]+\\)))[ \\t]*(\\()",
+      "end": "(\\))",
+      "name": "meta.import.type-members.ficus",
+      "beginCaptures": {
+        "1": { "name": "entity.name.type.ficus" },
+        "2": { "name": "punctuation.definition.bracket.ficus" }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.bracket.ficus" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#import-all" },
+        {
+          "match": "(?<![\\p{L}\\p{M}\\p{N}_'])\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*(?![\\p{L}\\p{M}\\p{N}_'])",
+          "name": "entity.name.tag.constructor.ficus"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{M}\\p{N}_'])\\p{Ll}[\\p{L}\\p{M}\\p{N}_']*(?![\\p{L}\\p{M}\\p{N}_'])",
+          "name": "variable.other.property.ficus"
+        },
+        {
+          "begin": "\\(",
+          "end": "\\)",
+          "name": "meta.import.constructor-operator.ficus",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.bracket.ficus" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.bracket.ficus" }
+          },
+          "patterns": [
+            { "include": "#operator" }
+          ]
+        },
+        { "include": "#punctuation" }
+      ]
+    },
+    "import-all": {
+      "match": "\\.\\.",
+      "name": "keyword.other.import.all.ficus"
+    },
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.ficus",
+          "match": "--.*$"
+        },
+        {
+          "name": "comment.block.ficus",
+          "begin": "\\{-",
+          "end": "-\\}"
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.ficus",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.ficus" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.ficus" }
+      },
+      "patterns": [
+        { "include": "#escape" },
+        { "include": "#interpolation" }
+      ]
+    },
+    "character": {
+      "name": "string.quoted.single.ficus",
+      "begin": "'",
+      "end": "'",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.character.begin.ficus" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.character.end.ficus" }
+      },
+      "patterns": [
+        { "include": "#escape" }
+      ]
+    },
+    "escape": {
+      "match": "\\\\[\\\\'\"nrt]",
+      "name": "constant.character.escape.ficus"
+    },
+    "interpolation": {
+      "patterns": [
+        {
+          "match": "\\{\\{|\\}\\}",
+          "name": "constant.character.escape.ficus"
+        },
+        {
+          "match": "(?<!\\{)(\\{)(\\p{Ll}[\\p{L}\\p{M}\\p{N}_']*)(\\})(?!\\})",
+          "name": "meta.interpolation.ficus",
+          "captures": {
+            "1": { "name": "punctuation.section.interpolation.begin.ficus" },
+            "2": { "name": "variable.other.readwrite.ficus" },
+            "3": { "name": "punctuation.section.interpolation.end.ficus" }
+          }
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "match": "\\b\\d+\\.\\d+\\b",
+          "name": "constant.numeric.float.ficus"
+        },
+        {
+          "match": "\\b\\d+\\b",
+          "name": "constant.numeric.integer.ficus"
+        }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "match": "\\b(?:use|type|trait|impl|with|if|where|do)\\b",
+          "name": "keyword.control.ficus"
+        }
+      ]
+    },
+    "primitive-type": {
+      "match": "\\bType\\b",
+      "name": "storage.type.ficus"
+    },
+    "library-type": {
+      "match": "(?<![\\p{L}\\p{M}\\p{N}_'])(?:Void|Byte|Vec)(?![\\p{L}\\p{M}\\p{N}_'])",
+      "name": "support.type.ficus"
+    },
+    "wildcard": {
+      "match": "\\b_\\b",
+      "name": "variable.language.placeholder.ficus"
+    },
+    "operator": {
+      "patterns": [
+        {
+          "match": "(?:->|~>)",
+          "name": "keyword.operator.function.ficus"
+        },
+        {
+          "match": ":[!#$%&*+/<=>?@\\\\^|~:-]+",
+          "name": "keyword.operator.constructor.ficus"
+        },
+        {
+          "match": "[!#$%&*+/<=>?@\\\\^|~-][!#$%&*+/<=>?@\\\\^|~:-]*",
+          "name": "keyword.operator.ficus"
+        },
+        {
+          "match": ":",
+          "name": "keyword.operator.ficus"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "match": "[{}\\[\\]()]",
+          "name": "punctuation.definition.bracket.ficus"
+        },
+        {
+          "match": "[;,.]",
+          "name": "punctuation.delimiter.ficus"
+        }
+      ]
+    },
+    "identifier": {
+      "patterns": [
+        {
+          "match": "(?<![\\p{L}\\p{M}\\p{N}_'])\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*(?![\\p{L}\\p{M}\\p{N}_'])",
+          "name": "entity.name.type.ficus"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{M}\\p{N}_'])\\p{Ll}[\\p{L}\\p{M}\\p{N}_']*(?![\\p{L}\\p{M}\\p{N}_'])",
+          "name": "variable.other.ficus"
+        }
+      ]
+    }
+  }
+}

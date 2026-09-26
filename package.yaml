@@ -1,0 +1,76 @@
+name: ficus
+version: 0.1.0.0
+github: Meowcolm024/ficus
+license: BSD-3-Clause
+author: Meowcolm024
+copyright: 2026 Meowcolm024
+
+extra-source-files:
+  - README.md
+  - CHANGELOG.md
+
+description: Please see the README on GitHub at <https://github.com/Meowcolm024/ficus#readme>
+
+dependencies:
+  - base >= 4.7 && < 5
+  - text
+  - megaparsec
+  - containers
+  - mtl
+  - transformers
+  - vector
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
+  - -Wunused-imports
+  - -fprint-explicit-foralls
+  - -fprint-explicit-kinds
+
+default-extensions:
+  - DataKinds
+  - DerivingVia
+  - GADTs
+  - LambdaCase
+  - MultiWayIf
+  - NoStarIsType
+  - OverloadedStrings
+  - StrictData
+  - TypeFamilies
+  - ViewPatterns
+
+language: GHC2021
+
+library:
+  source-dirs: src
+
+executables:
+  ficus:
+    main: Main.hs
+    source-dirs: app
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - ficus
+      - optparse-applicative
+
+tests:
+  ficus-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - ficus
+      - tasty
+      - tasty-hunit

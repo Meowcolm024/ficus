@@ -1,0 +1,16 @@
+use Data.Map (Map, lookup) pub
+{-# MAGIC, DERIVE Show #-}
+-- The operators below are identified by spelling, not a fixed list.
+{- A block comment with -> and "quoted text". -}
+
+type Café a =
+    Voilà a
+
+example : Float -> Char -> String
+example x c = do
+    y <- readLine ()
+    if
+        x == 1.25 -> "hello -- {y} {{literal}}"
+        _ -> "line\nend"
+
+pair = (1, 'a', '\'', True, False, a :: b, a |> b)

@@ -32,6 +32,7 @@ ghc-options:
   - -Wunused-imports
   - -fprint-explicit-foralls
   - -fprint-explicit-kinds
+  - -Werror
 
 default-extensions:
   - DataKinds
@@ -74,3 +75,5 @@ tests:
       - ficus
       - tasty
       - tasty-hunit
+      - tasty-quickcheck
+      - QuickCheck

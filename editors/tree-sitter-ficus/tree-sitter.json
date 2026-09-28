@@ -1,0 +1,24 @@
+{
+  "grammars": [
+    {
+      "name": "ficus",
+      "scope": "source.ficus",
+      "file-types": ["ficus"]
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "BSD-3-Clause",
+    "description": "Highlighting tokens for the Ficus language"
+  },
+  "bindings": {
+    "c": false,
+    "go": false,
+    "java": false,
+    "node": false,
+    "python": false,
+    "rust": false,
+    "swift": false,
+    "zig": false
+  }
+}

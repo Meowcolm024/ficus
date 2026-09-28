@@ -1,0 +1,9 @@
+{
+  "name": "tree-sitter-ficus",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  }
+}

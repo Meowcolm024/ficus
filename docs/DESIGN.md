@@ -17,6 +17,8 @@ Ficus favors:
 
 The compiler should know as little as practical. Arithmetic, comparison, formatting, collections, and IO mostly belong in libraries.
 
+Compiler-known library hooks are keyed by defining module and declared name, so imports, aliases, and re-exports do not change their identity.
+
 ## 2. Evaluation
 
 Evaluation is strict, impure, and left-to-right:
@@ -59,6 +61,8 @@ use Data.Map
 use Data.Map (Map)
 ```
 
+Types and traits share one namespace. Primitive type names and `Type` cannot be bound as local module names: `use Data.Int` is invalid, while `use Data.Int (add)` and `use Data.Int as I` are valid. A module path may still contain `Int` or `Type`.
+
 An explicit import list may be re-exported:
 
 ```text
@@ -73,7 +77,7 @@ use Data.Map pub       -- invalid
 use Data.Map as M pub  -- invalid
 ```
 
-All top-level declarations are public in v0. `PRIVATE` and `PRIVATE members` pragmas are deferred. Type import lists may select constructors and fields, for example `Maybe(..)`, `Either(Left)`, and `Complex(real,imaginary)`; a bare type import imports only the type.
+All top-level declarations are public in v0. `PRIVATE` and `PRIVATE members` pragmas are deferred. Type import lists may select ADT constructors, for example `Maybe(..)` and `Either(Left)`. Importing a record type brings its public constructor and fields into scope; record member selections are invalid.
 
 ## 4. Pragmas and Prelude
 
@@ -161,7 +165,7 @@ f x = {
 }
 ```
 
-Each block independently chooses layout or explicit braces.
+Each block independently chooses layout or explicit braces. The parser opens an indentation block when its grammar expects one; layout is parser-driven rather than a lexer pre-pass.
 
 ## 7. Built-in types
 
@@ -171,7 +175,7 @@ The reserved primitive types are:
 Int Float Bool Char String Unit
 ```
 
-They are available in every module, even without Prelude. `Type` is the reserved kind of ordinary types.
+They are available in every module, even without Prelude. `Type` is the reserved kind of ordinary types. `Int` is signed 64-bit with wrapping arithmetic; `Float` uses IEEE 754 binary64. Unconstrained kind variables default to `Type` with a warning.
 
 Built-in expression types are fixed rather than overloaded:
 
@@ -219,17 +223,19 @@ x :: xs
 
 `::` is always available with type `a -> [a] -> [a]`. The parser gives it no special case: it is an ordinary colon-led constructor operator in expressions and patterns. Its name is special only semantically—it is predefined for lists and cannot be rebound.
 
-Lists and binary products expose first-class type constructors:
+Lists, binary products, and functions expose first-class type constructors:
 
 ```text
 []  : Type -> Type
 (*) : Type -> Type -> Type
+(->): Type -> Type -> Type
 
 impl Functor [] = ...
 impl Bifunctor (*) = ...
+impl Functor ((->) r) = ...
 ```
 
-`[a]` and `a * b` are the applied surface forms of `[]` and `(*)` respectively. The constructor names are reserved in the type namespace and cannot be rebound; value-level multiplication remains an ordinary operator.
+`[a]`, `a * b`, and `a -> b` are the applied forms of `[]`, `(*)`, and `(->)` respectively. These type-constructor names cannot be rebound; value-level multiplication remains an ordinary operator.
 
 ## 8. Types and annotations
 
@@ -290,7 +296,7 @@ trait Functor (f : Type -> Type) =
     map : (a -> b) -> f a -> f b
 ```
 
-Kinds of bare parameters are inferred, and `_` may appear in a kind signature to request inference. `Type` is parsed as an ordinary uppercase name in kind syntax and recognized as the reserved kind during semantic checking, not hardcoded by the parser.
+Kinds of bare parameters are inferred, and `_` may appear in a kind signature to request inference. Any unconstrained kind defaults to `Type` with a warning. `Type` is parsed as an ordinary uppercase name in kind syntax and recognized as the reserved kind during semantic checking, not hardcoded by the parser.
 
 ## 9. Records
 
@@ -330,7 +336,7 @@ Data.People.default.address.city
 
 Here `Data.People` is the longest module prefix, `default` is its exported value, and `address.city` is a projection chain.
 
-Postfix `with` on a bare uppercase identifier introduces a named-construction block, which may use layout or braces. Prefix `with` remains pattern matching, so token position distinguishes the two forms. A field initializer may have its own `where` clause, scoped to that field. Record patterns are deferred to v1+ with explicit braces and restricted use; punning and record update remain undecided. Updates may later reuse postfix `with` with a broader receiver.
+Postfix `with` on a bare or module-qualified record constructor introduces a named-construction block, which may use layout or braces. Prefix `with` remains pattern matching, so token position distinguishes the two forms. A field initializer may have its own `where` clause, scoped to that field. Record patterns are deferred to v1+ with explicit braces and restricted use; punning and record update remain undecided. Updates may later reuse postfix `with` with a broader receiver.
 
 ## 10. Functions and matching
 
@@ -350,7 +356,7 @@ uncons (x :: xs) = (x, xs)
 mapPair f (x, y) = (f x, f y)
 ```
 
-An infix pattern cannot head a declaration at top level, in a local block, in `where`, or on the left of `do` `=`. Parenthesized infix patterns remain valid as function arguments; `do` `<-` accepts full patterns because it is a match bind, not a declaration.
+An infix pattern cannot head a declaration at top level, in a local block, in `where`, or on the left of `do` `=`. Local and `do` `=` declarations may bind non-infix patterns such as `(a, b)`. Parenthesized infix patterns remain valid as function arguments; `do` `<-` parses full patterns, though v0 accepts only irrefutable ones after checking.
 
 Pattern matching uses `with`:
 
@@ -418,9 +424,13 @@ parity n = (odd n, even n)
             _ -> odd (x - 1)
 ```
 
-A recursive cycle is accepted only when every reference within that cycle is protected by a lambda after parameter desugaring. This permits recursive functions without permitting a strict value to read itself during initialization.
+A recursive cycle is accepted only when its initializers are non-expansive and every intra-cycle reference is protected by a lambda after parameter desugaring. This prevents a closure from being called or a strict value from being read during initialization.
 
-An explicit type signature also permits polymorphic recursion within the group: each recursive use can instantiate the signed binding's scheme. Unsigned bindings retain a shared monotype during group inference. Signatures do not change the lambda-protection requirement.
+An explicit type signature also permits polymorphic recursion within the group: each recursive use can instantiate the signed binding's scheme. Unsigned bindings retain a shared monotype during group inference. Signatures do not relax recursive-initializer safety.
+
+The v0 value restriction generalizes only non-expansive bindings. Function calls and other expansive initializers remain monomorphic even if they are immutable; a written signature cannot override this rule.
+
+The v0 monomorphism restriction also prevents generalizing an unsigned constrained binding with no lambda parameters, even when its right-hand side is non-expansive. A complete explicit signature may override this restriction, subject to the value restriction.
 
 ## 12. Traits
 
@@ -439,6 +449,8 @@ Qualified types carry requirements:
 ```text
 showAll : Show a => [a] -> String
 ```
+
+A method can constrain a variable other than the trait parameter. `Traversable t` can declare `traverse : Applicative f => (a -> f b) -> t a -> f (t b)`, where `Applicative f` is a method-level requirement.
 
 Supertraits use the same syntax:
 
@@ -479,22 +491,25 @@ The superclass graph must be acyclic; direct and indirect superclass cycles are 
 
 Trait bodies contain signatures only and every `impl` supplies every declared member. Operations that would be default instance methods in Haskell are ordinary constrained functions outside the trait: `(/=)` derives from `(==)` under an `Eq` constraint, and `(<)` derives from `compare` under an `Ord` constraint. Callers use these functions directly; instances do not declare them or provide forwarding definitions. Default member bodies and fallback instance implementations are unsupported. The initial design also excludes overlapping implementations, multiparameter traits, associated types, and type families.
 
-An implementation must be defined in the module that owns its trait or its outer nominal type constructor. No module owns `[]`, `(*)`, `Int`, `Float`, `Bool`, `Char`, `String`, or `Unit`, so implementations for these belong to the trait owner.
+An implementation must be defined in the module that owns its trait or its outer type constructor. No module owns `[]`, `(*)`, `(->)`, `Int`, `Float`, `Bool`, `Char`, `String`, or `Unit`, so implementations for these belong to the trait owner.
 
 Implementation members must have non-expansive initializers. Lambdas, literals, variables, constructors, and aggregates of such values are allowed; effectful applications are allowed only inside a lambda body. This prevents observable effects while trait dictionaries initialize.
 
+Projection constraints cannot be generalized. Their type variables remain monomorphic while surrounding uses may determine the receiver; an unresolved receiver is an error.
+
 ## 13. Prelude-dependent sugar
 
-Interpolation uses Prelude's `Show` and string concatenation:
+Interpolation uses Prelude's `Show` and string concatenation. v0 permits a variable or module-qualified variable inside the braces:
 
 ```text
-"name: {person.name}"
+"name: {name}"
+"name: {Data.Person.name}"
 ```
 
 It behaves roughly like:
 
 ```text
-"name: " ++ show person.name
+"name: " ++ show name
 ```
 
 `do` uses Prelude's `Bind` abstraction:
@@ -507,6 +522,8 @@ decode input = do
 ```
 
 `do` is not needed for ordinary effects.
+
+In v0, `<-` accepts only irrefutable patterns: variables, wildcards, unit, and products of those forms. Constructor, list, literal, and infix patterns are rejected there.
 
 The v0 Prelude re-exports `Void` and `absurd`. Until empty declarations and matches exist, an explicit magic-backed module supplies:
 
@@ -574,6 +591,8 @@ compile :: RTExpr -> Eval
 
 Lambda bodies are compiled once into host functions. Evaluating a lambda packages its compiled body with the current environment, avoiding repeated AST dispatch.
 
+Tail-call optimization is backend-dependent; the language does not guarantee constant stack use for tail recursion.
+
 See `IMPL.md` for details.
 
 ## 16. Deferred features
@@ -612,7 +631,7 @@ send : Chan a -> a -> Unit
 recv : Chan a -> a
 ```
 
-These are explicit imports, not Prelude declarations. Channels require a value restriction or equivalent generalization rule. Scheduling, buffering, cancellation, and exception propagation need operational detail within this finalized initial design.
+These are explicit imports, not Prelude declarations. The v0 value restriction prevents generalization of expansive channel allocations. Scheduling, buffering, cancellation, and exception propagation need operational detail.
 
 The initial v1+ typed-exception design uses a Prelude marker trait and magic-backed operations:
 
@@ -623,9 +642,9 @@ throw : Exception e => e -> a
 catch : Exception e => (Unit -> a) -> (e -> a) -> a
 ```
 
-`catch` handles only the selected exception type and propagates others. The finalized initial v1+ exception/concurrency interface keeps the exception type in `Fiber e a`, and `join` returns `Result e a`. An existential `SomeException` package may later change those signatures.
+`catch` handles only the selected exception type and propagates others. The proposed v1+ interface keeps the exception type in `Fiber e a`, and `join` returns `Result e a`. An existential `SomeException` package may later change those signatures.
 
-`Exception e` is a memberless proof trait. Its unit dictionary may be erased after checking; magic lowering supplies any runtime type token separately.
+`Exception e` has no source-level methods. Its runtime representation remains open because typed `catch` must distinguish nominal exception types even when their values have the same erased representation.
 
 v1+ replaces the magic-backed empty type and eliminator with:
 
@@ -646,7 +665,7 @@ modifyRef : Ref a -> (a -> a) -> Unit
 readRef : Ref a -> a
 ```
 
-Adding `Ref` requires an ML-style value restriction. Atomicity with respect to fibers remains undecided.
+The v0 value restriction continues to apply to `Ref`; it prevents generalizing expansive allocations. Atomicity with respect to fibers remains undecided.
 
 ## 17. Entry points and v1+ artifacts
 

@@ -130,7 +130,7 @@ max : Ord a => a -> a -> a
 
 Initial implementations should include the primitive scalar types and structural lists and products where their components satisfy the required traits. Because no module owns the primitive types or `[]` and `(*)`, these implementations must be declared in the module that defines the corresponding trait.
 
-In v0, string interpolation introduces a `Show a` requirement for each embedded variable.
+In v0, string interpolation introduces a `Show a` requirement for each embedded bare or qualified variable. The `Show String` instance is the identity: `show s = s`, so interpolation does not add quotes around strings.
 
 ## 5. Numeric capabilities
 
@@ -362,6 +362,8 @@ trait (Functor t, Foldable t) => Traversable t =
     traverse : Applicative f => (a -> f b) -> t a -> f (t b)
 ```
 
+The `Applicative f` predicate belongs to the `traverse` method signature. It constrains the method-level variable `f`, not the trait parameter `t`.
+
 Derived functions include:
 
 ```text
@@ -383,7 +385,7 @@ readLine : Unit -> String
 
 Opaque handles, `Vec a`, `Byte`, and low-level operations live in explicit library modules backed by `MAGIC` declarations. They are not automatically re-exported by Prelude.
 
-The same applies to the finalized initial v1+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit magic-backed concurrency module, not Prelude.
+The same applies to the proposed initial v1+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit magic-backed concurrency module, not Prelude.
 
 The initial v1+ Prelude provides the marker:
 
@@ -398,7 +400,7 @@ throw : Exception e => e -> a
 catch : Exception e => (Unit -> a) -> (e -> a) -> a
 ```
 
-`Exception` is a memberless proof trait. Its unit dictionary may be erased after checking; magic lowering supplies any required runtime type token separately. It does not make exception effects implicit in unrelated Prelude functions.
+`Exception` has no source-level methods, but typed `catch` requires a runtime nominal type identity. Whether that identity lives in exception evidence or another runtime representation remains open; it cannot simply be erased to unit. The trait does not make exception effects implicit in unrelated Prelude functions.
 
 The settled v1+ mutable-reference API likewise belongs to an explicit magic-backed module:
 
@@ -408,7 +410,7 @@ modifyRef : Ref a -> (a -> a) -> Unit
 readRef : Ref a -> a
 ```
 
-They require an ML-style value restriction and are not re-exported by Prelude.
+They use the v0 value restriction and are not re-exported by Prelude.
 
 ## 15. Open decisions
 
@@ -416,5 +418,5 @@ Before stabilization, decide:
 
 - whether `Apply` should be named `Seq` to match Lean more closely;
 - whether `Fail` should carry `String` or use a separate error type;
-- exact numeric overflow and conversion behavior;
+- integer division, out-of-range literals, floating-point display, and numeric conversions;
 - the minimum instances imported by default.

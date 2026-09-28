@@ -27,15 +27,23 @@ use Data.Map (..) pub
 
 Modules and types occupy separate namespaces. A module component and an imported type may therefore have the same spelling. `use Data.Map` introduces the module name; `use Data.Map (Map)` may also introduce its `Map` type.
 
-A type import may explicitly select its constructors or record fields:
+A bare or aliased import brings its module name or alias into the local module-name scope. An import list brings only the selected members into local scope. Primitive type names and `Type` may occur in a module path, but cannot be bound as local module names:
+
+```text
+use Data.Int        -- invalid: binds the module name Int
+use Data.Int (add)  -- valid: binds only add
+use Data.Int as I   -- valid: binds the module name I
+```
+
+A type import may explicitly select ADT constructors:
 
 ```text
 use Data.Maybe (Maybe(..))
 use Data.Either (Either(Left))
-use Data.Complex (Complex(real,imaginary))
+use Data.Complex (Complex)
 ```
 
-A bare type import imports only the type. `T(..)` additionally imports all constructors and fields belonging to `T`; `T(member,...)` imports only the listed members along with the type. A selected member must belong to that type. Imported fields remain nominal field labels, not standalone values; record construction requires the corresponding constructor to be in scope. The outer `use Foo (..)` still imports all public module members.
+For an ADT, a bare type import imports only the type; `T(..)` also imports all its public constructors, and `T(Constructor,...)` imports the selected public constructors. For a record, importing its type automatically imports its public constructor and fields. Record member selections such as `Complex(real)` and `Complex(..)` are invalid. Imported fields remain nominal field labels, not standalone values. The outer `use Foo (..)` still imports all public module members. In v0 all members are public; the deferred private pragma can hide members in v1+.
 
 `pub` after an explicit import list re-exports the imported members. It is invalid after a bare or aliased import:
 
@@ -54,7 +62,7 @@ The v0 parser accepts pragmas only at global declaration level, never inside exp
 
 ## 3. Lexical structure
 
-Source is Unicode and case-sensitive. Lowercase identifiers name values, fields, and type variables. Uppercase identifiers name modules, types, constructors, and traits. A symbolic name beginning with `:` belongs to the uppercase namespace and may name a constructor or type. `_` is not an identifier: it is a wildcard in patterns and a hole in the type, kind, or expression positions specified below.
+Source is Unicode and case-sensitive. Lowercase identifiers name values, fields, and type variables. A lowercase identifier starts with a lowercase Unicode letter or `_`, followed by identifier characters; `_` and names such as `_value` are both lexed as ordinary lowercase identifiers. Uppercase identifiers name modules, types, constructors, and traits. A symbolic name beginning with `:` belongs to the uppercase namespace and may name a constructor or type. Name resolution gives the exact spelling `_` its wildcard or hole meaning according to position; names beginning with `_` have no special meaning.
 
 Hard keywords are:
 
@@ -64,15 +72,17 @@ use type trait impl with if where do
 
 `as` and `pub` are soft keywords in import declarations. `True` and `False` are lexed and parsed as ordinary uppercase identifiers; their constructor meanings are reserved semantically.
 
-Line comments begin with `--`. Block comments use `{-` and `-}` and do not nest. Pragmas use `{-#` and `#-}`.
+Line comments begin with `--` only when it is not followed by another operator character; `-->` is one operator token, while `-- text` is a comment. A bare `--` at end of line is a comment. Block comments begin at every `{-` outside a string or character literal and end at the next `-}`; they do not nest. Thus `{-x}` starts an unterminated block comment, not a braced expression. Pragmas use `{-#` and `#-}` and take precedence over ordinary block comments.
 
-Literals include decimal integers and floats, characters in single quotes, and strings in double quotes. An integer literal such as `1` has type `Int`; a literal with a decimal point such as `1.0` has type `Float`. Numeric literals are not overloaded. Character and string escapes include `\\`, `\'`, `\"`, `\n`, `\r`, and `\t`.
+Literals include decimal integers and floats, characters in single quotes, and strings in double quotes. An integer literal such as `1` has type `Int`; a literal with a decimal point such as `1.0` has type `Float`. Numeric literals are not overloaded. `Int` values are signed 64-bit integers, and integer arithmetic wraps modulo 2^64. `Float` values use IEEE 754 binary64. Character and string escapes include `\\`, `\'`, `\"`, `\n`, `\r`, and `\t`. Strings additionally accept `\{` and `\}` for literal braces.
 
-A symbolic operator is a nonempty sequence of operator characters. A colon-led operator is an upper operator; every other operator is a value operator. Bare `:`, `=`, `->`, `<-`, `=>`, and `.` are reserved in their grammatical roles. `::` is lexed and parsed as an ordinary upper operator but has reserved list-constructor semantics.
+A symbolic operator is a nonempty sequence of operator characters, using maximal munch after comment and reserved-token recognition. A dot may occur within an operator only when flanked on both sides by non-dot operator characters, as in `+.+`; it cannot begin or end one. A colon-led operator is an upper operator; every other operator is a value operator. Bare `:`, `=`, `->`, `<-`, `=>`, and `.` are reserved in their grammatical roles. `..` is reserved for import lists and is invalid as an expression operator. `::` is lexed and parsed as an ordinary upper operator but has reserved list-constructor semantics.
+
+A qualification or field-projection dot has no surrounding whitespace. `x.field` is syntactically a projection; `x . field` is invalid. `1.foo` is syntactically a projection but fails typing because `Int` has no fields. A dot inside a symbolic operator is never a qualification separator.
 
 ## 4. Layout
 
-Indentation is translated before parsing into virtual `{`, `;`, and `}` tokens.
+Layout is parser-driven. When the parser reaches a grammar position requiring `block1` or `block`, it opens an indentation block if the next token is not `{` and supplies virtual `{`, `;`, and `}` tokens while parsing that block. Layout is not a separate token-rewriting pass before parsing.
 
 A layout block begins where the grammar requires `block1` or `block`, and the next token is not `{`. Its first token sets the block indentation. A later token at the same indentation starts an item; smaller indentation ends the block; greater indentation continues the current item. Blank lines and comments do not affect layout.
 
@@ -84,9 +94,13 @@ f x = { y = g x; h y }
 
 A block is either layout-controlled or explicitly braced. Nested blocks choose independently. Every expression block is nonempty and ends in an expression.
 
+An expression block starts only with explicit `{` or with a newline and greater indentation immediately after an expression introducer: `=` in a value, pattern, or record-field declaration; `<-` in a `do` bind; or `->` in a lambda, `if` clause, or match clause. A single expression on the current line, such as `1`, is an `operator_expr`, not a one-item layout block. The parser opens the layout block before parsing its items; nested blocks have their own layout depth, so a `=` or `<-` inside one cannot classify a surrounding item.
+
+For prefix `with`, the scrutinee ends at the following explicit `{` or at the newline that opens a more-indented match-clause block. Tokens in that new block cannot continue the scrutinee as application arguments. An unparenthesized multiline scrutinee must use an explicit enclosing expression block or parentheses. For `if` and `do`, the keyword itself is followed by an explicit or layout block. A postfix record `with` likewise requires `{` or a newline and greater indentation for its field block; the closing `}` or dedent ends the record expression before a following application argument.
+
 ## 5. Grammar
 
-Layout has already inserted virtual block tokens. Section 14 defines operator grouping.
+The parser introduces virtual block tokens on demand as described in Section 4. Section 14 defines operator grouping.
 
 ```ebnf
 module          = { pragma }, { use_decl }, { top_decl } ;
@@ -112,13 +126,15 @@ signature       = signature_name, ":", type_expr ;
 value_decl      = pattern_head, "=", expr, [ where_clause ] ;
 pattern_head    = binding_name, { binder_pattern } ;
 where_clause    = "where", block1(local_decl) ;
-local_decl      = signature | value_decl ;
+local_decl      = signature | value_decl | pattern_decl ;
+pattern_decl    = binding_pattern, "=", expr, [ where_clause ] ;
+binding_pattern = pattern excluding a bare binding_name or infix head ;
 
 type_alias      = upper_name, { lower_ident }, "=", type_expr ;
 type_decl       = "type", upper_name, { type_param }, "=", type_body ;
 type_param      = lower_ident | "(", lower_ident, ":", kind_expr, ")" ;
 kind_expr       = kind_atom, [ "->", kind_expr ] ;
-kind_atom       = upper_name | qualified_type | "_" | "(", kind_expr, ")" ;
+kind_atom       = upper_name | qualified_type | lower_ident | "(", kind_expr, ")" ;
 type_body       = block1(constructor_decl) | block1(field_decl) ;
 constructor_decl= upper_name, { type_atom } ;
 field_decl      = lower_ident, ":", type_expr ;
@@ -144,33 +160,35 @@ postfix_expr    = postfix_head, { ".", ident } ;
 postfix_head    = atom | record_expr ;
 
 if_expr         = "if", block1(if_clause) ;
-if_clause       = non_lambda_expr, "->", expr | "_", "->", expr ;
+if_clause       = non_lambda_expr, "->", expr ;
 with_expr       = "with", expr, block1(match_clause) ;
 match_clause    = pattern, [ "if", non_lambda_expr ], "->", expr ;
 do_expr         = "do", block1(do_stmt) ;
-do_stmt         = pattern, "<-", expr | value_decl | expr ;
+do_stmt         = pattern, "<-", expr | value_decl | pattern_decl | expr ;
 block_expr      = block1(block_item) ;
 block_item      = local_decl | expr ;
 
-atom            = lower_ident | upper_ident | "_" | literal | unit_expr | product_expr
+atom            = lower_ident | upper_ident | literal | unit_expr | product_expr
                 | list_expr | operator_ref | paren_expr ;
 literal         = integer | float | char | string ;
-operator_ref    = operator_name ;
+operator_ref    = operator_name | module_name, ".", operator_name ;
 paren_expr      = "(", expr, ")" | "(", expr, ":", type_expr, ")" ;
 unit_expr       = "(", ")" ;
 product_expr    = "(", expr, ",", expr, { ",", expr }, ")" ;
 list_expr       = "[", [ expr, { ",", expr } ], "]" ;
-record_expr     = upper_ident, "with", block1(record_field) ;
+record_expr     = record_constructor, "with", block1(record_field) ;
+record_constructor = upper_ident | module_name, ".", upper_ident ;
 record_field    = lower_ident, "=", expr, [ where_clause ] ;
 
 pattern         = simple_pattern, { upper_operator, simple_pattern } ;
-simple_pattern  = "_" | lower_ident | literal_pattern | "()"
+simple_pattern  = lower_ident | literal_pattern | "()"
                 | constructor_pattern | product_pattern
                 | list_pattern | "(", pattern, ")" ;
-binder_pattern  = "_" | lower_ident | literal_pattern | "()"
+binder_pattern  = lower_ident | literal_pattern | "()"
                 | upper_ident | product_pattern | list_pattern
                 | "(", pattern, ")" ;
-constructor_pattern = upper_name, { binder_pattern } ;
+constructor_pattern = (upper_name | qualified_constructor), { binder_pattern } ;
+qualified_constructor = module_name, ".", upper_name ;
 product_pattern = "(", pattern, ",", pattern, { ",", pattern }, ")" ;
 list_pattern    = "[", [ pattern, { ",", pattern } ], "]" ;
 literal_pattern = literal | negative_number ;
@@ -181,12 +199,13 @@ function_type   = product_type, [ "->", function_type ] ;
 product_type    = type_operator_expr, { "*", type_operator_expr } ;
 type_operator_expr = type_application, { upper_operator, type_application } ;
 type_application= type_atom, { type_atom } ;
-type_atom       = "_" | lower_ident | upper_name | qualified_type
-                | type_literal | list_constructor | product_constructor | list_type
+type_atom       = lower_ident | upper_name | qualified_type
+                | type_literal | list_constructor | product_constructor | function_constructor | list_type
                 | "(", type_expr, ")" ;
 type_literal    = integer | char | string ;
 list_constructor = "[", "]" ;
 product_constructor = "(", "*", ")" ;
+function_constructor = "(", "->", ")" ;
 qualified_type  = module_name, ".", upper_name ;
 list_type       = "[", type_expr, "]" ;
 
@@ -203,7 +222,9 @@ upper_operator  = operator_symbol beginning with ":" - ":" ;
 
 Lexical productions are defined in Section 3.
 
-`non_lambda_expr` prevents an unparenthesized lambda arrow from competing with the structural arrow of an `if` clause or pattern guard. This restriction applies only at those two positions. A lambda remains usable there when parenthesized, because `paren_expr` contains a full `expr`.
+`non_lambda_expr` prevents an unparenthesized lambda arrow from competing with the structural arrow of an `if` clause or pattern guard. This restriction applies only at those two positions. A lambda remains usable there when parenthesized, because `paren_expr` contains a full `expr`. A nested condition such as `if { if { _ -> True } -> True; _ -> False }` is valid; the inner `if` has its own delimited clause block. The undelimited `if if if _ -> True -> True -> True` is invalid because those blocks are missing.
+
+The parser treats `_` as a lowercase identifier in terms, types, kinds, and patterns. Name resolution interprets the exact name `_` as a wildcard in binder and pattern positions, as the unconditional `if` fallback when it is the whole clause condition, and as a hole in permitted expression, type, or kind positions. The clause arrow is structural because its condition is a `non_lambda_expr`, not because `_` receives special parser treatment.
 
 `binder_pattern` is deliberately self-delimiting so adjacent function parameters remain unambiguous. Atomic, product, and list patterns may be binders directly. A constructor application or infix pattern must be parenthesized to form one binder:
 
@@ -217,31 +238,33 @@ mapper = (Just value) fallback -> value
 
 Without parentheses, adjacent atomic patterns denote separate binders.
 
-An infix pattern is never a declaration head. At top level, in an expression-block `let`-style declaration, in `where`, and on the left of a `do` `=` declaration, `value_decl` starts with `binding_name`, not `pattern`. For example, `x :: xs = value` is invalid in all four positions. A parenthesized infix pattern remains valid as a function argument, as in `uncons (x :: xs) = ...`. A `do` `<-` statement is a pattern bind rather than a declaration, so `(x :: xs) <- action` remains valid there (subject to the ordinary refutable-pattern rule). Parenthesized symbolic **value operator names**, such as `(++) xs ys = ...`, are binding names, not infix pattern heads.
+An infix pattern is never a declaration head, even when parenthesized. `value_decl` starts with a `binding_name`; a local or `do` `=` `pattern_decl` may instead use a non-infix pattern such as `(a, b)`, `Just x`, or `[x, y]`. A bare lowercase name is a `value_decl`. Top-level declarations remain named. Thus `x :: xs = value` is invalid at top level, in a local block, in `where`, and in `do` `=`. A parenthesized infix pattern remains valid as a function argument, as in `uncons (x :: xs) = ...`. A `do` `<-` statement is a pattern bind rather than a declaration, but v0 rejects its infix pattern because `<-` accepts only irrefutable patterns. Parenthesized symbolic **value operator names**, such as `(++) xs ys = ...`, are binding names, not infix pattern heads.
 
 ### 5.1 Parsing decisions
 
-The Concrete AST retains a postfix expression as a base atom followed by an uncommitted list of dotted identifier segments. For an upper-identifier-led chain, name resolution considers the possible module-prefix splits and chooses the longest prefix for which the following segment resolves to an exported value or constructor. Remaining segments must be lowercase fields and become projections. If no prefix forms such a qualified reference, the base is an ordinary value or constructor and every dotted segment must be a lowercase field. Thus `A.B.c` may resolve either as `c` from module `A.B` or as field `c` of `B` from module `A`; the parser does not decide between them. A module is never a runtime value.
+The Concrete AST retains a postfix expression as a base atom followed by an uncommitted list of dotted identifier segments. In an upper-identifier-led chain ending in an uppercase name, name resolution takes the preceding uppercase components as a module path and the final one as an exported constructor. When a lowercase segment follows an uppercase prefix, the whole uppercase prefix is a module path and the first lowercase segment is its exported value; any later lowercase segments are field projections of that value. A constructor cannot be projected from directly, so `Person.name` is never a field projection of `Person`; it must resolve as value `name` from module `Person` or be rejected. `A.B.c` means `c` from module `A.B`, never field `c` of constructor `B` from module `A`. A module is never a runtime value. To project a constructed value, write `(Person "Ada" 36).name` or bind it to a lowercase variable.
 
 Several productions share a syntactic prefix. They are resolved by token lookahead at the current nesting depth, not by name resolution:
 
-- In a `do` block, `<-` selects a pattern bind, `=` selects a value declaration, and the absence of either selects an expression statement.
-- In an expression block, `:` selects a local signature, `=` selects a local value declaration, and the absence of either selects an expression.
+- In a `do` block, `<-` selects a pattern bind, `=` selects a named or pattern declaration, and the absence of either selects an expression statement. Declaration statements use the same strict sequential binding semantics as expression blocks, including ordinary generalization rules; they do not desugar to immediately applied lambdas.
+- In an expression block, `:` selects a local signature, `=` selects a named or pattern declaration, and the absence of either selects an expression.
 - At top level, an initial upper name followed by optional lower identifiers is scanned through the first top-level `:` or `=`. `:` selects a signature and `=` selects a type alias. Integer, character, and string type literals make compiler-backed declarations such as `Byte = magic "u8"` ordinary type aliases syntactically.
 - At the start of an expression, a sequence that can be parsed as binder patterns is parsed speculatively. A following top-level `->` commits it as a lambda; otherwise the parser rewinds to an operator expression.
-- Prefix `with expr block1(match_clause)` is pattern matching. After an uppercase identifier, `with block1(record_field)` is a postfix record-construction form. Their token positions distinguish them without name resolution. The initial language restricts the postfix receiver to one bare `upper_ident`; a future record-update feature may relax it to a wider class of atoms.
+- Prefix `with expr block1(match_clause)` is pattern matching. After a bare or module-qualified uppercase record constructor, `with block1(record_field)` is postfix record construction. Their token positions distinguish them without name resolution. An explicit `{` or the newline and indentation that opens the expected block ends the scrutinee or record receiver. The initial language restricts the postfix receiver to a constructor name; a future record-update feature may relax it.
 
-These rules may be implemented with lookahead, backtracking, or a shared prefix representation. They must produce the same Concrete AST.
+The lookahead above observes tokens only at the current parser-driven layout depth. It never scans into a nested record, `with`, `if`, `do`, or expression block to find `=` or `<-` for an outer item. For example, `Person with` followed by an indented `name = "x"` is one record expression, not an outer declaration. These rules may be implemented with lookahead, backtracking, or a shared prefix representation. They must produce the same Concrete AST.
 
 ## 6. Names and scope
 
-Values, types, constructors, traits, fields, and modules occupy distinct namespaces. Multiple pattern clauses defining one value form a single binding and are matched in source order. Duplicate declarations in one namespace and scope, other than clauses of that binding, are errors.
+Values, constructors, fields, and modules have their respective namespaces; types and traits share one namespace. A type and a trait with the same name cannot coexist in one scope. Multiple pattern clauses defining one value form a single binding and are matched in source order. Duplicate declarations in one namespace and scope, other than clauses of that binding, are errors.
 
-Scope is lexical and innermost-first. Local declarations may shadow outer values, but not another declaration in the same block. Import collisions require qualification or selective imports.
+Scope is lexical and innermost-first. Sequential bindings in an expression or `do` block may shadow earlier local bindings, including bindings in the same block; each later right-hand side still sees the previous binding until its own initializer finishes. Shadowing emits a warning. Names within one mutually visible `where` or top-level group, and duplicate names within one pattern, remain duplicate-declaration errors. Import collisions require qualification or selective imports.
 
 Lambda parameters scope over their body. Pattern variables scope over the corresponding guard and branch. A sequential binding scopes over later block items only. A `where` name scopes over its whole group and the expression preceding `where`.
 
 All top-level declarations in a module are mutually visible. Name resolution precedes type inference.
+
+Compiler-known library entities are identified by their defining module and declared name, not by the spelling used to import or qualify them. Aliases, selective imports, and re-exports preserve that identity. This applies to Prelude-dependent sugar and compiler-backed library bindings; the reserved primitive entities keep their own built-in identities.
 
 ## 7. Types
 
@@ -251,7 +274,7 @@ The primitive atomic types are:
 Int Float Bool Char String Unit
 ```
 
-`Int`, `Float`, `Bool`, `Char`, `String`, and `Unit` are reserved primitive type names and are in scope in every module, including modules with `NO_IMPLICIT_PRELUDE` or `MAGIC`. `Type` is the reserved kind name for ordinary types. These names cannot be rebound within their namespaces. This does not reserve the same spelling in the module namespace.
+`Int`, `Float`, `Bool`, `Char`, `String`, and `Unit` are reserved primitive type names and are in scope in every module, including modules with `NO_IMPLICIT_PRELUDE` or `MAGIC`. `Type` is the reserved kind name for ordinary types. These names cannot be rebound in their respective namespaces or introduced into the local module-name scope by a bare or aliased import. They may still occur as components of a module path, as in `Data.Int`.
 
 Built-in expression types are fixed:
 
@@ -282,21 +305,23 @@ A * B * C = A * (B * C)
 
 Parentheses group types. Products require at least two components.
 
-Lists and binary products also expose their constructors as ordinary type atoms:
+Lists, binary products, and functions also expose their constructors as type atoms:
 
 ```text
 []  : Type -> Type
 (*) : Type -> Type -> Type
+(->): Type -> Type -> Type
 ```
 
-`[a]` is equivalent to `[] a`, and `a * b` is equivalent to `(*) a b`. The constructor forms allow partial application and implementation heads such as:
+`[a]` is equivalent to `[] a`, `a * b` to `(*) a b`, and `a -> b` to `(->) a b`. The constructor forms allow partial application and implementation heads such as:
 
 ```text
 impl Functor [] = ...
 impl Bifunctor (*) = ...
+impl Functor ((->) r) = ...
 ```
 
-`[]` and `(*)` are reserved built-in type-constructor names and cannot be rebound in the type namespace. This does not reserve the value-level multiplication operator `(*)`. Their runtime representations remain the ordinary list and binary-product representations.
+`[]`, `(*)`, and `(->)` are reserved built-in type-constructor names and cannot be rebound in the type namespace. This does not reserve the value-level multiplication operator `(*)`. Their runtime representations remain the ordinary list, binary-product, and function representations.
 
 ### 7.1 Algebraic data types
 
@@ -349,6 +374,8 @@ Named construction supplies every field exactly once:
 Person with
     name = "Ada"
     age = 36
+
+Data.People.Person with { name = "Ada"; age = 36 }
 ```
 
 Named fields may appear in any order and evaluate in source order. `person.name` projects a field. Record patterns are deferred; initial-language matching uses the positional constructor.
@@ -360,9 +387,9 @@ person.address.city
 = (person.address).city
 ```
 
-For each projection `e.field`, inference first determines the nominal record type of `e` from ordinary constraints, then looks up `field` in that declaration. Each projection's result becomes the next receiver. A label alone does not select or infer a record type. An unknown or non-record receiver, or a record without the field, is a type error.
+For each projection `e.field`, inference collects a field constraint on the receiver and result. Type variables mentioned by a pending field constraint stay monomorphic until that constraint is solved; they cannot be generalized when an inner `where` or other binding group closes. The compiler solves pending field constraints after ordinary constraints from the enclosing group and its use sites have fixed receiver types, but no later than the end of the containing module. If the receiver is then a known nominal record, it looks up `field` and unifies the result with the field type. A label alone does not select or infer a record type. An unresolved receiver, a known non-record receiver, or a record without the field is a type error; field constraints are never generalized. Thus `getName p = p.name` without a constraining use or signature is an error, while a `where`-bound projection may wait for the enclosing function body to determine `p`'s type.
 
-Dotted module qualification is resolved before projection. A qualified expression consists of a known module path, one exported value or constructor, then zero or more lowercase field projections:
+Dotted module qualification is resolved before projection. A qualified value expression consists of a known module path, one exported lowercase value, then zero or more lowercase field projections. Qualified constructors are allowed in construction and patterns but cannot be projected from directly:
 
 ```text
 Data.People.default.address.city
@@ -370,7 +397,9 @@ Data.People.default.address.city
 
 Here `Data.People` is the module, `default` is its exported value, and `address.city` is a projection chain. As specified in Section 5.1, the Concrete AST keeps the dotted chain uncommitted and name resolution selects the qualified value boundary.
 
-Postfix `with` explicitly introduces the layout block for named construction. A record block may therefore use layout or explicit braces, but an upper identifier followed only by an indented line never starts a record block. Prefix `with` remains pattern matching and does not conflict with this postfix use. Each field initializer may have its own `where` clause; its local declarations scope only over that field's expression. The receiver is currently restricted to a bare uppercase identifier, whose constructor fixes the record type. A record cannot declare the same label twice. Field labels are not standalone values. Record update is unsupported; a future update form may reuse postfix `with` with a less restrictive receiver.
+Postfix `with` explicitly introduces the layout block for named construction. A record block may therefore use layout or explicit braces, but an upper identifier followed only by an indented line never starts a record block. Prefix `with` remains pattern matching and does not conflict with this postfix use. Each field initializer may have its own `where` clause; its local declarations scope only over that field's expression. The receiver is a bare or module-qualified uppercase record constructor, whose identity fixes the record type. A record cannot declare the same label twice. Field labels are not standalone values. Record update is unsupported; a future update form may reuse postfix `with` with a less restrictive receiver.
+
+The record field block must start with `{` or on a more-indented next line. `f Person with x = 1 y` is invalid because no field block starts after `with`. In `f (Person with { x = 1 }) y`, the braces delimit construction before `y` is parsed as the next argument.
 
 ### 7.3 Aliases, signatures, and annotations
 
@@ -385,7 +414,7 @@ Type expressions admit integer, character, and string literals as compile-time t
 
 Signatures constrain inferred types. An annotation `(e : T)` constrains `e`; it does not pass a runtime type argument.
 
-Type aliases may have an optional top-level kind signature, checked against the definition. Their parameters remain bare names: annotations in alias arguments, such as `Parser (a : Type) = ...`, are invalid. Type parameters of ADTs, records, and traits may carry optional kind signatures; bare parameters still have their kinds inferred:
+Type aliases may have an optional top-level kind signature, checked against the definition. Their parameters remain bare names: annotations in alias arguments, such as `Parser (a : Type) = ...`, are invalid. An alias must always be fully applied where used, and aliases may not form direct or indirect cycles. Type parameters of ADTs, records, and traits may carry optional kind signatures; bare parameters still have their kinds inferred:
 
 ```text
 Parser : Type -> Type
@@ -399,11 +428,13 @@ trait Functor (f : Type -> Type) =
     map : (a -> b) -> f a -> f b
 ```
 
-The parser treats `Type` in a kind expression as an ordinary uppercase name; name resolution and kind checking give the reserved kind name its meaning. It must not be hardcoded as a special kind token or parser branch. A kind annotation on an ADT, record, or trait parameter does not introduce a runtime type argument. As with other type-only declarations, aliases still require a definition. A kind signature may use `_` as an inference hole, for example `type Box (a : _) = Box a` or `Parser : _ -> Type`. Each kind hole is inferred from the declaration and must resolve to a kind; an unsolved hole is a static error.
+The parser treats `Type` in a kind expression as an ordinary uppercase name; name resolution and kind checking give the reserved kind name its meaning. It must not be hardcoded as a special kind token or parser branch. A kind annotation on an ADT, record, or trait parameter does not introduce a runtime type argument. As with other type-only declarations, aliases still require a definition. A kind signature may use `_` as an inference hole, for example `type Box (a : _) = Box a` or `Parser : _ -> Type`. Each kind hole is inferred from the declaration. After kind inference, any unconstrained kind variable, including an unsolved kind hole, defaults to `Type` with a warning.
+
+Recursive ADT definitions must be regular: a recursive occurrence uses that ADT's declared type parameters unchanged and in the same order. Non-regular recursion such as `type Nest a = Wrap (Nest [a])` is a static error, including when it passes through a mutually recursive group.
 
 ### 7.4 Type signature holes
 
-`_` in a value signature or expression annotation is a fresh type hole. Each occurrence is independent and may stand for a type of any inferred kind, including a type constructor. Inference unifies the written skeleton with the inferred principal type, fills the holes, retains any residual inferred predicates, and then applies the ordinary signature checks and generalization rules.
+`_` in a value signature or expression annotation is a fresh type hole. Each occurrence is independent and may stand for a type of any inferred kind, including a type constructor. Inference unifies the written skeleton with the inferred principal type, fills the holes, retains any residual inferred predicates, and then applies the ordinary signature checks and v0 value restriction.
 
 ```text
 double : Int -> _
@@ -417,7 +448,7 @@ foo x = (1, x)
 
 The second example is valid: the constructor-position hole is inferred as `(*)`, and the following hole as `Int`. Type holes are permitted in value signatures and expression annotations where there is an expression or definition to infer from, and kind holes are permitted in kind signatures as described above. Type holes remain invalid in alias right-hand sides, data bodies, trait member signatures, implementation heads, and other type-only positions. Holes do not denote named variables and two holes need not infer the same type.
 
-Outside binder and pattern positions, a standalone `_` in an expression is an expression hole, not a wildcard. It is accepted by the parser but always causes a hard compilation error after inference. The diagnostic must show the hole's inferred type (including any remaining type variables) and its source location; a hole is never executable or silently filled.
+Name resolution classifies a standalone `_` in an expression position as an expression hole, and `_` in a binder or pattern position as a wildcard. An expression hole is accepted by the parser but always causes a hard compilation error after inference. The diagnostic must show the hole's inferred type (including any remaining type variables) and its source location; a hole is never executable or silently filled.
 
 ## 8. Built-in algebraic forms
 
@@ -456,9 +487,15 @@ It is always available and cannot be declared, imported as a different entity, s
 
 Evaluation is strict, call-by-value, deterministic, and left-to-right.
 
-Application binds tighter than infix operators. In `f a b`, evaluate `f`, `a`, and `b` in that order, applying after each argument. Lambdas capture their lexical environment. A failed parameter pattern is a runtime match error.
+Application binds tighter than infix operators. In `f a b`, evaluate `f`, then `a`, apply, then evaluate `b` and apply again. A definition `f x y = body` is equivalent to `f = x -> y -> body`, except that its attached `where` group is placed after all written parameters as specified in Section 12. By contrast, `f x = y -> body` has only one written parameter, so its attached `where` group runs after `x` is supplied and before the resulting lambda is returned. Any work between curried applications remains observable; arity raising may combine calls only when it preserves that timing and strict left-to-right effects. Lambdas capture their lexical environment. A failed parameter pattern is a runtime match error.
 
-An expression block evaluates items in order and returns its last expression. A local declaration evaluates its right side immediately, matches its head pattern, then extends later items. A failed local pattern is a runtime match error.
+An expression block evaluates items in order and returns its last expression. A local named declaration evaluates its right side immediately and binds the name; a local pattern declaration evaluates its right side once, matches the non-infix head pattern, then binds its variables for later items. A failed local pattern is a runtime match error. Sequential shadowing is permitted with a warning as specified in Section 6.
+
+```text
+swap pair =
+    (a, b) = pair
+    (b, a)
+```
 
 Constructors, products, lists, positional record fields, and named record fields evaluate left-to-right. Field projection evaluates its receiver first.
 
@@ -487,12 +524,15 @@ with value
 
 A pattern fails or binds variables. Repeated variables in one pattern are invalid. Constructor, product, and list patterns require the corresponding shape. Literal patterns compare same-typed primitive values.
 
+For a v0 `do` `<-` bind, only variable patterns, `_`, `()`, and products whose elements are all irrefutable are irrefutable. All other patterns, including constructors, lists, literals, and infix constructor patterns, are refutable and rejected in this position.
+
 Symbolic uppercase constructors may be used in prefix or infix patterns:
 
 ```text
 (:+) x xs  -> ...
 x :+ xs    -> ...
 x :: xs    -> ...
+Data.People.Person name age -> ...
 ```
 
 After a pattern matches, its optional guard runs. A false guard continues with the next clause. If none succeeds, evaluation raises a match error.
@@ -516,15 +556,17 @@ Conditions run top-to-bottom until one is `True`; only its result runs. `_` is u
 
 ## 12. Recursion and `where`
 
-Ordinary block bindings are sequential and non-recursive.
+Ordinary expression-block and `do` `=` bindings are sequential and non-recursive, including local pattern declarations.
 
 `where` introduces a mutually visible group. Before the enclosing function body runs, the compiler evaluates the group's declarations in dependency order. Among declarations whose dependencies are satisfied, source order decides which is evaluated first.
 
-The compiler forms a dependency graph and checks each strongly connected component (SCC). A cyclic SCC is accepted only when every reference from one binding to a variable in the same SCC is syntactically protected by at least one lambda in that binding's right-hand side, after function parameters are desugared to lambdas. Otherwise the cycle is a static error.
+The compiler forms a dependency graph across mutually visible top-level declarations, `where` groups, and `impl` dictionaries and their members, then checks each strongly connected component (SCC). A cyclic SCC is accepted only when each initializer is non-expansive and every intra-SCC reference is beneath a lambda in its initializer after written parameters are desugared. Non-expansive initializers are the forms listed for `impl` members in Section 16; in particular they cannot call a captured closure during initialization. A variable reference to another slot in the same SCC is not protected merely because some later use is beneath a lambda. Other cycles are static errors.
 
-When a cyclic SCC is reached, its slots are allocated first. Its right-hand sides are then evaluated in source order; protected references are captured by closures and cannot read an uninitialized slot. After every required `where` declaration has been initialized, the function body runs. Top-level declarations follow the same rules.
+When a cyclic SCC is reached, its slots are allocated first. Its right-hand sides are then evaluated in source order. The non-expansive check prevents a captured reference from being invoked during this phase; the lambda-protection check prevents an eager read of another uninitialized slot. An acyclic `impl` member initialized from a top-level variable reads it only after its dependency has been initialized. After every required `where` declaration has been initialized, the enclosing body runs. Top-level and `impl` initialization follow the same dependency-order and SCC rules.
 
-An explicitly signed binding may be used polymorphically within its recursive SCC: each recursive reference instantiates its signature independently. An unsigned binding has one monotype throughout the SCC. This typing distinction does not relax the lambda-protection rule for cyclic references.
+For `f x y = body where ...`, the `where` group runs after both written parameters have been supplied, immediately before `body`. For `f x = y -> body where ...`, it runs after `x` has been supplied, before the returned lambda is created. A declaration with no written parameters runs its `where` group before its right-hand side is evaluated. These positions are observable and cannot be moved by arity raising.
+
+An explicitly signed binding may be used polymorphically within its recursive SCC: each recursive reference instantiates its signature independently. An unsigned binding has one monotype throughout the SCC. This typing distinction does not relax either cyclic-initializer check.
 
 ## 13. Evaluation order
 
@@ -539,6 +581,8 @@ Observable effects occur in this order:
 7. interpolated string segments left-to-right.
 
 Optimizations must preserve this behavior.
+
+Tail-call optimization depends on the backend. v0 does not guarantee constant stack use for tail-recursive calls.
 
 ## 14. Operators
 
@@ -558,6 +602,8 @@ append = xs ++ ys
 ```
 
 `.` is reserved punctuation for module qualification and field projection. It cannot be declared, imported, referenced as `(.)`, or used as an infix function.
+
+Qualified operator references use a module path followed by a parenthesized operator, for example `Data.List.(++)`. Bare operators are infix only, and v0 has no operator sections: `(x +)` and `(+ y)` are invalid.
 
 Infix declaration heads are invalid. Thus `xs ++ ys = ...` is not a function definition. Constructor declarations follow the same rule: `(:+) a (Chain a)` is valid in a type body, while an infix constructor declaration is not.
 
@@ -599,14 +645,30 @@ Ficus uses Hindley–Milner inference with qualified types.
 
 - Polymorphic uses instantiate fresh variables.
 - Equality constraints use unification with an occurs check.
-- Eligible bindings generalize variables not free in the environment.
+- Generalization follows the v0 value and monomorphism restrictions below.
 - A signature may be less general than the inferred type, but not more general.
 - An annotation unifies its written and inferred types.
 - A signature or annotation hole introduces a fresh metavariable, which may have a higher kind and is completed from the inferred type.
 
 Inference covers the complete module after name resolution. Accepted unconstrained definitions have principal types, subject to trait ambiguity.
 
-Since the initial language has no polymorphic mutable references, immutable bindings are generalized normally. Within a recursive SCC, an explicit signature supplies the scheme for polymorphic recursive uses of that binding; its definition must check against the signature. Unsigned bindings are inferred monomorphically within the SCC and generalized at its boundary. A signature hole does not by itself supply a polymorphic recursive type: its missing part must be inferred without assuming polymorphic recursive uses of that hole.
+At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a lambda (including a definition with written parameters), literal, variable, constructor, or aggregate of non-expansive values. Applications, including partial applications, projections, conditionals, matches, `do`, and expression blocks are expansive. Their result variables remain monomorphic. A signature cannot override this restriction; in particular, `inc = (+) 1` cannot acquire a polymorphic type merely by adding one.
+
+The v0 monomorphism restriction further keeps an **unsigned**, constrained binding monomorphic when it has no written parameters or outer lambda, even if its initializer is non-expansive. A complete signature may override this extra restriction when the value restriction permits generalization and the definition checks against it; a signature with holes cannot. Otherwise, unresolved trait predicates must be solved for the binding's one monotype. This restriction concerns constrained bindings only; it does not prevent generalizing an unconstrained non-expansive value.
+
+Within a recursive group, signed bindings may be used polymorphically at their declared schemes, while unsigned bindings use one monotype until the group boundary. Each definition must satisfy its signature and the value restriction. Missing parts of a signature containing holes are inferred without assuming polymorphic recursive use of those parts. The separate non-expansive and lambda-protection checks for cyclic initialization still apply.
+
+```text
+displayFn x = show x  -- may generalize under Show a
+displayMono = show    -- unsigned: monomorphic; Show must resolve for one type
+
+displayPoly : Show a => a -> String
+displayPoly = show    -- signed: polymorphic despite having no lambda parameter
+```
+
+Weak type variables left by the value or monomorphism restriction may be fixed by later uses within the module, but are never generalized implicitly. Any weak variable still unresolved when module inference ends is a static error, even when it has no trait predicate (for example, an unused `r = newRef []` once references are available).
+
+`(->)` is a built-in type constructor of kind `Type -> Type -> Type`. It may be partially applied, so `(->) r` has kind `Type -> Type` and may appear in higher-kinded holes and implementation heads such as `impl Functor ((->) r)`. The infix `a -> b` is its right-associative notation.
 
 A constrained type is ambiguous when a variable used by a predicate does not occur in the unconstrained value type:
 
@@ -642,6 +704,8 @@ trait (Applicative f, Bind f) => Monad f = {}
 ```
 
 Qualified types place predicates before `=>`. An `impl` supplies every method exactly once.
+
+A trait method signature may add constraints on method-level variables other than the trait parameter. For example, `Traversable t` may declare `traverse : Applicative f => (a -> f b) -> t a -> f (t b)`; `f` is constrained by the method even though the trait is parameterized by `t`. These constraints are checked and supplied at method use sites alongside the trait's own constraint. Every method's value type must mention its trait parameter; `trait C a = { foo : Int }` is invalid because no use of `foo` can determine `a`.
 
 Trait and implementation declarations follow the Haskell 98 head restrictions.
 
@@ -679,9 +743,10 @@ impl (C1 a1) => C (T Int a1) = ...  -- invalid: concrete argument
 impl C (T a a) = ...                 -- invalid: repeated variable
 impl Functor [] = ...                -- valid: list type constructor
 impl Bifunctor (*) = ...             -- valid: product type constructor
+impl Functor ((->) r) = ...          -- valid: function type constructor
 ```
 
-Type aliases are expanded before this check and cannot be used to evade it. The defining module must own either `C` or the outer constructor `T`. No module owns the built-in `[]` or `(*)` constructors or the primitive types `Int`, `Float`, `Bool`, `Char`, `String`, and `Unit`. Implementations for any of these must therefore be declared by the module that owns the trait. This rule does not apply to ordinary library-defined types such as `Byte`, `Vec`, and `Void`, whose defining modules own them.
+Type aliases are expanded before this check and cannot be used to evade it. The defining module must own either `C` or the outer constructor `T`. No module owns the built-in `[]`, `(*)`, or `(->)` constructors or the primitive types `Int`, `Float`, `Bool`, `Char`, `String`, and `Unit`. Implementations for any of these must therefore be declared by the module that owns the trait. This rule does not apply to ordinary library-defined types such as `Byte`, `Vec`, and `Void`, whose defining modules own them.
 
 ### Use-site predicates
 
@@ -693,7 +758,7 @@ foo : C [a] => a -> b  -- valid
 
 The ordinary ambiguity rule still applies: every variable mentioned by a predicate must occur in the unconstrained value type.
 
-For any ground predicate, at most one implementation may match. Resolution recursively resolves its context and supertraits. Failure, overlap, or an implementation-resolution cycle is a static error. Trait use is therefore coherent and independent of import order.
+For a module, visible implementations are those declared locally or in the transitive closure of its explicit and implicit imports, including Prelude unless disabled. Merely existing elsewhere in a build does not make an implementation visible. For any ground predicate among visible implementations, at most one implementation may match. Resolution recursively resolves its context and supertraits. Failure, overlap, or an implementation-resolution cycle is a static error. Trait use is therefore coherent and independent of import order within that visibility set.
 
 Trait implementations are selected by these rules regardless of runtime representation. Trait bodies contain signatures only, and every `impl` supplies every declared member. Default member bodies and fallback instance implementations are unsupported. Local implementations are unsupported.
 
@@ -715,7 +780,7 @@ An `impl Eq T` does not define `(/=)`, and an `impl Ord T` does not define `(<)`
 
 A trait or implementation may use an explicit empty block `{}`. This supports marker traits that bundle only supertrait requirements, such as Prelude's `Applicative` and `Monad`. Layout-controlled trait and implementation blocks remain nonempty.
 
-Every member supplied by an `impl` must have a non-expansive right-hand side after its written parameters are desugared to lambdas. Non-expansive forms are:
+Every member supplied by an `impl` must have a non-expansive right-hand side after its written parameters are desugared to lambdas. This applies whether or not the member belongs to a recursive group; a signature cannot override it. Non-expansive forms are:
 
 - variables, literals, and constructors;
 - lambdas;
@@ -737,27 +802,29 @@ This restriction makes trait dictionary initialization observationally pure and 
 
 ## 17. `do` notation
 
-`do` is Prelude-dependent surface syntax for the Prelude's `Bind` abstraction and lambdas, not special IO sequencing:
+`do` is Prelude-dependent surface syntax for the Prelude's `Bind` abstraction, lambdas, and strict sequential bindings, not special IO sequencing:
 
 ```text
 do { p <- e; rest }  => bind e (p -> do { rest })
-do { x = e; rest }   => (x -> do { rest }) e
+do { declaration; rest } => strict sequential binding of declaration, then do { rest }
 do { e; rest }       => bind e (_ -> do { rest })
 do { e }             => e
 ```
 
-`bind` comes from the Prelude's `Bind` trait. A refutable `<-` pattern requires library-defined failure support; otherwise it is a static error. In a `NO_IMPLICIT_PRELUDE` or `MAGIC` module, use of `do` is a static error rather than a desugaring.
+Here `declaration` may be a named definition with parameters or a local non-infix pattern declaration. It uses the same evaluation, pattern matching, generalization, and shadowing rules as a declaration in an expression block; it is not encoded as an immediately applied lambda. Thus `do { f a = a; rest }` binds the closure `f`, and `do { x <- action; x <- next x; rest }` is valid, with a shadowing warning for the second `x`. `bind` comes from the Prelude's `Bind` trait. In v0, `<-` accepts only the irrefutable patterns defined in Section 10; every refutable pattern is a static error. In a `NO_IMPLICIT_PRELUDE` or `MAGIC` module, use of `do` is a static error rather than a desugaring.
 
 ## 18. String interpolation
 
-In v0, `{name}` embeds the value of one bare lowercase variable in a string. The braces may contain only a lowercase identifier: no operators, applications, projections, qualified names, or other expressions. `{{` and `}}` produce literal braces.
+In v0, `{name}` embeds one variable, and `{Module.name}` embeds one qualified variable. A qualified name has one or more uppercase module components followed by one lowercase value name. The braces cannot contain operators, applications, field projections, or other expressions. `{{` and `\{` produce a literal `{`; `}}` and `\}` produce a literal `}`. An escaped opening brace never begins interpolation. Any unmatched, unescaped single brace is a lexical error.
 
 ```text
 "hello {name}"
+"hello {Data.Greetings.name}"
+"literal \{name\}"
 "sum {x + y}"  -- invalid in v0
 ```
 
-Interpolation elaborates to left-associated concatenation of literal segments and `show` calls on the referenced variables. Segments and variable uses evaluate left-to-right. Each embedded variable adds its required `Show` constraint. A string without interpolation is a plain `String`.
+Interpolation elaborates to left-associated concatenation of literal segments and `show` calls on the referenced variables. Segments and variable uses evaluate left-to-right. Each embedded variable adds its required `Show` constraint. `Show String` is the identity, so interpolating a `String` does not add quotation marks. A string without interpolation is a plain `String`.
 
 The `Show` method and concatenation operation come from the Prelude. In a `NO_IMPLICIT_PRELUDE` or `MAGIC` module, an interpolated string is a static error; ordinary string literals remain available.
 
@@ -807,7 +874,7 @@ addInt : Int -> Int -> Int
 addInt = magic "addInt"
 ```
 
-Only the compiler-provided `magic` binding has this behavior; the spelling is not a keyword and has no special parsing rule. Uses that resolve to this binding parse normally and are rejected during elaboration when they do not satisfy the restrictions above. An unrelated identifier with the same spelling has ordinary language semantics. Opaque types such as `Byte`, `Handle`, and `Vec`, together with primitive functions, are supplied by ordinary library modules written this way. They are not primitive language types.
+Only the compiler-provided `magic` binding has this behavior; the spelling is not a keyword and has no special parsing rule. Uses that resolve to this binding parse normally and are rejected during elaboration when they do not satisfy the restrictions above. An unrelated identifier with the same spelling has ordinary language semantics. Opaque types such as `Byte`, `Handle`, and `Vec`, together with primitive functions, are supplied by ordinary library modules written this way. They are not primitive language types. The compiler registry recognizes each such declaration by its defining module and name, irrespective of an import alias or re-export.
 
 ## 20. Prelude
 
@@ -824,11 +891,13 @@ Implementations reject at least:
 - invalid pragma placement or `pub` on a non-list import;
 - unresolved or ambiguous names;
 - duplicate declarations or pattern variables;
-- type mismatches, failed occurs checks, invalid annotations, or unresolved kind holes;
+- type mismatches, failed occurs checks, or invalid annotations;
+- unresolved weak type variables or field receivers;
+- partial or cyclic aliases and non-regular recursive ADTs;
 - expression holes, with their inferred types shown in the diagnostic;
 - ambiguous or unsatisfied trait constraints;
 - missing, duplicate, orphan, or overlapping implementations;
-- unprotected recursive references;
+- expansive cyclic initializers or unprotected recursive references;
 - invalid record fields or constructor arity;
 - invalid or forbidden refutable patterns;
 - use of Prelude-dependent sugar when the implicit Prelude is disabled;
@@ -842,7 +911,7 @@ A limited set of humorous diagnostics is acceptable when it still explains the e
 
 The initial language excludes:
 
-- expression interpolation beyond a bare variable;
+- expression interpolation beyond a variable or qualified variable;
 - record update and comma-style record literals;
 - record patterns, including record punning;
 - empty type bodies and empty `with` matches;
@@ -938,7 +1007,7 @@ At call sites, `Unit` is introduced with `()`, for example `fork (() -> work)` a
 
 `fork` schedules its thunk concurrently. Its first type parameter records the exception type. In the current v1+ interface, `join` waits and returns either `Ok value` or `Err exception` without existentially hiding that type. `send` and `recv` communicate through a typed channel; whether channels are buffered and how cancellation works remain unspecified.
 
-These declarations are not part of implicit Prelude. Adding mutable channels requires an ML-style value restriction or an equivalent rule preventing unsound generalization of bindings such as `channel = newChan ()`.
+These declarations are not part of implicit Prelude. The v0 value restriction already prevents generalization of expansive bindings such as `channel = newChan ()`.
 
 ### Deferred exception primitives
 
@@ -960,9 +1029,9 @@ catch = magic "catch"
 
 `throw` does not return normally. `catch action handler` runs `action ()`; it invokes `handler` for an exception of the statically selected type `e` and propagates other exceptions. An uncaught fiber exception is preserved as the `e` parameter of `Fiber e a` and returned by `join` as `Err e`.
 
-`Exception e` has no members: it is compile-time evidence that `e` may use the exception primitives. Its dictionary is the unit value and may be erased after constraint solving. Any runtime type token required by the magic operations is selected during lowering and is not represented as a trait dictionary.
+`Exception e` has no source-level methods, but typed `catch` needs a runtime identity for `e`. Nominal types such as `UserId` and `Int` can have identical erased value representations, and a polymorphic `Exception e => ...` cannot reconstruct `e` from a value after erasure. The runtime representation of this evidence is therefore **unsettled**. A correct implementation must preserve a nominal type token, either in non-erased exception evidence or in another runtime type representation carried through `throw`, `catch`, and fibers. Erasing `Exception e` to unit without such a token is invalid. The exact representation and matching mechanism remain open.
 
-The v1+ exception and concurrency designs above are finalized as the initial interfaces, subject to the possible existential-error change described below. Cleanup, nesting, interaction with effects, and the standard `Exception` instances need operational detail; those details do not reopen the initial API choice.
+The v1+ exception and concurrency signatures above remain the proposed initial interfaces, subject to the possible existential-error change described below. Exception type discrimination is an unresolved implementation and representation requirement, so the exception operations cannot be considered implementable until it is settled. Cleanup, nesting, interaction with effects, and standard `Exception` instances also need operational detail.
 
 ### v1+ mutable references
 
@@ -984,7 +1053,7 @@ readRef = magic "readRef"
 
 `newRef` allocates a mutable cell. `readRef` returns its current value. `modifyRef ref f` reads the current value, applies `f`, stores the result, and returns `()`.
 
-The v1+ `Ref` design requires an ML-style polymorphic value restriction: expansive bindings such as `ref = newRef []` must not be generalized. Atomicity and interaction with fibers remain unspecified.
+The v1+ `Ref` design retains the v0 value restriction: expansive bindings such as `ref = newRef []` must not be generalized. Atomicity and interaction with fibers remain unspecified.
 
 ## 23. Program entry point
 
@@ -1122,6 +1191,8 @@ Build configuration, package/dependency formats, resolution rules, and the FFI s
 
 ## 26. Remaining open design decisions
 
-Record update remains an open design decision, including its syntax, receiver forms, and evaluation behavior. The other previously open choices not settled by this revision remain open as well, including record punning, the release and syntax of existential record type members, and the detailed exhaustiveness treatment of uninhabited types. The mutable-reference API and value restriction are settled as written; atomicity and interaction with fibers remain unspecified. Other v1+ feature plans likewise preserve details already identified as unspecified.
+Record update remains an open design decision, including its syntax, receiver forms, and evaluation behavior. The other previously open choices not settled by this revision remain open as well, including record punning, the release and syntax of existential record type members, and the detailed exhaustiveness treatment of uninhabited types. The value restriction starts in v0 and also applies to the v1+ mutable-reference API; atomicity and interaction with fibers remain unspecified. Other v1+ feature plans likewise preserve details already identified as unspecified.
 
 The exact compiler artifact schemas and entry-point argument, reporting, and exit-status conventions also remain open. This revision does not select defaults for those details.
+
+The v1+ exception runtime identity mechanism remains open: typed `catch` must distinguish nominal types after newtype erasure, including through polymorphic `Exception e` uses. Integer division, literal range, conversions, floating-point display, and the remaining lexical details listed in `PLAN.md` also remain unsettled.

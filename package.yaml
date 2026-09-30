@@ -62,6 +62,7 @@ executables:
     dependencies:
       - ficus
       - optparse-applicative
+      - haskeline
 
 tests:
   ficus-test:

@@ -61,7 +61,7 @@ use Data.Map
 use Data.Map (Map)
 ```
 
-Types and traits share one namespace. Primitive type names and `Type` cannot be bound as local module names: `use Data.Int` is invalid, while `use Data.Int (add)` and `use Data.Int as I` are valid. A module path may still contain `Int` or `Type`.
+Types and traits share one namespace. Primitive type names and `Type` may be local module names or aliases: `use Data.Int`, `use Data.Int (add)`, and `use Data.Int as I` are valid. Module bindings do not rebind primitive types or change their ownership. Whether two imports may share the same local module name remains open; no overwrite or collision policy is selected.
 
 An explicit import list may be re-exported:
 
@@ -77,7 +77,7 @@ use Data.Map pub       -- invalid
 use Data.Map as M pub  -- invalid
 ```
 
-All top-level declarations are public in v0. `PRIVATE` and `PRIVATE members` pragmas are deferred. Type import lists may select ADT constructors, for example `Maybe(..)` and `Either(Left)`. Importing a record type brings its public constructor and fields into scope; record member selections are invalid.
+All top-level declarations are public in v0. `PRIVATE` and `PRIVATE member` pragmas are deferred. The latter hides ADT constructors or a record constructor and its fields while keeping the type public. Type import lists may select ADT constructors, for example `Maybe(..)` and `Either(Left)`. Importing a record type brings its public constructor and fields into scope; record member selections are invalid.
 
 ## 4. Pragmas and Prelude
 
@@ -85,18 +85,18 @@ Pragmas are accepted only at global declaration level. Inline expression and loc
 
 ```text
 {-# NO_IMPLICIT_PRELUDE #-}
-{-# MAGIC #-}
 ```
 
 `NO_IMPLICIT_PRELUDE` removes the implicit Prelude. The six primitive types remain available.
 
-`MAGIC` enables compiler bindings and implies `NO_IMPLICIT_PRELUDE`.
+All pragmas have an ALL_CAPITAL name and identifier/string arguments, parsed uniformly. `BUILTIN` resolves an ordinary declared target and does not disable Prelude.
 
 ```text
-{-# DERIVE Show #-}
+{-# DERIVE #-}
+impl Show Point = {}
 ```
 
-is reserved for future deriving support.
+is the planned v1+ deriving form. The pragma takes no arguments and attaches to the following `impl`; its body must be empty. Any handwritten members, including partial implementations, are errors. Generation uses the ordinary implementation header and its written constraints; it does not add default methods or silently infer a larger context.
 
 String interpolation and `do` depend on Prelude traits. They are rejected when the implicit Prelude is disabled.
 
@@ -265,7 +265,9 @@ id x = x
 map f xs = ...
 ```
 
-Signatures and annotations constrain inference:
+Signatures name exactly one identifier or parenthesized operator before `:`; comma-separated targets and parameter lists before `:` are unsupported. Signatures and annotations constrain inference. Patterns and binder patterns can be annotated in parentheses, for example `foo (x : Int) = x` or `(x : Int) -> x`. In v0 these annotations accept concrete types and inference holes, but reject named type variables such as `a` in `foo (x : a) = x`; a separate signature does not put its variables in scope here. Existing pattern restrictions still apply.
+
+Examples:
 
 ```text
 twice : (a -> a) -> a -> a
@@ -280,13 +282,13 @@ foo : _ -> _ _ Int
 foo x = (1, x)
 ```
 
-Each `_` in a value signature or expression annotation is an independent type inference hole and may stand in constructor position. The examples complete to `Int -> Int` and `Int -> (Int * Int)`. Kind signatures on aliases and type parameters may also contain independent kind holes, inferred from the declaration. A standalone `_` in a non-binder, non-pattern expression position is a hard compilation error whose diagnostic shows the inferred type of the hole.
+Each `_` in a value signature, expression annotation, or pattern annotation is an independent type inference hole and may stand in constructor position. The examples complete to `Int -> Int` and `Int -> (Int * Int)`. Kind signatures on aliases and type parameters may also contain independent kind holes, inferred from the declaration. A standalone `_` in a non-binder, non-pattern expression position is a hard compilation error whose diagnostic shows the inferred type of the hole.
 
 There is no visible type application at value call sites.
 
 An ADT with one constructor and one field, including a single-field record, has the runtime representation of its field without a wrapper tag or boxing. It remains nominal, retains strict Ficus semantics, and keeps its own trait ownership.
 
-Type aliases may have optional top-level kind signatures, but their parameters are bare names without annotations. ADT, record, and trait parameters may have optional parenthesized kind annotations. For example:
+Type aliases may have optional top-level kind signatures. Alias, ADT, record, and trait parameters may have optional parenthesized kind annotations. These parameters bind lowercase names rather than matching types; concrete type patterns such as `Alias Int = ...` are invalid. For example:
 
 ```text
 Parser : Type -> Type
@@ -336,7 +338,7 @@ Data.People.default.address.city
 
 Here `Data.People` is the longest module prefix, `default` is its exported value, and `address.city` is a projection chain.
 
-Postfix `with` on a bare or module-qualified record constructor introduces a named-construction block, which may use layout or braces. Prefix `with` remains pattern matching, so token position distinguishes the two forms. A field initializer may have its own `where` clause, scoped to that field. Record patterns are deferred to v1+ with explicit braces and restricted use; punning and record update remain undecided. Updates may later reuse postfix `with` with a broader receiver.
+Postfix `with` constructs a bare or qualified record constructor, or updates an existing nominal record value. Projection and with suffixes associate left and bind tighter than application; updating a call result requires parentheses. Updates preserve the complete receiver type, evaluate the receiver once and replacement fields in source order, and create a new record with omitted fields retained. They are expansive for initialization and inference. Prefix `with` remains matching, with separately delimited field/clause blocks for nested forms. Each field initializer may have its own scoped `where` group. Record patterns remain v1+; punning is unsupported. Updates of existential records remain open.
 
 ## 10. Functions and matching
 
@@ -424,11 +426,13 @@ parity n = (odd n, even n)
             _ -> odd (x - 1)
 ```
 
+By default, every top-level value initializer must be non-expansive, even outside a cycle or under a complete signature. In v1+, `STANDALONE` permits expansive acyclic top-level definitions while making the module unimportable; recursive groups and implementation members retain their restrictions. Written parameters defer the body and its attached `where` group until application; immediately evaluated `where` groups must also pass the check. Local bindings can still compute or allocate references during function execution.
+
 A recursive cycle is accepted only when its initializers are non-expansive and every intra-cycle reference is protected by a lambda after parameter desugaring. This prevents a closure from being called or a strict value from being read during initialization.
 
 An explicit type signature also permits polymorphic recursion within the group: each recursive use can instantiate the signed binding's scheme. Unsigned bindings retain a shared monotype during group inference. Signatures do not relax recursive-initializer safety.
 
-The v0 value restriction generalizes only non-expansive bindings. Function calls and other expansive initializers remain monomorphic even if they are immutable; a written signature cannot override this rule.
+The v0 value restriction generalizes only non-expansive bindings. Local function calls and other expansive initializers remain monomorphic even if they are immutable; a written signature cannot override this rule.
 
 The v0 monomorphism restriction also prevents generalizing an unsigned constrained binding with no lambda parameters, even when its right-hand side is non-expansive. A complete explicit signature may override this restriction, subject to the value restriction.
 
@@ -461,10 +465,10 @@ trait Functor f =
 trait Pure f =
     pure : a -> f a
 
-trait Apply f =
-    ap : f (a -> b) -> f a -> f b
+trait Seq f =
+    seq : f (a -> b) -> (Unit -> f a) -> f b
 
-trait (Functor f, Pure f, Apply f) => Applicative f = {}
+trait (Functor f, Pure f, Seq f) => Applicative f = {}
 
 trait Bind f =
     bind : f a -> (a -> f b) -> f b
@@ -493,7 +497,7 @@ Trait bodies contain signatures only and every `impl` supplies every declared me
 
 An implementation must be defined in the module that owns its trait or its outer type constructor. No module owns `[]`, `(*)`, `(->)`, `Int`, `Float`, `Bool`, `Char`, `String`, or `Unit`, so implementations for these belong to the trait owner.
 
-Implementation members must have non-expansive initializers. Lambdas, literals, variables, constructors, and aggregates of such values are allowed; effectful applications are allowed only inside a lambda body. This prevents observable effects while trait dictionaries initialize.
+Top-level definitions require non-expansive initializers by default, with the v1+ acyclic standalone exception; implementation members always retain this requirement. Lambdas, literals, variables, constructors, and aggregates of such values are allowed; effectful applications are allowed only inside a lambda body. This prevents observable effects while trait dictionaries initialize.
 
 Projection constraints cannot be generalized. Their type variables remain monomorphic while surrounding uses may determine the receiver; an unresolved receiver is an error.
 
@@ -525,49 +529,48 @@ decode input = do
 
 In v0, `<-` accepts only irrefutable patterns: variables, wildcards, unit, and products of those forms. Constructor, list, literal, and infix patterns are rejected there.
 
-The v0 Prelude re-exports `Void` and `absurd`. Until empty declarations and matches exist, an explicit magic-backed module supplies:
+The v0 Prelude re-exports `Void` and `absurd`. Until empty declarations and matches exist, an explicit builtin-backed module supplies:
 
 ```text
+{-# BUILTIN VOID Void #-}
 Void : Type
-Void = magic "void"
 
+{-# BUILTIN ABSURD absurd #-}
 absurd : Void -> a
-absurd = magic "absurd"
 ```
 
 The byte and vector types are named `Byte` and `Vec a`, replacing `U8` and `Array a`.
 
 See `PRELUDE.md` for the intended fine-grained control traits and initial library surface.
 
-## 14. Magic modules
+## 14. Builtin declarations
 
-Opaque runtime types and primitive operations are supplied by ordinary library modules marked `MAGIC`, not by a virtual primitive package:
+Compiler implementations are associated with ordinary top-level declarations:
 
 ```text
-{-# MAGIC #-}
-
+{-# BUILTIN HANDLE Handle #-}
 Handle : Type
-Handle = magic "handle"
 
+{-# BUILTIN BYTE Byte #-}
 Byte : Type
-Byte = magic "u8"
 
+{-# BUILTIN VEC Vec #-}
 Vec : Type -> Type
-Vec = magic "array"
 
+{-# BUILTIN INT_ADD addInt #-}
 addInt : Int -> Int -> Int
-addInt = magic "addInt"
 ```
 
-Conceptually:
+The target resolves under ordinary scope rules, independently of adjacency. Its type/kind comes from a normal declaration; the pragma contains no signature. Bodyless targets require complete declaration signatures. Types are opaque and nominal; values are primitive bindings. Unknown keys, unresolved targets, incompatible declarations, conflicting associations, and additional source definitions are errors. Namespace, scope, imports, exports, and ownership remain ordinary. Builtin declarations retain implicit Prelude unless the module explicitly uses `NO_IMPLICIT_PRELUDE`.
+
+Future v2+ FFI follows the same style:
 
 ```text
-magic : {k : Sort} -> StringLiteral -> k
+{-# FOREIGN JS "console.log" log #-}
+log : String -> Unit
 ```
 
-`Sort` is compiler meta-notation covering both value types and kinds. `StringLiteral` is a compile-time key, not a runtime `String`. Type expressions admit integer, character, and string literals, but not floating-point literals. A compiler-backed type declaration therefore parses `magic "key"` as an ordinary type application; a value declaration parses it as an ordinary expression application. Its use as a compiler binding is established during name resolution. Every compiler-backed binding requires an explicit signature. Invalid uses and keys are rejected during elaboration, which also validates the signature against the selected key.
-
-The compiler-provided `magic` binding is available only in a `MAGIC` module; the spelling itself is not reserved.
+Backends, marshalling, calling conventions, and exception behavior remain open. See SPEC.md for language rules and IMPL.md for annotation handling and lowering.
 
 ## 15. Implementation shape
 
@@ -599,19 +602,19 @@ See `IMPL.md` for details.
 
 The initial language excludes:
 
-- record patterns, including punning, and record update;
+- record patterns and record punning;
 - empty type bodies and empty `with` matches;
 - visible type application and explicit `forall`;
-- deriving, including the reserved `DERIVE Show` pragma;
+- deriving, including the argument-free `DERIVE` pragma on an empty implementation;
 - lazy arrows `~>`, replacing the earlier prefix-`~` proposal;
-- private pragmas, including `PRIVATE members`;
+- private pragmas, including `PRIVATE member`;
 - advanced trait machinery;
 - GADTs, higher-rank types, and dependent types;
 - unrestricted mutable references;
 - effect systems, concurrency, and async syntax;
 - macros, ownership types, and custom memory management.
 
-Private pragmas, lazy arrows, concurrency, exceptions, empty type bodies and matches, and mutable references are planned for v1+ with the existing designs. Initial deriving is limited to structural traits such as `Show` and `Eq`.
+Private pragmas, lazy arrows, concurrency, exceptions, empty type bodies and matches, and mutable references are planned for v1+ with the existing designs. Initial deriving is limited to structural traits such as `Show` and `Eq`. The v1+ module pragma `{-# STANDALONE #-}` permits expansive acyclic top-level initializers and prevents imports of that module. It may import ordinary modules, retains Prelude, and neither selects an entry nor requires main; ordinary main validation applies if explicitly selected for execution.
 
 Lazy arrows must be explicit; inference continues to default to strict `->`. The reserved `~>` token will be right-associative type punctuation, not an ordinary symbolic operator:
 
@@ -621,7 +624,7 @@ and : Bool ~> Bool ~> Bool
 
 They elaborate to shared thunks, with call sites wrapping lazy arguments. The exact Core representation and effect semantics remain deferred.
 
-The initial v1+ magic-backed concurrency module provides:
+The initial v1+ builtin-backed concurrency module provides:
 
 ```text
 fork : Exception e => (Unit -> a) -> Fiber e a
@@ -633,7 +636,7 @@ recv : Chan a -> a
 
 These are explicit imports, not Prelude declarations. The v0 value restriction prevents generalization of expansive channel allocations. Scheduling, buffering, cancellation, and exception propagation need operational detail.
 
-The initial v1+ typed-exception design uses a Prelude marker trait and magic-backed operations:
+The initial v1+ typed-exception design uses a Prelude marker trait and builtin-backed operations:
 
 ```text
 trait Exception e = {}
@@ -646,7 +649,7 @@ catch : Exception e => (Unit -> a) -> (e -> a) -> a
 
 `Exception e` has no source-level methods. Its runtime representation remains open because typed `catch` must distinguish nominal exception types even when their values have the same erased representation.
 
-v1+ replaces the magic-backed empty type and eliminator with:
+v1+ replaces the builtin-backed empty type and eliminator with:
 
 ```text
 type Void = {}
@@ -657,7 +660,7 @@ absurd x = with x {}
 
 Empty records and empty ADTs share the syntax `type T = {}` and require care when parsing the two body alternatives. Both introduce no constructor, so `Void with {}` is invalid. `Void` is uninhabited, so this empty match is exhaustive. The exhaustiveness checker must account for uninhabited types; its detailed treatment within other patterns remains open.
 
-The mutable-reference design is settled for v1+ and remains magic-backed:
+The mutable-reference design is settled for v1+ and remains builtin-backed:
 
 ```text
 newRef : a -> Ref a
@@ -669,11 +672,11 @@ The v0 value restriction continues to apply to `Ref`; it prevents generalizing e
 
 ## 17. Entry points and v1+ artifacts
 
-v0 supports `main : [String] -> Unit` and `main : [String] -> Result String Unit`. The entry function receives command-line arguments; argument conventions, error reporting, and exit-status details remain to be specified. Entry-point exception handling belongs to v1+.
+Execution explicitly selects one entry module, which must define its own `main`; an imported `main` is insufficient. Library modules need not define it, and other modules' `main` functions are not automatically invoked. v0 supports `main : [String] -> Unit` and `main : [String] -> Result String Unit`. The entry function receives command-line arguments; argument conventions, error reporting, and exit-status details remain to be specified. Entry-point exception handling belongs to v1+.
 
 v1+ compiler-generated interface and object files both use Lisp-like syntax. Object files serialize Runtime AST as text until the v2+ WebAssembly GC backend is available. The concrete schemas remain to be specified. See `SPEC.md` for the settled entry points and v1+ private-pragma examples.
 
-Record update and other previously open design choices not explicitly settled here remain open. In particular, this revision does not choose a record-update syntax or receiver form, record punning, or concrete compiler artifact schemas. Exclusion from v0 does not decide a feature's future design.
+Ordinary record update syntax, type preservation, and evaluation are settled for v0. Updates of existential records and concrete compiler artifact schemas remain open. Record punning is unsupported.
 
 The initial v1+ CLI is:
 
@@ -689,16 +692,16 @@ ficus lsp
 
 ## 18. Further versioned plans
 
-v1+ adds `{-# DEPRECATED ident+ ["<message>"] #-}` for one or more deprecated identifiers with an optional message, and the module-level `{-# OPTIONS [compiler options] #-}` pragma. Actual compiler options, flags, and warnings remain to be specified. Deprecation targeting and warning-policy details also remain open.
+v1+ adds `{-# DEPRECATED ident+ "<message>" #-}` for one or more deprecated identifiers with an message, and the module-level `{-# OPTIONS "<compiler options>" #-}` pragma. Actual compiler options, flags, and warnings remain to be specified. Deprecation targeting and warning-policy details also remain open.
 
-v1+ expands Prelude in the style of Haskell and adds JSON and regex facilities, potentially backed by `MAGIC` modules. APIs, module organization, and implicit re-exports remain open.
+v1+ expands Prelude in the style of Haskell and adds JSON and regex facilities, potentially supplied by builtin-backed modules. The proposed roots are `Ficus.Builtin`, `Class`, `System`, `Data`, and `Control`, with selected definitions re-exported by `Prelude`. APIs, module availability, and the exact implicit export list remain open; see `PRELUDE.md` for bootstrap and ownership considerations.
 
 v2+ adds the WebAssembly GC backend, a simple build system supporting libraries beyond Prelude and dependency resolution, and FFI. Concrete build, dependency, and FFI designs remain open.
 
 ## 19. Additional v1+ directions
 
-Record patterns mirror named construction with explicit braces, such as `Point with { x = px }`. They are permitted in matches, lambdas/function arguments, non-recursive bindings, and both `do` binding forms (`<-` and `=`), but not in recursive `let` groups. A top-level or `where` record-pattern binding in a recursive SCC is rejected with a suggestion to match inside a named function using `with`. Record punning remains open.
+Record patterns mirror named construction with explicit braces, such as `Point with { x = px }`; omitted fields are ignored, including all fields in `Point with {}`. They are permitted in matches, lambdas/function arguments, non-recursive bindings, and both `do` binding forms (`<-` and `=`), but not in recursive `let` groups. A top-level or `where` record-pattern binding in a recursive SCC is rejected with a suggestion to match inside a named function using `with`. Record punning is unsupported.
 
-Tentative v1+ syntax binds type variables in signatures as `{a}` or `{a : Type}` and applies type arguments positionally as `foo {Int} 1`. This is draft only and may change if parsing is ambiguous.
+Tentative v1+ syntax binds type variables in signatures as `{a}` or `{a : Type}` and applies type arguments positionally as `foo {Int} 1`. A definition such as `foo {a} (x : a) = x` would explicitly bind `a` for subsequent argument annotations and the body. This binds types rather than term values and does not imply dependent types. This is draft only and may change if parsing is ambiguous.
 
-Existential record type members, inspired by *Types and Programming Languages*, are targeted for v1+ or v2+. The proposed declaration `type SomeException = { Err : Type; showErr : Err -> String }` puts an uppercase abstract type member and a lowercase runtime operation in one record body. It packages a hidden type with operations, not a path-dependent type. The proposed unpacking pattern `SomeException with { Err = e; showErr = se } = ...` introduces `e` as a local type variable and `se` as a value binder. `Err = e` does not match against a concrete type; the hidden type must not escape its scope, and calling `se` requires runtime dispatch through the package. An existential `SomeException` could change the current v1+ exception/concurrency signatures. Package construction syntax and the version boundary remain open; see `SPEC.md`.
+Existential record type members, inspired by *Types and Programming Languages*, are targeted for v1+. The proposed declaration `type SomeException = { Err : Type; showErr : Err -> String }` puts an uppercase abstract type member and a lowercase runtime operation in one record body. It packages a hidden type with operations, not a path-dependent type. The proposed unpacking pattern `SomeException with { Err = e; showErr = se } = ...` introduces `e` as a local type variable and `se` as a value binder. `Err = e` does not match against a concrete type; the hidden type must not escape its scope, and calling `se` requires runtime dispatch through the package. An existential `SomeException` could change the current v1+ exception/concurrency signatures. In the current draft, type members are excluded from positional construction and pattern slots: `SomeException ((e : String) -> e)` infers the witness, and the candidate `with package { (SomeException se) -> ... }` would open it without a name. Positional type-member arguments may cause ambiguity between type and term parsing; rejecting positional patterns for existential records and requiring named patterns is an open alternative. Named patterns may also omit the type member. Witness inference details remain open; see `SPEC.md`.

@@ -1,22 +1,64 @@
 # Intended Prelude
 
-This document sketches a small v0 Prelude. It is non-normative and intentionally incomplete. v1+ expands it in the style of Haskell and adds JSON and regex facilities, potentially backed by `MAGIC` modules. The expanded APIs, module organization, and implicit re-export policy remain to be specified.
+This document sketches a small v0 Prelude. It is non-normative and intentionally incomplete. v1+ expands it in the style of Haskell and adds JSON and regex facilities, potentially supplied by builtin-backed modules. The proposed module organization is recorded below; expanded APIs and the exact implicit re-export list remain to be frozen.
 
 The control hierarchy follows Lean's fine-grained approach: operations such as `map`, `pure`, application, and `bind` have separate traits. Conventional `Applicative` and `Monad` names remain available as composite marker traits.
 
 ## 1. Organization
 
-The implicit `Prelude` module may re-export smaller modules:
+The proposed public layout is:
 
 ```text
-use Prelude.Core (..) pub
-use Prelude.Control (..) pub
-use Prelude.Numeric (..) pub
-use Prelude.List (..) pub
-use Prelude.String (..) pub
+Prelude                  -- selected re-exports
+Ficus.Builtin
+    Int                  -- primitive operations, not a redeclaration of Int
+    Handle               -- builtin-backed library type and operations
+    ...
+Class
+    Show
+    Bind
+    ...
+System
+    IO
+    Environment
+    ...
+Data
+    List
+    Map
+    Function
+    ...
+Control
+    Exception
+    ...
 ```
 
-Modules marked `NO_IMPLICIT_PRELUDE` or `MAGIC` receive none of these declarations. The reserved types `Int`, `Float`, `Bool`, `Char`, `String`, and `Unit` remain available.
+Indented entries denote modules such as `Ficus.Builtin.Int` and `Class.Show`. This is a proposed organization, not a commitment that every module is available in v0. `System.IO` names an operations module; it does not introduce an `IO` type.
+
+`Ficus.Builtin.*` holds declarations backed by `BUILTIN` and their minimal support definitions. The six reserved primitive types are already in scope and are not redeclared there. Ordinary library types such as `Handle`, `Byte`, and `Vec` retain their defining module identity. Public operations and wrappers may be exposed through `Data.*`, `System.*`, or `Control.*` without changing that identity.
+
+`Class.*` defines the basic traits and associated constrained functions. Under the existing ownership rule, implementations for primitive types and built-in list/product/function constructors must live in the module defining the trait: for example, `Show Int` belongs in `Class.Show`. Implementations for ordinary library types may instead live with their type. Keep this distinction when selecting module dependencies.
+
+The proposed bootstrap policy is to put `{-# NO_IMPLICIT_PRELUDE #-}` before imports in every standard-library module, including `Prelude` itself. All library dependencies are then explicit; application modules retain implicit Prelude unless they opt out. This avoids an accidental dependency back to Prelude when an internal module is added or moved into its dependency graph. Bootstrap from builtin declarations and basic data definitions, then build traits and higher-level operations according to their actual dependencies, with Prelude last. Basic types such as Ordering may be needed by trait contracts, so the module roots are not strict dependency layers. Keep constructor-only data dependencies independent of trait modules where needed; place implementations according to ownership without introducing imports back into their dependencies. Actual dependencies must remain acyclic. `BUILTIN` alone does not disable implicit Prelude. Primitive-named modules may be imported directly, for example `use Ficus.Builtin.Int`; a distinct alias such as `as BInt` is optional. Whether this may coexist with `use Data.Int` under the same local module name remains open. Under the current v0 rules, disabling implicit Prelude also forbids `do` and string interpolation even when their supporting definitions are imported explicitly; standard-library bootstrap code uses ordinary function calls instead. Changing that sugar rule would require a separate spec revision.
+
+Prelude should use explicit selective re-exports. Freeze a reviewed list of values, operators, types, constructors, and traits before treating the implicit API as stable; adding a definition to a source module must not silently expand Prelude. Candidate categories are the existing basic traits, common data types, list/string operations, function combinators, and selected IO helpers. Environment access, specialized collections, exception/concurrency APIs, and low-level builtin operations should require explicit imports unless individually selected. The exact selections remain open, including which basic type constructors and trait implementations are visible through those imports.
+
+Modules marked `NO_IMPLICIT_PRELUDE` receive none of these declarations. The reserved types `Int`, `Float`, `Bool`, `Char`, `String`, and `Unit` remain available.
+
+### Proposed v0 scope
+
+| Area | Modules or traits |
+| --- | --- |
+| Builtin-backed declarations | `Ficus.Builtin.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Handle`, `.Vec`, `.Byte` |
+| Basic classes | `Debug`, `Show`, `Eq`, `Ord`, `Pure`, `Seq`, `Bind`, `Functor`, `Applicative`, `Monad`, `Alternative`, `Semigroup`, `Monoid`, `Default`, `Bifunctor`, `Foldable`, `Traversable`, each under `Class` |
+| System | `System.IO` |
+| Data | `Data.List`, `.Function`, `.Product`, `.Ordering`, `.Maybe`, `.Result` or `.Either`, `.Const`, `.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Vec`, `.Byte` |
+| Control | No v0 modules; exceptions and concurrency remain later work |
+
+`Handle` stays out of the proposed `Data` layer; its public IO operations belong in `System.IO`. Primitive data modules expose operations on the already-reserved types rather than defining replacement types. `Data.Const` denotes the constant type constructor, distinct from the ordinary `const` function in `Data.Function`.
+
+The requested composites are `Applicative = Functor + Pure + Seq` and `Monad = Applicative + Bind`. `Functor` remains independently usable and is also an `Applicative` supertrait. Following Lean, `Seq` takes a thunked second operand and `Alternative` extends `Applicative` with `failure` and thunked `orElse`; the earlier eager `Apply` sketch is superseded. `Debug` and `Default` still need concrete operation contracts before freezing their interfaces. The earlier `Fail`/`OrElse` sketches are not additional v0 commitments.
+
+This inventory defines proposed v0 library scope, not a blanket Prelude export list. `Data.Map` is outside Prelude and outside this initial inventory; its release availability remains open. `System.Environment`, exceptions, and concurrency are outside the proposed v0 scope. `Data.Ordering` is included because the current `Ord.compare` contract returns `Ordering`. The naming choice between `Result` and `Either` remains open; existing examples and the current entry-point contract still use `Result`. Numeric traits (`Add`, `Sub`, `Mul`, `Div`, `Rem`) and the existing `Void`/`absurd` bootstrap must be reconciled with this inventory before freezing it; their current contracts are not silently removed.
 
 ## 2. Basic data types
 
@@ -37,19 +79,19 @@ type Ordering =
 
 `Bool`, `Unit`, products, and lists are built in and are not redeclared by Prelude.
 
-The initial Prelude also re-exports the empty type `Void` and its eliminator `absurd : Void -> a`. Until empty data declarations and empty matching are supported, an explicit `MAGIC` module supplies:
+The initial Prelude also re-exports the empty type `Void` and its eliminator `absurd : Void -> a`. Until empty data declarations and empty matching are supported, an explicit builtin-backed module supplies:
 
 ```text
+{-# BUILTIN VOID Void #-}
 Void : Type
-Void = magic "void"
 
+{-# BUILTIN ABSURD absurd #-}
 absurd : Void -> a
-absurd = magic "absurd"
 ```
 
 `Void` has no values; `absurd` eliminates an impossible value. These are library declarations, not additional reserved primitive types.
 
-In v1+, empty type bodies and empty matching replace those magic bindings with ordinary source definitions:
+In v1+, empty type bodies and empty matching replace those builtin bindings with ordinary source definitions:
 
 ```text
 type Void = {}
@@ -187,16 +229,18 @@ trait Pure f =
 ### Contextual application
 
 ```text
-trait Apply f =
-    ap : f (a -> b) -> f a -> f b
+trait Seq f =
+    seq : f (a -> b) -> (Unit -> f a) -> f b
 ```
 
-Useful aliases can remain ordinary functions:
+An operator alias retains the explicit thunk argument:
 
 ```text
-(<*>) : Apply f => f (a -> b) -> f a -> f b
-(<*>) = ap
+(<*>) : Seq f => f (a -> b) -> (Unit -> f a) -> f b
+(<*>) = seq
 ```
+
+Use `seq mf (_ -> mx)` or `mf <*> (_ -> mx)` to delay `mx`. These are ordinary calls: no parser or elaborator automatically wraps the second argument. Creating a thunk does not evaluate its body; invoking it evaluates the body using the ordinary strict semantics. The instance controls whether and how often it is invoked; there is no automatic memoization. For `Maybe`, a missing function skips the argument thunk.
 
 ### Dependent sequencing
 
@@ -215,42 +259,51 @@ trait Bind f =
 ### Composite traits
 
 ```text
-trait (Functor f, Pure f, Apply f) => Applicative f = {}
+trait (Functor f, Pure f, Seq f) => Applicative f = {}
 
 trait (Applicative f, Bind f) => Monad f = {}
 ```
 
-These marker traits add no operations. They provide conventional vocabulary and bundle the fine-grained capabilities through supertrait dictionaries. Code should still request `Functor`, `Pure`, `Apply`, or `Bind` when that is all it needs.
+These marker traits add no operations. They provide conventional vocabulary and bundle the fine-grained capabilities through supertrait dictionaries. Code should still request `Functor`, `Pure`, `Seq`, or `Bind` when that is all it needs.
 
-### Failure and choice
+### Choice
+
+Following [Lean's Alternative definition](https://github.com/leanprover/lean4/blob/master/src/Init/Control/Basic.lean), use:
 
 ```text
-trait Fail f =
-    fail : String -> f a
+trait Applicative f => Alternative f =
+    failure : f a
+    orElse : f a -> (Unit -> f a) -> f a
 
-trait OrElse f =
-    orElse : f a -> (() -> f a) -> f a
+(<|>) : Alternative f => f a -> (Unit -> f a) -> f a
+(<|>) = orElse
 ```
 
-The second `orElse` argument is delayed because Ficus is strict. Refutable patterns in `do` require an appropriate `Fail` operation.
+For `Maybe`, `failure` is `Nothing`; `orElse` returns a `Just` left operand without invoking the right thunk, otherwise it invokes the thunk. Other instances must specify whether choice collects results or selects a success. The earlier `Fail` and standalone `OrElse` sketches are not selected as separate v0 traits. Refutable `do` binds remain rejected in v0, independently of library choice operations.
+
+### Sequencing helpers
+
+[Lean's Applicative hierarchy](https://github.com/leanprover/lean4/blob/master/src/Init/Prelude.lean) additionally separates `SeqLeft` and `SeqRight`. For the initial Ficus scope, provide their operations as ordinary derived functions rather than adding required trait members or default implementations:
+
+```text
+seqLeft : (Functor f, Seq f) => f a -> (Unit -> f b) -> f a
+seqLeft x next = seq (map (a -> _ -> a) x) next
+
+seqRight : (Functor f, Seq f) => f a -> (Unit -> f b) -> f b
+seqRight x next = seq (map (_ -> b -> b) x) next
+```
+
+Separate optimized `SeqLeft`/`SeqRight` traits can be considered later. Unlike Lean's default class methods, all Ficus trait members still require explicit implementations; helpers remain outside dictionaries. No proof-oriented `Lawful*` classes or dependent types are introduced by using Lean as an API reference.
 
 ### Why these traits stay separate
 
-A function that only maps should require `Functor f`, not `Monad f`. A parser may support `Pure`, `Apply`, and `OrElse` without supporting dependent sequencing. Keeping these capabilities separate avoids unnecessary instances and constraints.
+A function that only maps should require `Functor f`, not `Monad f`. A parser may support `Pure`, `Seq`, and choice without supporting dependent sequencing. Keeping these capabilities separate avoids unnecessary instances and constraints.
 
 ## 7. Initial control instances
 
-The intended minimum instance matrix is:
+The proposed initial types for `Functor`, `Pure`, `Seq`, `Bind`, `Applicative`, and `Monad` implementations are `Maybe`, `Result e`, and `[]`. The `Result`/`Either` naming decision remains open. `Alternative Maybe` uses the short-circuiting contract above; list choice and any error-bearing choice implementation still need reviewed contracts.
 
-| Type | Functor | Pure | Apply | Bind | Applicative | Monad | Fail | OrElse |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `Maybe` | yes | yes | yes | yes | yes | yes | yes | yes |
-| `Result e` | yes | yes | yes | yes | yes | yes | no | no |
-| `[]` | yes | yes | yes | yes | yes | yes | no | yes |
-
-`Maybe.fail` discards the message and returns `Nothing`. List `orElse` uses its second argument only when the first list is empty.
-
-The exact behavior of list `Apply` must be chosen explicitly. A Cartesian implementation is conventional; a zip implementation should instead use a distinct wrapper type.
+The exact behavior of list `Seq` must be chosen explicitly. Cartesian application and zip application are different semantics; a zip variant should use a distinct wrapper type if Cartesian application is selected.
 
 ## 8. Maybe and Result helpers
 
@@ -383,9 +436,9 @@ println : String -> Unit
 readLine : Unit -> String
 ```
 
-Opaque handles, `Vec a`, `Byte`, and low-level operations live in explicit library modules backed by `MAGIC` declarations. They are not automatically re-exported by Prelude.
+Opaque handles, `Vec a`, `Byte`, and low-level operations live in explicit library modules backed by `BUILTIN` declarations. They are not automatically re-exported by Prelude.
 
-The same applies to the proposed initial v1+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit magic-backed concurrency module, not Prelude.
+The same applies to the proposed initial v1+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit builtin-backed concurrency module, not Prelude.
 
 The initial v1+ Prelude provides the marker:
 
@@ -393,7 +446,7 @@ The initial v1+ Prelude provides the marker:
 trait Exception e = {}
 ```
 
-The corresponding `throw` and `catch` operations are magic-backed explicit imports:
+The corresponding `throw` and `catch` operations are builtin-backed explicit imports:
 
 ```text
 throw : Exception e => e -> a
@@ -402,7 +455,7 @@ catch : Exception e => (Unit -> a) -> (e -> a) -> a
 
 `Exception` has no source-level methods, but typed `catch` requires a runtime nominal type identity. Whether that identity lives in exception evidence or another runtime representation remains open; it cannot simply be erased to unit. The trait does not make exception effects implicit in unrelated Prelude functions.
 
-The settled v1+ mutable-reference API likewise belongs to an explicit magic-backed module:
+The settled v1+ mutable-reference API likewise belongs to an explicit builtin-backed module:
 
 ```text
 newRef : a -> Ref a

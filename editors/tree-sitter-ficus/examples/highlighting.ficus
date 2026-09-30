@@ -1,5 +1,14 @@
 use Data.Map (Map, lookup) pub
-{-# MAGIC, DERIVE Show #-}
+{-# DERIVE Show #-}
+{-# BUILTIN HANDLE Handle #-}
+Handle : Type
+{-# BUILTIN INT_ADD intAdd #-}
+intAdd : Int -> Int -> Int
+-- Future FFI annotation (highlighting only).
+{-# FOREIGN JS "console.log" log #-}
+log : String -> Unit
+-- Keys and magic are ordinary names outside annotation metadata.
+magic x = x
 -- The operators below are identified by spelling, not a fixed list.
 {- A block comment with -> and "quoted text". -}
 

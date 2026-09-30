@@ -4,6 +4,9 @@
   "description": "Lexical syntax highlighting for Ficus.",
   "version": "0.0.1",
   "publisher": "local",
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },

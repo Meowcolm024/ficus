@@ -1,95 +1,120 @@
 # Ficus implementation plan
 
-**NON NORMATIVE, REFERENCE ONLY!**
+This document is non-normative. [SPEC.md](SPEC.md) defines language behavior and versioned feature designs; [IMPL.md](IMPL.md) records compiler architecture and engineering choices. This plan tracks implementation order, conformance checks, and unresolved decisions. Milestones are planned work, not claims of completed implementation.
 
 ## 1. Approach
 
-- **Thin slice early.** A walking skeleton (monomorphic HM → Core → Runtime → evaluator) exercises every stage boundary before the hard parts (kinds, traits) are built.
-- **Validators before features.** Each AST boundary gets its validator, fixtures and span/provenance plumbing when it is introduced.
-- **A decision log.** Every open item below gets an ID, a status and a provisional default, so work proceeds on the default and a reversal has a known blast radius. Tests are tagged with decision IDs. "Settle by" means the last point at which the decision can stay open without blocking or forcing rework.
-- **A spec conformance matrix.** Every normative sentence in `SPEC.md` maps to at least one positive or negative fixture.
+- Build a small end-to-end slice before completing kinds and traits: Concrete → Abstract → Core → Runtime → compiled evaluator.
+- Introduce each boundary validator with its AST, source spans, provenance, and fixtures. Later stages must not depend on earlier-stage types.
+- Map every normative spec rule to a fixture. Negative fixtures assert diagnostic kind and primary span, not complete wording. Bug fixes begin with failing fixtures; review each generated golden diff.
+- Check parse/pretty-print round trips, formatter idempotence, and compiled evaluator equivalence to the direct interpreter, including errors and effect order.
+- Track open decisions by ID, owner document, and deadline. Recommendations below are proposals, not defaults. Settle language choices in SPEC.md before implementation; record engineering choices in IMPL.md. If code contradicts SPEC.md, stop and ask which is wrong.
 
 ## 2. v0 milestones
 
-|#|Milestone|Scope|Exit criteria|Size|
-|---|---|---|---|---|
-|M0|Foundations|Haskell project, CI, source spans and provenance types, `rustc`-style diagnostic renderer, fixture harness (golden files, decision-ID tags)|A diagnostic with labeled multi-span excerpts renders in tests|S|
-|M1|Syntax|Lexer, layout, Megaparsec parser, Concrete AST (explicit vs layout blocks, comments, pragmas, unresolved dotted chains, flat operator chains), naive formatter|All grammar productions parse. Positive and negative fixtures cover layout, pragma placement, import forms, the `with`/record fixture, and `x :: xs = v` in all four contexts. Round-trip and idempotence properties pass|L|
-|M2|Resolution and desugar|Module graph and import cycles, `use` forms including `T(..)` and `pub`, namespaces, uppercase-prefix dotted resolution, dynamic operator grouping with the mixed-associativity error, clause grouping, `do` and interpolation sugar, Prelude-disabled errors, binding-group SCCs with non-expansive initializer and lambda-protection checks|Abstract AST validator passes. Unresolved or ambiguous names, duplicate groups and unsafe recursion are diagnosed; sequential shadowing warns|L|
-|M3|Walking skeleton|Monomorphic-to-let-polymorphic HM without traits, first-order ADTs, products, lists, patterns, `if`, `where`, generalization, Core AST + validator, minimal Runtime AST, closure-compiled evaluator, minimal `MAGIC` registry (`addInt`, printing)|A non-trivial program (list functions, mutual recursion via `where`) runs end to end|L|
-|M4|Types complete|Kind inference and kind annotations, aliases (expansion, kind signatures), type/kind holes, records, `Field` constraints, expression holes, ambiguity check, type-literal admission|Kind, hole, record and alias fixtures pass, including the `_ -> _ _ Int` example|M|
-|M5|Traits|Trait/impl validation (Haskell 98 heads), superclass SCC check, coherence, orphan rule after alias expansion, entailment, dictionary elaboration, non-expansive `impl` check, proof-dictionary erasure, derived functions such as `(/=)`|`Functor []`, `Bifunctor (*)`, and `Monad` via marker traits all work. Overlap, orphan and cycle diagnostics work|L|
-|M6|Runtime completeness|Arity raising, newtype erasure, lexical addressing, Runtime AST validator, a direct interpreter as test oracle, differential tests, optional backend-specific tail-call optimization, runtime error provenance|Compiled and oracle evaluators agree on values, errors and effect order across the fixture corpus|M|
-|M7|Prelude and release|Prelude (built from `MAGIC` modules without sugar), entry-point validation for both `main` forms, minimal `run`, exhaustiveness/redundancy warnings, humorous diagnostics, conformance matrix complete|Conformance matrix green, sample scripts run, v0 tagged|L|
+| ID | Milestone | Scope | Exit criteria |
+| --- | --- | --- | --- |
+| M0 | Foundations | Stack project and CI, spans/provenance, diagnostic renderer, fixture harness, conformance matrix | Labeled source diagnostics render in tests; fixture assertions identify kind and primary span |
+| M1 | Syntax | Lexer, parser-driven layout, Megaparsec, Concrete AST, dynamic spelling-based operator grouping, concrete pretty-printer | v0 grammar and layout fixtures pass; round-trip and idempotence properties pass |
+| M2 | Resolution and Abstract AST | Module graph/import cycles, imports/re-exports, namespaces, uncommitted dotted chains, declaration identity, clause grouping, `do`/interpolation, dependency analysis | Abstract validator passes; unresolved/duplicate member names, member import collisions, the selected module collision policy, unsafe recursive dependencies, and Prelude-disabled sugar are covered; sequential shadowing warns |
+| M3 | End-to-end slice | HM without traits, value restriction, signed/unsigned recursion, first-order ADTs, products, lists, patterns, distinct `if`, strict blocks and `where`, typed Core, minimal Runtime and compiled evaluator, ordinary declarations with resolved `BUILTIN` metadata and primitives | A program with list functions and mutually recursive functions runs through all four stages; all boundary validators run in tests |
+| M4 | Types complete | Kinds and defaulting, parenthesized pattern annotations without named type variables, kind-annotated alias parameters and regular recursive ADTs, built-in higher-kinded constructors, type/kind holes, expression-hole errors, record construction/update and deferred field constraints | Kind, alias, hole, annotated-pattern, and record fixtures pass; pending projection variables remain monomorphic; expression holes cannot reach Core |
+| M5 | Traits | Haskell 98 heads, superclass cycles, visible implementation sets, orphan/overlap checks, method constraints, ambiguity and monomorphism restrictions, explicit dictionaries, default non-expansive top-level/member initializers | `Functor []`, `Bifunctor (*)`, marker `Monad`, thunked Seq, and short-circuiting Alternative Maybe work; signed/unsigned constrained bindings and constrained methods are covered; derived functions remain outside dictionaries |
+| M6 | Runtime completeness | Safe arity raising, single-constructor/single-field wrapper erasure, lexical addresses and numeric IDs, dictionary erasure only when evidence is unused, Runtime validator, direct interpreter oracle, runtime provenance | Compiled and direct evaluators agree on values, errors, and effect order; partial/extra applications and intermediate `where` initialization are covered |
+| M7 | Prelude and v0 conformance | Proposed v0 builtin/Class/System.IO/Data inventory (PRELUDE §1), explicit thunked sequencing/choice and derived seqLeft/seqRight, explicit stdlib bootstrap imports, reviewed implicit Prelude exports excluding Data.Map, explicit entry-module selection and required own `main` with either supported signature, exhaustiveness/redundancy warnings, end-to-end scripts | Every v0 spec rule has a fixture; sample scripts run; required decisions are reflected in their owner documents; Stack build/tests pass |
 
-**Parallelism.** Freeze the Core AST grammar at the end of M3. M6 (runtime lowering and the oracle) can then proceed against hand-written Core while M4 and M5 are in progress. Pretty-printer and formatter work in M1 can run alongside lexer/layout hardening.
+The initial CLI command surface belongs to v1+. An internal execution harness can exercise M3–M7 without promising a v0 public `run` command. Constant-stack tail calls are not a v0 guarantee; backend-specific optimization is optional.
 
-**Risk order.** Layout and parser ambiguity (M1) > trait elaboration and evaluation-order preservation (M5) > kind inference with holes (M4) > everything else.
+### Required coverage
 
-## 3. Post-v0 roadmap
+- **M1:** Layout boundaries for prefix `with` and postfix record construction/update, application precedence and left-associated suffix chains, nested `=`/`<-`, delimited `if` conditions, pragmas, qualified operators, mixed associativity, comments/dots/brace escapes, spaced qualification/projection, leading-dot continuations versus same-indent rejection, parenthesized dotted `with` scrutinees, projection-before-application precedence, and infix-pattern declaration rejection in every context. `::`, `Type`, `magic`, `True`, and `False` use ordinary parser productions. All pragmas share an ALL_CAPITAL name plus identifier/string arguments; names and argument meanings are validated later. Keys do not enter scope. `_` retains its ordinary identifier form until contextual interpretation.
+- **M2:** Selective ADT constructor imports, whole-record imports, invalid record member selections, `pub`, primitive spellings as local module names/aliases, dotted qualification before projection, declaration identity through aliases/re-exports, and `NO_IMPLICIT_PRELUDE`. Resolve `BUILTIN` targets independently of adjacency, obtain types/kinds from ordinary declarations, and check duplicate/conflicting definitions, ordinary name scope, and retained Prelude. Keep sequential `do` `=` bindings distinct from immediately applied lambdas.
+- **M3–M5:** Cover kind-annotated alias parameters, reject type-matching parameters, and enforce single-target signatures without parameter lists.
+- **M3–M5:** Cover annotated patterns in function/lambda arguments, constructor arguments, nested patterns, matches, local declarations, and `do`; include negative named-type-variable annotations and positive inference holes. Preserve existing declaration-head and refutability restrictions.
+- **M3–M5:** Add positive top-level literals/aggregates/functions and negative acyclic calls, signed expansive definitions, reference allocation, and immediate expansive `where` groups. Cover selected entries with missing/invalid main, library modules without main, and unused main functions in other modules.
+- **M3–M5:** Non-expansive top-level initialization (including immediate `where` work), lambda-protected recursive initialization, dependency/source order, written-parameter `where` timing, signed polymorphic recursion, value and monomorphism restrictions, weak variables, method-level predicates, visible implementation closure, and orphan checks after alias expansion.
+- **M6:** Left-to-right arguments and fields, curried intermediate work, wrapper erasure without loss of nominal identity, partial application, and source locations for generated nodes and runtime errors.
 
-Ordering follows dependencies:
+Core remains unary and typed; Runtime raises arity only across intermediate application points without observable work. `if` stays distinct through Core. Runtime performs no string-based lookup. The implementation algorithms live in IMPL.md, not in the spec or this milestone table.
 
-1. **V1.0 Tooling.** Interface and object artifacts (s-expression, textual Runtime AST), `compile`/`run`/`repl`/`format`. Design the artifact schema first, since LSP and incremental compilation depend on it.
-2. **V1.1 Language additions.** Empty types and empty `with`, structural `Show`/`Eq` deriving, record patterns, private pragmas, `DEPRECATED`, `OPTIONS`.
-3. **V1.2 Effects.** Value restriction plus `Ref`, then exceptions, then fibers and channels. Keep these marked experimental until the existential-error question is settled.
-4. **V1.3 LSP.** Semantic highlighting, go-to-definition and types, built on the provenance retained since M0.
-5. **V1.4 Libraries.** Larger Prelude, JSON, regex.
-6. **Research track.** Explicit type application and existential record members, which need a parsing-ambiguity study before they touch the grammar.
-7. **v2.** WebAssembly GC backend, build system, FFI.
+M6 work may use validated Core fixtures once M3 stabilizes its interfaces, while M4–M5 extend inference. The formatter can develop alongside parser hardening. Use `test/fixtures/record-with/` as the initial parser-case inventory and add semantic/evaluation cases when those stages exist. These fixtures are not yet executable because the parser/test runner are scaffolds. Highest risks are layout/ambiguity, dictionary elaboration with strict initialization, and kinds with holes.
 
-## 4. Open decisions
+## 3. v1+ and v2+ roadmap
 
-### A. Declared open or deferred in the spec
+These are dependency groups, not committed minor-version releases. [SPEC.md, Section 24](SPEC.md#24-planned-v1-language-features-and-libraries) groups the source-language plans; [IMPL.md, Sections 7–10](IMPL.md#7-entry-points-and-compiler-artifacts) describes their engineering work.
 
-| ID  | Decision                                                         | Recommendation                                                                                      | Settle by                                |
-| --- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| A1  | Entry-point args, error reporting, exit status                   | Args exclude program name. `Err s` prints `error: s` to stderr and exits 1. A runtime error exits 2 | M7                                       |
-| A2  | Record update syntax and receivers                               | Keep the postfix-`with` receiver restriction isolated in one parser rule                            | V1.1 grammar freeze (non-blocking)       |
-| A3  | Record punning                                                   | Decide jointly with A4. Recommend no punning at first                                               | Start of V1.1 record patterns            |
-| A4  | Explicit type-variable syntax `{a}`                              | Record patterns and blocks already use braces. Settle before the grammar freeze                     | Start of V1.1                            |
-| A5  | Uninhabited-type exhaustiveness beyond an empty top-level match  | Ship only "empty match on an empty type is exhaustive"                                              | V1.1                                     |
-| A6  | Artifact schema, versioning, linking                             | Start with a versioned s-expression format that includes an ABI hash                                | Start of V1.0                            |
-| A7  | CLI output paths, REPL loading, formatter I/O                    | Formatter reads stdin and writes stdout by default. `-f` edits the file in place                    | V1.0                                     |
-| A8  | `DEPRECATED` targeting and warning policy                        | Attach to top-level entities and keep the message in the interface file                             | V1.1                                     |
-| A9  | `OPTIONS` argument grammar                                       | M1 should lex pragma bodies so raw text can be recovered later                                      | V1.1, with the M1 accommodation          |
-| A10 | Private pragma targeting, inline pragmas                         | Keep inline pragmas unsupported                                                                     | V1.1                                     |
-| A11 | Runtime nominal identity for typed `catch`, plus existential errors vs. `Fiber e a` / `join` | Decide whether exception evidence or another runtime token carries identity; keep the API provisional | Before v1+ exception implementation |
-| A12 | Atomicity of `Ref` under fibers, channel buffering, cancellation | Depends on the scheduler. Pick host green threads or CPS first                                      | Start of V1.2 fiber work                 |
-| A13 | Lazy-arrow Core representation                                   | Reserve `~>` in the M1 lexer now so v0 programs cannot define it. Design after Core is stable       | M1 (reservation), V1.3+ (design)         |
-| A14 | JSON/regex APIs, Prelude organization                            | Defer                                                                                               | V1.4                                     |
-| A15 | Build configuration, dependencies, FFI                           | Defer                                                                                               | v2                                       |
+| Work group | Scope | Dependencies and acceptance |
+| --- | --- | --- |
+| V1-T | Artifacts and tooling | Design Lisp-like interface/object schemas and compatibility rules before artifact consumers. Objects contain textual Runtime AST until the v2+ backend. Implement the settled `compile`, `run`, `repl [FILE]`, `format [-f FILE]`, and `lsp` command surface; resolve output paths, loading, and formatter I/O first. LSP initially provides semantic highlighting, definitions, and inferred types using retained metadata |
+| V1-P | Types and patterns | Empty type bodies and empty `with`; no synthetic record constructor for `type T = {}`. Empty elimination accepts any result type and is exhaustive for uninhabited scrutinees. Add positive declaration/elimination fixtures and negative `Void with {}` coverage. Replace builtin-backed Prelude `Void`/`absurd`. Add explicit-brace record patterns with optional field omission in the specified positions, including both `do` binding forms; reject recursive pattern bindings |
+| V1-S | Evaluation and state | Implement the settled `Ref`, `newRef`, `readRef`, and `modifyRef` API under the existing v0 value restriction. Lazy arrows are a separate planned feature: settle sharing/effect details and thunk/Core representation before adding `~>` type syntax |
+| V1-E | Exceptions and concurrency | Preserve the proposed typed `throw`/`catch` and `Fiber e a`/`join` interfaces while API questions remain open. Resolve nominal runtime identity before implementing exception operations, including polymorphic uses after wrapper erasure. Settle cleanup, scheduler/channel behavior, and interactions with references; evaluate any existential-error revision explicitly |
+| V1-G | Pragmas and deriving | `PRIVATE member` hides record constructors and fields while retaining the type. Add `DEPRECATED`, module-level `OPTIONS`, and `STANDALONE` (allow acyclic expansive top-level initialization; forbid imports of the module; preserve explicit entry selection), and argument-free `DERIVE` on an empty following `impl` for structural `Show`/`Eq` deriving; reject all handwritten members, including partial implementations. Settle targeting, warning policy, compiler-option interpretation/precedence, and derivation rules; preserve required metadata in interfaces. Inline pragmas and arbitrary trait derivation remain outside the initial scope |
+| V1-L | Interpolation and libraries | Settle expression-interpolation delimiters/escapes before extending the scanner. Expand Prelude and define JSON/regex APIs, module organization, and re-exports, retaining the fine-grained control traits |
+| Research | Draft type abstraction | Review `{a}`/`{a : Kind}` definition/signature binders and positional `f {T}` against expression blocks and record braces; scope explicit type variables over later annotated arguments and the body. Existential record members remain a v1+ proposal: review the draft value-only positional construction slots, parsing ambiguity from positional type members, possible rejection of positional existential patterns, inferred or unnamed witnesses, witness scope/non-escape, and possible exception API changes before implementation |
+| V2 | Backend and packages | WebAssembly GC, a simple build system, libraries beyond Prelude, dependency resolution, and FFI. Settle package/configuration formats, resolution, the proposed targeted `FOREIGN` annotations, accepted backends, conversions, and calling conventions; generated code must remain equivalent to the reference evaluator |
 
-### B. Gaps and tensions found in the specs
+References are not blocked on existential errors: their API is settled. Exceptions and fibers retain their proposed status. LSP can use stage metadata independently of whether artifact serialization is finished; any cross-module artifact dependency must be specified when its interface is designed.
 
-| ID  | Issue                                                                                                                                                                                                   | Recommendation                                                                                                            | Settle by                        |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| B1  | **Layout algorithm.** Parser-driven layout is settled; expression blocks require explicit braces or newline plus indentation after an expression introducer | Add fixtures for `with` scrutinee boundaries and nested `=`/`<-` lookahead | Start of M1 |
-| B2  | **Interpolation lexing.** v0 accepts bare or module-qualified variables only; expression interpolation is v1+                                                                                           | Scan names without nested expression parsing in v0; defer expression-interpolation lexing rules                         | M1 / v1+                        |
-| B3  | **Lexical details.** Dot separation, embedded operator dots, `--` versus `-->`, and brace escapes are settled; identifier Unicode classes, the remaining operator characters, numeric literal forms, tabs, BOM handling, and Unicode escapes are open | Define remaining rules in a lexical appendix | M1 |
-| B4  | **Entry module naming.** Every path component must be uppercase, so `hello.ficus` cannot be a module, yet `run FILE` runs scripts                                                                       | Exempt the entry file, which becomes `Main`                                                                               | M2                               |
-| B5  | **Bare uppercase imports.** Types and traits share one namespace; a bare `Z` resolves to the single entity in that namespace                                                                           | Implement one type/trait namespace; constructors remain explicitly selected through `T(...)`                            | M2                               |
-| B6  | **Compiler-known entities.** Identity must survive aliases, selective imports, and re-exports                                                                                                           | Key the registry by defining module and declared name; exact string-concatenation API remains open                       | M2                               |
-| B7  | **`Show String` vs. interpolation.** Interpolation calls `show`                                                                                                                                        | Implement `Show String` as the identity                                                                                   | M7 (instances)                  |
-| B8  | **Refutable patterns.** v0 `<-` has no failure mechanism                                                                                                                                                 | Accept only variables, wildcards, unit, and products of irrefutable patterns                                             | M2                               |
-| B9  | **Numeric edge cases.** `Int` is signed 64-bit with wrapping arithmetic; `Float` is binary64                                                                                                              | Decide division by zero, literal range, conversions, and float display separately                                        | M3 (before primitives)           |
-| B10 | **Tail calls.** Tail-call optimization is backend-dependent                                                                                                                                               | Keep tail-position metadata where useful; do not promise constant-stack recursion                                      | M6                               |
-| B11 | **Value restriction.** v0 uses the non-expansive classifier already needed for `impl` members                                                                                                             | Enforce at every binding-group generalization boundary                                                                   | Before M3 generalization         |
-| B12 | **Monomorphism restriction.** Unsigned constrained non-lambda bindings retain one monotype; a complete signature overrides this restriction | Check the signature against the definition and the value restriction | Start of M5 |
-| B13 | **Signatures inside recursive groups.** Signed bindings admit polymorphic recursive uses; unsigned bindings stay monomorphic | Require non-expansive cyclic initializers and lambda-protected intra-SCC references | M3 |
-| B14 | **`Field` constraint timing.** Pending field variables stay weak across nested groups and use sites | Solve once the receiver is fixed; reject unresolved receivers by module end | M4 |
-| B15 | **Kind defaulting and aliases.** Unconstrained kinds default to `Type` with a warning; aliases require full application and acyclic definitions | Implement these rules; the kind of type-level literals remains open | M4 |
-| B16 | **Constrained trait methods.** Methods may constrain other variables but must mention the trait parameter in their value type | Elaborate method predicates and reject missing trait-parameter occurrences | Start of M5 |
-| B17 | **Prelude bootstrap.** The Prelude cannot use `do` or interpolation, and stdlib location and embedding are unspecified                                                                                  | Ship the stdlib as an embedded source root. Layer it as `MAGIC` primitives → sugar-free core modules → Prelude re-exports | M2 (location), M7 (layering)     |
-| B18 | **Exhaustiveness warnings.** Spec says "should"                                                                                                                                                         | Implement the standard usefulness algorithm with basic support, extend for empty types in V1.1                            | M7                               |
-| B19 | **Prelude IO surface.** There is no IO type, so the primitive set and effect conventions must be listed                                                                                                 | Define a small primitive set before the Prelude is written                                                                | M5–M7                            |
+## 4. Decision register
 
-## 5. Critical path
+### A. Open language and tooling decisions
 
-1. **Before writing any parser code:** B1, B2, B3, and the A13 lexer reservation.
-2. **Before M2 closes:** B4–B8. These change desugaring output and the Prelude contract, so late changes ripple into M3 onward.
-3. **Before M3:** the remaining B9 numeric edge cases, plus implementation of settled B11 and B13. The evaluator skeleton and generalization strategy are both built here.
-4. **Before M5:** implement settled B12 and B14, and resolve the remaining parts of B15–B16. These shape dictionary elaboration.
-5. **Everything in section A** is off the v0 critical path except A1. Its dependents (V1.x) need a decision at the start of their own milestone, apart from the two early accommodations in M1 (A9, A13).
+Existing IDs are retained for traceability. “Before” is the last implementation point at which an unresolved choice can avoid blocking its dependent work.
 
-The parser-driven layout architecture and v0 value restriction are settled. Fixtures still need to exercise layout boundaries, shadowing, recursive initialization, weak variables, and signed versus unsigned constrained bindings once the parser and checker exist.
+| ID | Decision | Owner | Before / proposed next step |
+| --- | --- | --- | --- |
+| A1 | Entry-point arguments, error reporting, and exit status (module selection and required main settled) | SPEC §22; IMPL §7 | M7 invocation contract. Explicitly select the entry module and require its own main; cover missing/invalid main and unselected modules. Specify remaining conventions; no exit codes or argument defaults are selected here |
+| A2 | Ordinary record updates settled; existential-record updates open | SPEC §7.2/26; IMPL §2 | M1/M4/M6 implement postfix updates with type preservation and receiver-once/source-order evaluation; defer existential updates |
+| A3 | Record punning excluded | SPEC §7.2/24.1 | M1 and V1-P reject punned construction, update, and pattern fields; explicit field bindings required |
+| A4 | Draft explicit type-variable/application syntax | SPEC §24.6; IMPL §10.5 | Research grammar adoption; review brace ambiguity without blocking unrelated v1+ features |
+| A5 | Uninhabited types inside other patterns and diagnostic policy | SPEC §24.1 | V1-P exhaustiveness extension; preserve the settled empty-type/empty-match case |
+| A6 | Artifact schemas, extensions, versioning, compatibility, linking, paths | IMPL §7 | V1-T serialization and artifact consumers; document a concrete schema rather than assuming an ABI hash |
+| A7 | REPL optional-file loading and formatter I/O | IMPL §8 | V1-T commands; `-f FILE` does not yet imply in-place editing |
+| A8 | `DEPRECATED` targeting, placement, and warning policy | SPEC §24.4; IMPL §9 | V1-G metadata and diagnostics; preserve identifier targets and message |
+| A9 | `OPTIONS` argument interpretation, accepted options, CLI precedence | SPEC §24.4; IMPL §9 | V1-G semantic option handling; use the uniform pragma parser and preserve source metadata from M1 |
+| A10 | Private-pragma targeting details and inline pragmas | SPEC §24.4 | V1-G; retain the selected `PRIVATE`/`PRIVATE member` distinction, including hiding record constructors and fields, with inline syntax deferred |
+| A11 | Exception nominal identity and potential existential-error API | SPEC §24.3/24.6; IMPL §10.4/10.5 | V1-E exception implementation; select surviving evidence/type tokens before runtime matching |
+| A12 | Reference atomicity, fiber scheduling, channel buffering/cancellation | SPEC §24.2/24.3; IMPL §10.2/10.4 | V1-E concurrency; ordinary V1-S references need not wait for a scheduler choice |
+| A13 | Lazy sharing/effects and thunk/Core representation | SPEC §24.2; IMPL §10.3 | Lazy-arrow implementation. Do not reserve `~>` in v0; type punctuation is introduced with the later feature |
+| A14 | v0 library inventory and frozen Prelude exports; expanded JSON/regex APIs | SPEC §24.5; IMPL §9 | V1-L library interfaces; review v0 exports, Debug/Default and remaining instance contracts, Result/Either naming, numeric/Void scope, module availability, bootstrap dependencies, and trait/type ownership |
+| A15 | Build configuration, packages, dependencies, and proposed `FOREIGN` annotations | SPEC §25; IMPL §6/9 | V2 design |
+| A16 | Structural deriving rules | SPEC §24.4 | V1-G; preserve `{-# DERIVE #-}` attachment to the following empty `impl`, explicit contexts, rejection of nonempty bodies, and generic highlighting; initial scope is structural `Show`/`Eq` |
+| A17 | Expression interpolation delimiters and escaping | SPEC §24.5 | V1-L scanner extension |
+| A18 | Exception cleanup, nesting, effects, and standard instances | SPEC §24.3 | V1-E operational semantics; runtime identity alone does not settle these |
+| A19 | Whether multiple imports may share a local module name | SPEC §2/6/26; IMPL §1 | M2 collision handling; decide repeated imports and aliases of distinct modules without assuming shadowing, merging, ambiguity, or rejection |
+
+### B. v0 conformance work and remaining gaps
+
+Settled entries require implementation and fixtures, not new language decisions.
+
+| ID | Status | Work / remaining question | Before |
+| --- | --- | --- | --- |
+| B1 | Settled | Parser-driven layout; test scrutinee boundaries and nested delimiter lookahead per IMPL §1.3 | M1 |
+| B2 | Settled in v0 | Scan bare/module-qualified interpolation names; expression interpolation is A17 | M1 |
+| B3 | Open lexical details | Specify identifier Unicode classes, remaining operator characters, numeric literal forms, tabs, BOM handling, and Unicode escapes; keep settled comment/dot/brace rules | M1 affected lexer paths |
+| B4 | Settled rule; invocation setup open | Every module path component is uppercase. Do not exempt an entry file or silently rename it `Main`; choose source-root/entry discovery compatible with the rule, or propose a SPEC change | M2 module loading; A1/A7 invocation |
+| B5 | Namespaces settled; module collisions open | Shared type/trait namespace, separate module/constructor namespaces, primitive spellings allowed as module bindings, specified import/member selections; local module-name collision policy remains open | M2; resolve A19 before module collision handling |
+| B6 | Identity settled; library API open | Retain source identity by defining module/name; builtin keys select implementation contracts, not scope. Specify the interpolation concatenation binding | M2 sugar integration |
+| B7 | Settled | `Show String` is identity for interpolation | M7 |
+| B8 | Settled | `<-` admits only variable, wildcard, unit, and recursively irrefutable product patterns in v0 | M2/M3 |
+| B9 | Representations settled; numeric edges open | Signed 64-bit wrapping `Int`, binary64 `Float`; specify literal ranges, division including zero, conversions, and float display | M3 affected primitives/literals; M7 display |
+| B10 | Settled guarantee | No constant-stack tail-call promise; optional backend optimization preserves semantics | M6 |
+| B11 | Settled | Value restriction at every binding boundary; signatures cannot override it | M3 generalization |
+| B12 | Settled | Monomorphism restriction for unsigned constrained bindings without parameters/outer lambda; complete signatures may override only this restriction | M5 |
+| B13 | Settled | Signed polymorphic recursive uses, unsigned monotypes, non-expansive and lambda-protected cyclic initialization | M3; enforce non-expansiveness for acyclic top-level definitions too, including immediate `where` work; extend for dictionaries in M5 |
+| B14 | Settled | Pending projection variables remain weak through nested groups; resolve receivers by module end | M4 |
+| B15 | Settled | Kind defaulting with warnings, fully applied acyclic aliases, regular recursive ADTs; literals excluded from type/kind expressions | M4 |
+| B16 | Settled | Method-level constraints and trait parameter occurrence in each method value type | M5 |
+| B17 | Engineering choice open | Select stdlib source-root/distribution strategy. Bootstrap compiler primitives and sugar-free dependencies before implicit Prelude; builtin declarations do not disable Prelude, so bootstrap modules explicitly use `NO_IMPLICIT_PRELUDE` where needed to avoid cycles | M2 loading; M7 library integration |
+| B18 | Settled warning expectation | Detect non-exhaustive/redundant matches without making them static errors; choose warning algorithm in IMPL | M7; V1-P extension |
+| B19 | Library contract open | Define minimal impure IO primitives, ordinary declaration signatures, and builtin-key contracts; no IO type is introduced by the plan | M3 primitive slice; M7 Prelude |
+
+## 5. Critical path and validation
+
+1. **M0–M1:** Introduce diagnostics and Concrete validation; settle affected B3 lexical gaps. B1/B2 are fixture work. A9/A13 do not authorize future syntax in v0.
+2. **M2:** Complete imports, namespaces, identity, and safe dependency analysis. Resolve B6's concatenation contract and B17's module-loading strategy; follow uppercase module naming from B4.
+3. **M3:** Implement B11/B13 and strict evaluation through every stage. Settle only the numeric and primitive contracts needed by the slice (B9/B19), then complete them before release.
+4. **M4–M5:** Implement B14/B15 kind/field/alias rules before dependent trait checks. Cover B12/B16, dictionaries, visibility, and initialization.
+5. **M6–M7:** Verify arity raising and erasure against the oracle; finish Prelude, warnings, entry-point conventions (A1), and the conformance matrix. Run `stack build` and `stack test`, plus existing formatter/linter checks where applicable; do not accept changed diagnostics or goldens solely to pass checks.
+6. **Post-v0:** Resolve each A decision before its dependent work group. Keep draft syntax and proposed effect APIs out of the v0 grammar and runtime. Record decisions in SPEC.md or IMPL.md, then update this plan and associated fixtures.

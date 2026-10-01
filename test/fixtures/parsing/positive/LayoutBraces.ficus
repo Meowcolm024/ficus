@@ -1,0 +1,88 @@
+-- Corresponding Layout/Braces definitions have equivalent structure modulo names and delimiters.
+type ChoiceLayout =
+    First
+    Second Int
+type ChoiceBraces = { First; Second Int; }
+type RecordLayout =
+    left : Int
+    right : Int
+type RecordBraces = { left : Int; right : Int; }
+trait TraitLayout a =
+    member : a -> a
+trait TraitBraces a = { member : a -> a; }
+impl TraitLayout Int =
+    member x = x
+impl TraitBraces Int = { member x = x; }
+blockLayout x =
+    y : Int
+    y = x
+    y
+blockBraces x = { y : Int; y = x; y; }
+oneLayout () =
+    1
+oneBraces () = { 1 }
+-- Unlike oneLayout and oneBraces, oneInline has no expression-block node.
+oneInline () = 1
+lambdaLayout = x ->
+    y = x
+    y
+lambdaBraces = x -> { y = x; y; }
+ifLayout x = if
+    x ->
+        y = 1
+        y
+    _ -> 0
+ifBraces x = if { x -> { y = 1; y }; _ -> 0; }
+matchLayout x = with x
+    Just y ->
+        z = y
+        z
+    Nothing -> 0
+matchBraces x = with x { Just y -> { z = y; z }; Nothing -> 0; }
+doLayout action = do
+    x <-
+        y = action
+        y
+    z = x
+    z
+doBraces action = do { x <- { y = action; y }; z = x; z; }
+whereLayout x = helper x where
+    helper y = y
+whereBraces x = helper x where { helper y = y; }
+fieldLayout () = Point with
+    x =
+        local = 1
+        local
+    y = 2
+fieldBraces () = Point with { x = { local = 1; local }; y = 2; }
+bracesInsideLayout x =
+    y = if { x -> 1; _ -> 2 }
+    { z = y; z }
+layoutInsideBraces x = {
+    y = if
+        x -> 1
+        _ -> 2
+    ; y
+}
+nestedDedents x =
+    y =
+        z =
+            x
+        z
+    y
+afterDedents () = 0
+comments x =
+    -- This comment and blank line do not set indentation.
+
+    y = x
+{- Column-one block comment does not dedent. -}
+    -- A blank line does not end the block.
+
+    y
+continuation f x y =
+    f x
+        y
+dotContinuation person =
+    person
+        .address
+        .city

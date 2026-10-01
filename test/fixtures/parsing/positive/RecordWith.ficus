@@ -1,0 +1,37 @@
+type Point = { x : Int; y : Int }
+type Address = { city : String }
+type Person = { name : String; age : Int; address : Address }
+
+construct () = Point with { x = 1; y = 2 }
+qualifiedConstruct () = Data.Point.Point with { x = 1; y = 2 }
+qualifiedUpdate () = Data.Point.default with { x = 1 }
+-- f (p with { x = 1 }); the postfix suffix binds before application.
+applyUpdate f (p : Point) = f p with { x = 1 }
+-- Parentheses make (f p) the receiver.
+updateCall (f : Point -> Point) (p : Point) = (f p) with { x = 1 }
+projectReceiver (p : Person) = p.address with { city = "Paris" }
+projectResult (p : Point) = p with { x = 1 }.x
+-- Postfix suffixes associate left.
+chain (p : Point) = p with { x = 1 } with { y = 2 }
+annotatedReceiver (p : Point) = (p : Point) with { x = 1 }
+lambdaReceiver (p : Point) = (((q : Point) -> q) p) with { x = 1 }
+conditionalReceiver (p : Point) = (if { _ -> p }) with { x = 1 }
+-- Inner field blocks belong to the scrutinee; the next block holds clauses.
+matchParenthesized (p : Point) = with (p with { x = 1 }) { Point x y -> x + y }
+matchUnparenthesized (p : Point) = with p with { x = 1 } { Point x y -> x + y }
+-- Closing the explicit fields still permits a layout clause block.
+matchMixed (p : Point) = with p with { x = 1 }
+    Point x y -> x + y
+layoutUpdate (p : Point) = p with
+    x = 1
+    y = 2
+-- Inner and outer field blocks close at their own depths.
+nestedUpdate (p : Person) = p with
+    address = p.address with
+        city = "Paris"
+-- where belongs to the x initializer only.
+scopedField (p : Point) = p with { x = next where { next = p.x + 1 } }
+-- Nested field = does not classify the outer item.
+outerDeclaration (p : Point) = { changed = p with { x = 1 }; changed }
+-- Outer <- selects the bind; nested field = does not select a declaration.
+outerDo action (p : Point) = do { changed <- action (p with { x = 1 }); changed }

@@ -1,0 +1,3 @@
+type Point = { x : Int; y : Int }
+original = Point 1 2
+changed = original with { x = 1 }

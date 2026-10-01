@@ -1,0 +1,33 @@
+localSignature x = { y : Int; y = x; y }
+localOperator x = { (++) : Int -> Int -> Int; (++) a b = a; (++) x x }
+localFunction x = { f a = a; f x }
+localWhere x = { y = helper x where { helper a = a }; y }
+doStatements action pair = do { x <- action; f a = a; (a, b) = pair; action; f x }
+doPatternDeclarations value list = do { Just x = value; [a, b] = list; x }
+doWhere action = do { f x = helper x where { helper y = y }; x <- action; f x }
+doIrrefutable action = do { _ <- action; () <- action; (a, (b, _)) <- action; a }
+doExpressionOnly action = do { action }
+blockExpressionOnly x = { x }
+-- Nested = and <- delimiters must not classify an outer item.
+nestedRecordExpression p = { p with { x = 1 }; p }
+nestedRecordDeclaration p = { changed = p with { x = 1 }; changed }
+nestedDoExpression p = do { p with { x = 1 }; p }
+nestedDoBind action p = do { changed <- action (p with { x = 1 }); changed }
+nestedDoDeclaration p = do { changed = p with { x = 1 }; changed }
+nestedBindInBlock action = { do { x <- action; x }; 1 }
+nestedDeclarationInCondition () = if { { x = True; x } -> 1; _ -> 0 }
+-- Without an outer arrow these candidates rewind to expressions.
+rewindApplication f x = f x
+rewindProduct x y = (x, y)
+rewindList x y = [x, y]
+rewindConstructor x = Just x
+rewindOperator x xs = x :: xs
+rewindAnnotation x = (x : Int)
+fieldWhere p = p with { x = next where { next = 1 }; y = 2 }
+fieldProjection p = p with { x = 1 }.x
+-- The field block closes before y: f (p with { x = 1 }) y.
+fieldThenArgument f p y = f p with { x = 1 } y
+layoutFieldThenArgument f p y = f (p with
+    x = 1) y
+postfixChain p = p.address with { city = "Paris" }.city
+postfixUpdateChain p = p with { x = 1 } with { y = 2 }

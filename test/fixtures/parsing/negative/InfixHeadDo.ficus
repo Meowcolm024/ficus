@@ -1,0 +1,1 @@
+f value = do { x :: xs = value; x }

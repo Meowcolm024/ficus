@@ -1,0 +1,2 @@
+f p = p with
+x = 1

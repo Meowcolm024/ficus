@@ -1,0 +1,1 @@
+trait T a = { member x : a -> a }

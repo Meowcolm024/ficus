@@ -1,0 +1,61 @@
+type Maybe a = { Nothing; Just a; }
+type Chain a =
+    End
+    (:+) a (Chain a)
+type (:+:) (f : Type -> Type) (g : Type -> Type) a = Compose (f (g a))
+type Person = { name : String; age : Int; }
+type Box (a : Type) = Box a
+type Container (f : Type -> Type) a = Wrap (f a)
+Parser : Type -> Type
+Parser (a : Type) = String -> [a * String]
+Pair a b = a * b
+Triple a b c = a * b * c
+Arrow r = (->) r
+List a = [] a
+Product a b = (*) a b
+Qualified = Data . Types . Thing
+QualifiedSymbol a b = Data.Types.(:+:) a b
+OperatorType a b c = a :+ b :+ c
+RightOperatorType a b c = a :: b :: c
+AppliedOperatorType f a b = f a :+ b
+KindGrouping : (Type -> Type) -> Type
+KindGrouping f = f Int
+KindLower (f : k -> k) a = f a
+KindQualified (a : Data.Kinds.Type) = a
+KindSymbol (a : (:+:)) = a
+KindHole : _ -> _
+KindHole a = a
+identity : a -> a
+identity x = x
+constrained : Show a => a -> String
+constrained x = show x
+constraints : (Eq a, Show a) => a -> String
+constraints x = show x
+parenthesizedConstraint : (Show a) => a -> String
+parenthesizedConstraint x = show x
+functionProduct : Int * String -> Bool -> Int * String * Bool
+functionProduct pair flag = (1, "s", flag)
+higherHole : _ -> _ _ Int
+higherHole x = (1, x)
+(++) : [a] -> [a] -> [a]
+(++) xs ys = xs
+(:+:) : Type -> Type -> Type
+(:+:) a b = a * b
+trait Empty a = {}
+trait Render a = { render : a -> String; }
+trait Eq a => Ordered a =
+    compare : a -> a -> Int
+trait (Eq a, Render a) => Combined (a : Type) =
+    combine : a -> a -> String
+trait MapLike (f : Type -> Type) = { map : (a -> b) -> f a -> f b }
+trait OperatorMember a = { (<+>) : a -> a -> a }
+impl Empty Int = {}
+impl Render Int = { render n = "int"; }
+impl Render a => Render (Maybe a) =
+    render Nothing = "nothing"
+    render (Just x) = render x
+impl (Eq a, Render a) => Combined (Maybe a) = { combine x y = "combined" }
+impl MapLike [] = { map f xs = xs }
+impl MapLike ((->) r) = { map f g x = f (g x) }
+impl Bifunctor (*) = {}
+impl Render (Data.Types.Thing) = {}

@@ -1,0 +1,2 @@
+type Point = { x : Int; y : Int }
+make () = Point with { x = 1 }

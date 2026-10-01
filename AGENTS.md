@@ -11,9 +11,9 @@ Never change language behavior without updating SPEC.md in the same change.
 
 - Stages: Concrete → Abstract → Core → Runtime. No stage reaches back into an earlier one's types. Each boundary has a validator; run it in tests.
 - Every AST node carries a source span and provenance. Generated nodes (lambdas, matches, dictionary evidence) get their origin's span, never a neighbor's.
-- The parser has no special cases for `::`, `Type`, `magic`, `True`, `False`. These are ordinary identifiers, resolved later. All pragmas share an ALL_CAPITAL name and identifier/string arguments; no directive has a special parser production. `BUILTIN` keys are metadata; targets follow ordinary namespace and scope rules.
-- Operator grouping is dynamic and spelling-based. Do not enumerate operators and do not add fixity declarations. 
-- Dotted chains stay uncommitted in the Concrete AST. Only name resolution decides module prefix vs. field projection. 
+- The parser has no special cases for `::`, `Type`, `True`, `False`, `_`. These are ordinary identifiers, resolved later. All pragmas share an ALL_CAPITAL name and identifier/string arguments; no directive has a special parser production. `BUILTIN` keys are metadata; targets follow ordinary namespace and scope rules.
+- Operator grouping is dynamic and spelling-based. Do not enumerate operators and do not add fixity declarations.
+- Dotted chains stay uncommitted in the Concrete AST. Only name resolution decides module prefix vs. field projection.
 - `if` stays a distinct node through Core. Do not desugar it to `with`.
 - Runtime AST does no string-based name lookup.
 - Evaluation order is strict and left-to-right everywhere. Preserve it in any optimization.

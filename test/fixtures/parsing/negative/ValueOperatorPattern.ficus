@@ -1,0 +1,1 @@
+f x = with x { a + b -> a }

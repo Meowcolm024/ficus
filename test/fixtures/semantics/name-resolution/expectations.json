@@ -1,0 +1,13 @@
+{
+  "negative/BuiltinMissingArgument.ficus": {"kind": "InvalidPragmaArguments", "span": [1, 5, 1, 11]},
+  "negative/BuiltinStringTarget.ficus": {"kind": "InvalidPragmaArguments", "span": [1, 21, 1, 28]},
+  "negative/BuiltinUnknownKey.ficus": {"kind": "UnknownBuiltin", "span": [1, 13, 1, 19]},
+  "negative/BuiltinUnresolvedTarget.ficus": {"kind": "UnresolvedName", "span": [1, 21, 1, 27]},
+  "negative/NoPreludeDo.ficus": {"kind": "PreludeRequired", "span": [2, 7, 2, 8]},
+  "negative/NoPreludeInterpolation.ficus": {"kind": "PreludeRequired", "span": [2, 10, 2, 17]},
+  "negative/RecordAllMemberSelection.ficus": {"kind": "InvalidImportSelection", "span": [1, 27, 1, 28], "sourceRoots": ["negative", "support"]},
+  "negative/RecordMemberSelection.ficus": {"kind": "InvalidImportSelection", "span": [1, 27, 1, 30], "sourceRoots": ["negative", "support"]},
+  "negative/ReservedConstructorBinding.ficus": {"kind": "ReservedName", "span": [1, 15, 1, 18]},
+  "negative/ReservedListConstructorBinding.ficus": {"kind": "ReservedName", "span": [1, 18, 1, 21]},
+  "negative/UnknownPragma.ficus": {"kind": "UnknownPragma", "span": [1, 5, 1, 10]}
+}

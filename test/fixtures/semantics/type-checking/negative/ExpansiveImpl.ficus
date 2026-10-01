@@ -1,0 +1,2 @@
+trait T a = { member : a }
+impl T Int = { member = (+) 1 2 }

@@ -1,0 +1,22 @@
+{
+  "negative/AliasHole.ficus": {"kind": "InvalidTypeHole", "span": [1, 9, 1, 9]},
+  "negative/ExpansiveImpl.ficus": {"kind": "ExpansiveInitializer", "span": [2, 25, 2, 31]},
+  "negative/ExpressionHole.ficus": {"kind": "ExpressionHole", "span": [1, 8, 1, 8]},
+  "negative/ImplHeadHole.ficus": {"kind": "InvalidTypeHole", "span": [2, 8, 2, 8]},
+  "negative/IntegerProjection.ficus": {"kind": "TypeMismatch", "span": [1, 8, 1, 12]},
+  "negative/NamedPatternAnnotation.ficus": {"kind": "InvalidPatternAnnotation", "span": [2, 8, 2, 8]},
+  "negative/RecordWithDuplicateLabel.ficus": {"kind": "DuplicateField", "span": [2, 38, 2, 38]},
+  "negative/RecordWithExpansiveTopLevel.ficus": {"kind": "ExpansiveInitializer", "span": [3, 11, 3, 33]},
+  "negative/RecordWithMissingConstructionField.ficus": {"kind": "MissingField", "span": [2, 11, 2, 15]},
+  "negative/RecordWithNonRecord.ficus": {"kind": "NonRecordReceiver", "span": [1, 20, 1, 20]},
+  "negative/RecordWithTypeChanging.ficus": {"kind": "TypeMismatch", "span": [2, 41, 2, 47]},
+  "negative/RecordWithUnknownLabel.ficus": {"kind": "UnknownField", "span": [2, 31, 2, 31]},
+  "negative/RefutableDoAnnotated.ficus": {"kind": "RefutablePattern", "span": [1, 17, 1, 29]},
+  "negative/RefutableDoConstructor.ficus": {"kind": "RefutablePattern", "span": [2, 17, 2, 22]},
+  "negative/RefutableDoInfix.ficus": {"kind": "RefutablePattern", "span": [1, 17, 1, 25]},
+  "negative/RefutableDoList.ficus": {"kind": "RefutablePattern", "span": [1, 17, 1, 19]},
+  "negative/RefutableDoLiteral.ficus": {"kind": "RefutablePattern", "span": [1, 17, 1, 17]},
+  "negative/SignedExpansiveTopLevel.ficus": {"kind": "ExpansiveInitializer", "span": [2, 9, 2, 15]},
+  "negative/SpacedIntegerProjection.ficus": {"kind": "TypeMismatch", "span": [1, 8, 1, 14]},
+  "negative/TraitSignatureHole.ficus": {"kind": "InvalidTypeHole", "span": [1, 24, 1, 24]}
+}

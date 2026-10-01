@@ -1,3 +1,4 @@
+{-# STANDALONE #-}
 use Data.Map as M
 use Data.Map (Map)
 use Foo

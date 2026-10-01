@@ -1,0 +1,40 @@
+identityLambda = x -> x
+manyBinders = x y z -> (x, y, z)
+nestedLambda = x -> y -> x
+lambdaIf = x -> if { x -> True; _ -> False }
+lambdaWith = x -> with x { Just y -> y; Nothing -> 0 }
+lambdaDo = action -> do { x <- action; x }
+ifLambda flag = if { flag -> x -> x; _ -> y -> y }
+withLambda value = with value { Just x -> y -> x; Nothing -> y -> y }
+ifWith value = if { with value { True -> True; False -> False } -> 1; _ -> 0 }
+withIf flag = with (if { flag -> Just 1; _ -> Nothing }) { Just x -> x; Nothing -> 0 }
+withLambdaScrutinee () = with (x -> x) { f -> f 1 }
+withDirectLambda () = with x -> x { f -> f 1 }
+nestedIf () = if { if { _ -> True } -> True; _ -> False }
+nestedIfLayout () = if
+    (if { _ -> True }) -> True
+    _ -> False
+lambdaCondition () = if { (x -> x) True -> 1; _ -> 0 }
+lambdaGuard value = with value { x if (y -> y) True -> x; _ -> 0 }
+ifGuard value = with value { x if if { _ -> True } -> x; _ -> 0 }
+withGuard value = with value { x if with x { _ -> True } -> x; _ -> 0 }
+doCondition action = if { do { action; True } -> 1; _ -> 0 }
+blockCondition () = if { { flag = True; flag } -> 1; _ -> 0 }
+blockGuard value = with value { x if { flag = True; flag } -> x; _ -> 0 }
+doGuard action value = with value { x if do { action; True } -> x; _ -> 0 }
+mixedControl value = x -> if
+    x -> with value { Just y -> y; Nothing -> 0 }
+    _ -> do { y <- action; y }
+matchConstruct () = with Point with { x = 1; y = 2 }
+    Point x y -> if { x == y -> x; _ -> y }
+matchUpdate p = with p with
+    x = 1
+    y = 2
+  Point x y -> x + y
+matchBlock value = with { local = value; local } { Just x -> x; Nothing -> 0 }
+matchMultiline person = with (person
+    .address
+    .city)
+    city -> city
+ifClauseBoundary () = if { True -> x -> x; False -> y -> y }
+matchClauseBoundary value = with value { x -> y -> x; _ -> z -> z }

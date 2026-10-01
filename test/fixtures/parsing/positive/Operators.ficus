@@ -1,0 +1,44 @@
+-- f x.field groups as f (x.field); -f x groups as -(f x).
+projectionApplication f x = f x.field
+negationApplication f x = -f x
+negationInfix f x y = -f x + y
+repeatedNegation x = - -x
+negativeArgument f x = f (-x)
+applicationLeft f x y = f x y
+-- Every precedence group occurs; each higher-precedence suffix nests to the right here.
+allPrecedences a b c d e f g h i j = a | b ^ c & d == e < f :: g + h * i ? j
+otherOperators a b c = a ? b ~ c
+multiplicative a b c d = a * b / c % d
+additive a b c = a + b - c
+colonLeft a b c = a :+ b :+ c
+colonRight a b c = a :: b :: c
+comparison a b c = a < b >= c
+equality a b c = a == b != c
+ampersand a b c = a & b && c
+caret a b c = a ^ b ^^ c
+pipe a b c = a | b || c
+-- A trailing colon associates right independently of the leading character.
+rightValueOperator a b c = a +: b +: c
+rightOtherOperator a b c = a ?: b ?: c
+rightMultiply a b c = a *: b *: c
+rightComparison a b c = a <: b >: c
+rightEquality a b c = a =: b !: c
+rightAmpersand a b c = a &: b &: c
+rightCaret a b c = a ^: b ^: c
+rightPipe a b c = a |: b |: c
+differentGroups a b c = a +: b * c
+groupedAssociativity a b c = (a + b) +: c
+newSpelling a b c = a <~!> b <~!> c
+embeddedDot a b c = a +.+ b *.* c
+maximalMunch a b = a !== b
+arrowLike a b = a --> b
+parenthesizedName a b = (++) a b
+upperName a b = (:+) a b
+listConstructor x xs = (::) x xs
+operatorValue () = (++)
+upperOperatorValue () = (::)
+valueMultiplication x y = (*) x y
+grouping a b c = (a + b) * c
+patternLeft value = with value { a :+ b :+ c -> a }
+patternRight value = with value { a :: b :: c -> a }
+patternGrouped value = with value { (a :+ b) :: c -> a }

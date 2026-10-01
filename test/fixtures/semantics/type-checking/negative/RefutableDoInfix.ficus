@@ -1,0 +1,1 @@
+f action = do { (x :: xs) <- action; x }

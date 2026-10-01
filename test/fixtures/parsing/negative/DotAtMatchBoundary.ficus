@@ -1,0 +1,3 @@
+f p = with p
+  .field
+  _ -> 1

@@ -1,0 +1,54 @@
+atomBinders x 1 -2 1.5 -2.5 'a' "s" () True False = x
+productBinder (x, y, z) = (x, y, z)
+listBinders [] [x] [y, z] = (x, y, z)
+constructorBinder (Just x) = x
+qualifiedBinder (Data.Maybe.Just x) = x
+qualifiedNullaryBinder (Data.Maybe.Nothing) = ()
+symbolicBinder ((:+) x xs) = x
+qualifiedSymbolicBinder (Data.Chain.(:+) x xs) = x
+infixBinder (x :: xs) = (x, xs)
+-- Adjacent atomic binders remain separate; parentheses make one constructor binder.
+adjacentAtoms Just value fallback = value
+constructorLambda = (Just value) fallback -> value
+atomicLambda = Just value fallback -> value
+productLambda = (x, y) -> x
+listLambda = [x, y] -> x
+literalLambda = -1 -> 0
+annotatedBinder (x : Int) = x
+annotatedLambda = (x : Int) y -> x + y
+-- The inner arrow belongs to the type; only the outer arrow selects a lambda.
+functionAnnotationLambda = (f : Int -> String) -> f 1
+expressionAnnotation x = (x : Int)
+arrowExpressionAnnotation f = (f : Int -> String)
+constructorAnnotation value = with value { Just (x : Int) -> x; Nothing -> 0 }
+wholePatternAnnotation value = with value { (Just x : Maybe Int) -> x; _ -> 0 }
+infixAnnotation (x :: xs : [Int]) = x
+nestedProductAnnotation ((x : Int), ((y : String), z)) = x
+nestedListAnnotation [(x : Int), (y : Int)] = x
+annotatedLiteral value = with value { (-1 : Int) -> 0; (_ : Int) -> 1 }
+allMatchPatterns value = with value {
+    x -> x;
+    () -> 0;
+    1 -> 0;
+    -1 -> 0;
+    1.5 -> 0;
+    -1.5 -> 0;
+    'a' -> 0;
+    "text" -> 0;
+    True -> 0;
+    False -> 0;
+    Just x -> x;
+    Data.Maybe.Just x -> x;
+    Data.Chain.(:+) x xs -> x;
+    (x, y, z) -> x;
+    [] -> 0;
+    [x, y] -> x;
+    (x :: xs) -> x;
+    ((x)) -> x;
+    _ -> 0;
+}
+localPatterns pair value list = { (a, b) = pair; Just x = value; [y, z] = list; (a, x, y) }
+wherePattern pair = a where { (a, b) = pair }
+annotatedLocal value = { (x : Int) = value; x }
+annotatedWhere value = x where { (x : Int) = value }
+annotatedDo action = do { (x : Int) <- action; x }

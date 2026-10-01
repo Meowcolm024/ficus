@@ -1,0 +1,23 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# FUTURE_2 lower Upper (++) (::) "argument" #-}
+use Foo
+use Data.Map as M
+use Data.Int as Type
+use Data . People (person, Person, (++), (::)) pub
+use Data.Maybe (Maybe(..))
+use Data.Either (Either(Left, Right))
+use Data.Chain (Chain((:+), End))
+use Data.Symbols ((:+:)((:+)))
+use Data.Complex (Complex)
+use Data.All (..) pub
+use Data.Selected (value)
+{-# BUILTIN INT_ADD intAdd #-}
+intAdd : Int -> Int -> Int
+{-# BUILTIN INT_MUL (*) #-}
+(*) : Int -> Int -> Int
+{-# DERIVE Show Eq #-}
+{-# FOREIGN LANG "example" external #-}
+external : Int -> Int
+as x = x
+pub x = x
+magic x = x

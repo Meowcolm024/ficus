@@ -1,0 +1,42 @@
+unicode café Δ = (café, Δ)
+underscore _ _name = _name
+underscoreLambda = _ _name -> _name
+underscoreMatch value = with value { _ -> value }
+underscoreIf _name = if { _name -> True; _ -> False }
+underscoreLocal value = { _name = value; _name }
+underscoreDo action = do { _ <- action; _name <- action; _name }
+underscoreType : _ -> _
+underscoreType x = (x : _)
+underscorePattern (x : _) = x
+ordinaryNames () = (Type, True, False, magic)
+softKeywords as pub = (as, pub)
+keywordPrefixes useValue typeName traitName implName withValue ifValue whereValue doValue = useValue
+dotTight x = x.field
+dotSpaceBefore x = x .field
+dotSpaceAfter x = x. field
+dotSpaces x = x . field
+qualifiedValue () = Data . People . default . name
+qualifiedConstructor () = Data.People.Person "Ada" 36
+constructorProjection () = (Person "Ada" 36).name
+unresolvedUpper () = Person.name
+unresolvedModule () = A.B.c
+qualifiedOperator xs ys = Data . List . (++) xs ys
+qualifiedUpperOperator x xs = Data.List.(::) x xs
+floatAndProjection () = (1.0, (1.0).field)
+literalAtoms () = (0, 123, 1.0, 'a', "hello", (), [], [1], [1, 2, 3])
+escapes () = ('\\', '\'', '\"', '\n', '\r', '\t', "\\ \' \" \n \r \t")
+commentText () = ("-- {- -} {-# #-}", '{', '}')
+interpolation name = "hello {name}; {Data.Greetings.name}"
+literalBraces () = "{{name}} \{name\} {{ \{ }} \}"
+mixedBraces name = "{{{name}}} \{{name}\}"
+lineComment x = x -- this ends before the next declaration
+endOfLineComment x = x --
+blockComment x = x {- first closing delimiter wins -}
+nonNestedComment x = x {- outer {- inner -}
+commentBetween f x = f {- ignored -} x
+operatorNotComment x y = x --> y
+underscoreDeclarations value = { _ = value; value }
+underscoreDoDeclaration value = do { _ = value; value }
+underscoreWhere value = value where { _ = value }
+underscoreNamedType : _name -> _name
+underscoreNamedType x = x

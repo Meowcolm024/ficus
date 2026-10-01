@@ -1,0 +1,2 @@
+type Maybe a = { Nothing; Just a }
+f action = do { Just x <- action; x }

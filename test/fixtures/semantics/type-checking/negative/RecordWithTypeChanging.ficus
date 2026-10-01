@@ -1,0 +1,2 @@
+type Box a = { value : a }
+change (p : Box Int) = p with { value = "wrong" }

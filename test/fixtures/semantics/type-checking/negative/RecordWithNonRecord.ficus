@@ -1,0 +1,1 @@
+change (p : Int) = p with { x = 1 }

@@ -13,16 +13,84 @@
     { "include": "#type-alias" },
     { "include": "#trait-head" },
     { "include": "#type-annotation" },
+    { "include": "#explicit-type-argument" },
     { "include": "#qualified-term" },
     { "include": "#qualified-value" },
     { "include": "#keyword" },
-    { "include": "#primitive-type" },
-    { "include": "#library-type" },
     { "include": "#operator" },
     { "include": "#punctuation" },
-    { "include": "#identifier" }
+    { "include": "#term-identifier" }
   ],
   "repository": {
+    "explicit-type-argument": {
+      "patterns": [
+        {
+          "begin": "(?<![!#$%&*+/<=>?@\\\\^|~:-])(@)(?![!#$%&*+/<=>?@\\\\^|~:-])[ \\t]*(?=\\()",
+          "end": "(?<=\\))",
+          "name": "meta.type-argument.ficus",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.operator.type-application.ficus"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#type-parentheses"
+            }
+          ]
+        },
+        {
+          "begin": "(?<![!#$%&*+/<=>?@\\\\^|~:-])(@)(?![!#$%&*+/<=>?@\\\\^|~:-])[ \\t]*(?=\\[)",
+          "end": "(?<=\\])",
+          "name": "meta.type-argument.ficus",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.operator.type-application.ficus"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#type-list"
+            }
+          ]
+        },
+        {
+          "match": "(?<![!#$%&*+/<=>?@\\\\^|~:-])(@)(?![!#$%&*+/<=>?@\\\\^|~:-])[ \\t]*((?:\\p{L}|_)[\\p{L}\\p{M}\\p{N}_']*(?:[ \\t]*\\.[ \\t]*(?:\\p{L}|_)[\\p{L}\\p{M}\\p{N}_']*)*)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.type-application.ficus"
+            },
+            "2": {
+              "patterns": [
+                {
+                  "include": "#type-expression"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "type-quantifier": {
+      "begin": "\\{",
+      "end": "\\}",
+      "name": "meta.type.quantifier.ficus",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.bracket.ficus"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.bracket.ficus"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#type-expression"
+        }
+      ]
+    },
     "qualified-type": {
       "match": "(?<![\\p{L}\\p{M}\\p{N}_'])((?:\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*[ \\t]*\\.[ \\t]*)+)(\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*)(?![\\p{L}\\p{M}\\p{N}_']|[ \\t]*\\.)",
       "captures": {
@@ -58,6 +126,7 @@
     },
     "type-expression": {
       "patterns": [
+        { "include": "#type-quantifier" },
         {
           "include": "#comment"
         },
@@ -322,7 +391,7 @@
           }
         },
         {
-          "match": "\\b(?:BUILTIN|FOREIGN|NO_IMPLICIT_PRELUDE|STANDALONE|DERIVE|DEPRECATED|OPTIONS)\\b",
+          "match": "\\b(?:BUILTIN|FOREIGN|NO_IMPLICIT_PRELUDE|STANDALONE|ETA|DERIVE|DEPRECATED|OPTIONS)\\b",
           "name": "keyword.control.directive.ficus"
         },
         {
@@ -527,6 +596,18 @@
         {
           "match": "[;,.]",
           "name": "punctuation.delimiter.ficus"
+        }
+      ]
+    },
+    "term-identifier": {
+      "patterns": [
+        {
+          "match": "(?<![\\p{L}\\p{M}\\p{N}_'])\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*(?![\\p{L}\\p{M}\\p{N}_'])",
+          "name": "entity.name.tag.constructor.ficus"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{M}\\p{N}_'])(?:\\p{Ll}|_)[\\p{L}\\p{M}\\p{N}_']*(?![\\p{L}\\p{M}\\p{N}_'])",
+          "name": "variable.other.ficus"
         }
       ]
     },

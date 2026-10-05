@@ -1,0 +1,2 @@
+{-# ETA printer #-}
+printer = (text : String) -> ()

@@ -1,0 +1,7 @@
+id : {a} -> a -> a
+id @a (x : a) = x
+
+duplicate : {a} -> a -> (a * a)
+duplicate = @a (x : a) -> (x, x)
+
+use () = id @Int 1

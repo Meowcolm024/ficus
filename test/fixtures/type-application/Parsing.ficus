@@ -1,0 +1,7 @@
+-- Parser-only cases; names need not resolve.
+map @(f : Type -> Type) @a (x : f a) = x
+use () = foo @(List Int) @[Int] @Data.Maybe.Maybe
+skip () = foo @_ @Int 1
+match value = with foo @Int value { Just x -> x; Nothing -> 0 }
+-- Longer operators retain maximal munch.
+operatorUse x y = x @+ y

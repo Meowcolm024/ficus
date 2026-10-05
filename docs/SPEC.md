@@ -61,7 +61,7 @@ Imports are initialized once, in source order, before the importing module. Impo
 
 All top-level declarations are public in v0. Private pragmas are planned in Section 24.4.
 
-Pragmas occur only at global declaration level in v0. Each block contains an ALL_CAPITAL name followed by whitespace-separated identifiers or strings. Every pragma uses the same syntax; its arguments, placement, and meaning are checked semantically. Module pragmas appear before imports; declaration pragmas appear among top-level declarations. `NO_IMPLICIT_PRELUDE` disables implicit Prelude and its dependent sugar. `BUILTIN` does not disable Prelude (Section 19). Private/deprecation pragmas are planned in Section 24.4; `FOREIGN` is planned in Section 25.
+Pragmas occur only at global declaration level in v0. v1+ extends declaration-level placement to implementation members, `where` groups, and local definitions; each directive retains its own target and placement requirements. Each block contains an ALL_CAPITAL name followed by whitespace-separated identifiers or strings. Every pragma uses the same syntax; its arguments, placement, and meaning are checked semantically. Module pragmas appear before imports; declaration pragmas appear among top-level declarations. `NO_IMPLICIT_PRELUDE` disables implicit Prelude and its dependent sugar. `BUILTIN` does not disable Prelude (Section 19). Private/deprecation pragmas are planned in Section 24.4; `FOREIGN` is planned in Section 25.
 
 ## 3. Lexical structure
 
@@ -79,7 +79,7 @@ Line comments begin with `--` only when it is not followed by another operator c
 
 Literals include decimal integers and floats, characters in single quotes, and strings in double quotes. An integer literal such as `1` has type `Int`; a literal with a decimal point such as `1.0` has type `Float`. Numeric literals are not overloaded. `Int` values are signed 64-bit integers, and integer arithmetic wraps modulo 2^64. `Float` values use IEEE 754 binary64. Character and string escapes include `\\`, `\'`, `\"`, `\n`, `\r`, and `\t`. Strings additionally accept `\{` and `\}` for literal braces.
 
-A symbolic operator is a nonempty sequence of operator characters, using maximal munch after comment and reserved-token recognition. A dot may occur within an operator only when flanked on both sides by non-dot operator characters, as in `+.+`; it cannot begin or end one. A colon-led operator is an upper operator; every other operator is a value operator. Bare `:`, `=`, `->`, `<-`, `=>`, and `.` are reserved in their grammatical roles. `..` is reserved for import lists and is invalid as an expression operator. `::` is lexed and parsed as an ordinary upper operator but has reserved list-constructor semantics.
+A symbolic operator is a nonempty sequence of operator characters, using maximal munch after comment and reserved-token recognition. A dot may occur within an operator only when flanked on both sides by non-dot operator characters, as in `+.+`; it cannot begin or end one. A colon-led operator is an upper operator; every other operator is a value operator. Bare `@`, `:`, `=`, `->`, `<-`, `=>`, and `.` are reserved in their grammatical roles. `..` is reserved for import lists and is invalid as an expression operator. `::` is lexed and parsed as an ordinary upper operator but has reserved list-constructor semantics.
 
 A qualification or field-projection dot permits surrounding whitespace, subject to layout and block boundaries. `x.field`, `x .field`, `x. field`, and `x . field` have the same meaning. This also applies to module paths and qualified names, such as `Data . People . default . name`. `1.foo` and `1 . foo` are syntactically projections but fail typing because `Int` has no fields. Float tokens, `..`, and dots embedded in symbolic operators such as `+.+` retain their lexical meanings.
 
@@ -149,9 +149,12 @@ module_name     = upper_ident, { ".", upper_ident } ;
 pragma          = "{-#", pragma_name, { pragma_arg }, "#-}" ;
 pragma_name     = ALL_CAPITAL identifier matching [A-Z][A-Z0-9_]* ;
 pragma_arg      = ident | operator_name | string ;
-signature       = signature_name, ":", type_expr ;
+signature       = signature_name, ":", signature_type ;
+signature_type  = { type_quantifier, "->" }, type_expr ;
+type_quantifier = "{", lower_ident, [ ":", kind_expr ], "}" ;
 value_decl      = pattern_head, "=", expr, [ where_clause ] ;
-pattern_head    = binding_name, { binder_pattern } ;
+pattern_head    = binding_name, { type_binder }, { binder_pattern } ;
+type_binder     = "@", lower_ident | "@", "(", lower_ident, ":", kind_expr, ")" ;
 where_clause    = "where", block1(local_decl) ;
 local_decl      = signature | value_decl | pattern_decl ;
 pattern_decl    = binding_pattern, "=", expr, [ where_clause ] ;
@@ -178,11 +181,13 @@ expr            = lambda_expr | if_expr | with_expr | do_expr
                 | block_expr | operator_expr ;
 non_lambda_expr = if_expr | with_expr | do_expr
                 | block_expr | operator_expr ;
-lambda_expr     = binder_pattern, { binder_pattern }, "->", expr ;
+lambda_expr     = [ type_binders ], binder_pattern, { binder_pattern }, "->", expr
+                | type_binders, "->", expr ;
+type_binders    = type_binder, { type_binder } ;
 operator_expr   = prefix_expr,
                   { (value_operator | upper_operator), prefix_expr } ;
 prefix_expr     = "-", prefix_expr | application ;
-application     = postfix_expr, { postfix_expr } ;
+application     = postfix_expr, { "@", type_atom }, { postfix_expr } ;
 postfix_expr    = atom, { ".", ident | "with", block1(record_field) } ;
 
 if_expr         = "if", block1(if_clause) ;
@@ -474,7 +479,7 @@ foo (x : Int) = x
 with value { Just (x : Int) -> x; Nothing -> 0 }
 ```
 
-An annotation constrains the whole annotated pattern's type without changing its bindings or refutability. All existing restrictions on patterns and declaration heads still apply. In v0, pattern annotations cannot mention named type variables: `foo (x : a) = x` is rejected, even if a separate signature mentions `a`. Concrete types and inference holes `_` are allowed; an annotation does not implicitly bind or quantify type variables.
+An annotation constrains the whole annotated pattern's type without changing its bindings or refutability. All existing restrictions on patterns and declaration heads still apply. In v0, pattern annotations may mention named type variables only when scoped by explicit `@` binders (below): `foo (x : a) = x` is rejected, even if a separate signature mentions `a`. With an explicit binder, `foo @a (x : a) = x` is valid. Concrete types and inference holes `_` are allowed; an annotation does not implicitly bind or quantify type variables.
 
 Without a following outer lambda arrow or a pattern context, `(x : Int)` is an expression annotation. In `(f : Int -> String) -> f 1`, the arrow inside parentheses belongs to the type. Bare `x : Int -> x` is invalid. Parentheses keep annotated patterns self-delimiting; existing outer `=`, `<-`, and `->` delimiters distinguish declarations, binds, and lambdas.
 
@@ -495,6 +500,31 @@ trait Functor (f : Type -> Type) =
 `Type` denotes the kind of ordinary types. Kind annotations do not pass runtime arguments. Aliases require definitions. Each `_` in a kind signature is inferred independently from its declaration; unconstrained kind variables default to `Type` with a warning.
 
 Recursive ADT definitions must be regular: a recursive occurrence uses that ADT's declared type parameters unchanged and in the same order. Non-regular recursion such as `type Nest a = Wrap (Nest [a])` is a static error, including when it passes through a mutually recursive group.
+
+#### Explicit type binders and application (v0)
+
+Value signatures may begin with ordered type binders `{a}` or `{a : Kind}`. Unbound type variables in an ordinary signature retain implicit outermost quantification; explicit type application addresses only the explicitly written binders, in their declared order. Explicit binders are not permitted on kind signatures.
+
+```text
+id : {a} -> a -> a
+id @a (x : a) = x
+
+duplicate : {a} -> a -> (a * a)
+duplicate = @a (x : a) -> (x, x)
+
+value () = id @Int 1
+items () = id @[Int] [1, 2]
+```
+
+At the beginning of definition or lambda parameters, `@a` binds a type variable over subsequent parameter annotations, the body, and its attached `where` group. `@(f : Type -> Type)` also supplies a kind annotation. Type binders precede all value parameters and bind distinct names, never match concrete types; `_` is not a binder name. A definition's explicit binders correspond positionally to its signature's explicit binders; local binder names may differ. When no signature is supplied, retain the written binder order in the inferred scheme and check the body with those variables abstract. Signature variables alone do not enter the definition's annotation scope.
+
+In an application, `@T` supplies one type atom. Compound types require parentheses, for example `foo @(List Int)` or `foo @(Int -> String)`. Supplied types must have the binder's kind. Omitted explicit arguments are inferred by ordinary instantiation; `@_` skips one position with an inference hole. All written type arguments precede value arguments, and excess arguments are errors. Bare `@` is reserved punctuation; longer operators retain maximal munch. Braces remain expression-block delimiters in terms: `foo {Int}` is not type application. `with foo @Int { ... }` has an unambiguous match-block boundary.
+
+The enclosing syntax determines the role of a shared prefix. `foo @a bar = body` is a named definition; `@a bar -> body` is a lambda; `foo @a bar` is an application. As a standalone expression, `foo @a bar -> body` is invalid: a lambda cannot put a type binder after the value binder `foo`. In `if { foo @a bar -> body; _ -> fallback }`, however, `foo @a bar` is the non-lambda condition and the arrow starts its clause body. The same rule applies to match guards. Arrows inside parenthesized type arguments or kind annotations do not delimit the enclosing clause or lambda.
+
+Type binders and applications are static and do not add runtime parameters, evaluate arguments, or delay work. Non-expansiveness classifies their underlying term, so a type-only application of a non-expansive value remains non-expansive. They do not provide lambda protection for recursive initialization or make an expansive initializer non-expansive. Written-parameter counts for `where` timing count only value parameters. Polymorphic type abstractions remain subject to ordinary rank-1 generalization, value, and monomorphism restrictions; they cannot be passed as polymorphic function arguments in v0.
+
+v0 permits quantifiers only in the outermost value-signature prefix. Nested quantifiers are rejected, including the higher-rank signature `foo : ({a} -> a -> a) -> (b * c) -> (b * c)`. Higher-rank checking remains future work; retaining `{a}` in signatures does not enable it.
 
 ### 7.4 Type signature holes
 
@@ -622,7 +652,7 @@ Ordinary expression-block and `do` `=` bindings are sequential and non-recursive
 
 `where` introduces mutually visible declarations. Initialization follows dependency order, breaking ties by source order; the enclosing body runs after all required declarations are initialized. Top-level declarations and `impl` members follow the same rules.
 
-In v0, every top-level value initializer must be non-expansive (Section 16), including acyclic definitions and definitions with complete signatures. v1+ retains this default, with an exception for acyclic top-level definitions in a `STANDALONE` module (Section 24.4). Written parameters count as surrounding lambdas, so effects may run when a function is called, but not while loading its module. The check includes any attached `where` group that runs during initialization: a definition without written parameters cannot hide an expansive initializer there, even if its right-hand side is a lambda. Local bindings may still be expansive, subject to the existing value restriction and cyclic-initializer checks.
+In v0, every top-level value initializer must be non-expansive (Section 16), including acyclic definitions and definitions with complete signatures. v1+ retains this default, with an exception for acyclic top-level definitions in a `STANDALONE` module (Section 24.4). Written value parameters count as surrounding lambdas, so effects may run when a function is called, but not while loading its module. The check includes any attached `where` group that runs during initialization: a definition without written value parameters cannot hide an expansive initializer there, even if its right-hand side is a lambda. Local bindings may still be expansive, subject to the existing value restriction and cyclic-initializer checks.
 
 ```text
 answer = 42                 -- allowed
@@ -630,9 +660,9 @@ answerFn () = 40 + 2        -- allowed: computation on call
 computed = 40 + 2           -- invalid: expansive top-level initializer
 ```
 
-A recursive group is a cycle of initialization dependencies. Every initializer in a cycle must be non-expansive (Section 16), and every reference within the cycle must occur beneath a lambda in its initializer; written parameters count as lambdas. Other cycles are static errors. Right-hand sides within a cycle evaluate in source order. A direct initializer `x = y` is unprotected even if a later use of `x` occurs under a lambda.
+A recursive group is a cycle of initialization dependencies. Every initializer in a cycle must be non-expansive (Section 16), and every reference within the cycle must occur beneath a lambda in its initializer; written value parameters count as lambdas. Other cycles are static errors. Right-hand sides within a cycle evaluate in source order. A direct initializer `x = y` is unprotected even if a later use of `x` occurs under a lambda.
 
-For `f x y = body where ...`, the `where` group runs after both written parameters have been supplied, immediately before `body`. For `f x = y -> body where ...`, it runs after `x` has been supplied, before the returned lambda is created. A declaration with no written parameters runs its `where` group before its right-hand side is evaluated. These positions are observable and must be preserved by optimizations.
+For `f x y = body where ...`, the `where` group runs after both written parameters have been supplied, immediately before `body`. For `f x = y -> body where ...`, it runs after `x` has been supplied, before the returned lambda is created. A declaration with no written value parameters runs its `where` group before its right-hand side is evaluated. These positions are observable and must be preserved by optimizations.
 
 Within a recursive group, signed bindings may be used polymorphically at their declared types; unsigned bindings have one monotype. Both obey the cyclic-initializer rules.
 
@@ -720,9 +750,9 @@ Ficus uses Hindley–Milner inference with qualified types.
 
 Inference covers the complete module. Accepted unconstrained definitions have principal types, subject to trait ambiguity.
 
-At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a lambda (including a definition with written parameters), literal, variable, constructor, or aggregate of non-expansive values. Applications, including partial applications, projections, record updates, conditionals, matches, `do`, and expression blocks are expansive. Their result variables remain monomorphic. A signature cannot override this restriction; in particular, a local `inc = (+) 1` cannot acquire a polymorphic type merely by adding one. Such an initializer is rejected outright at top level unless the v1+ `STANDALONE` exception applies; the value restriction still applies there.
+At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a value lambda (including a definition with written value parameters), literal, variable, constructor, or aggregate of non-expansive values. Value applications, including partial applications, projections, record updates, conditionals, matches, `do`, and expression blocks are expansive. Their result variables remain monomorphic. A signature cannot override this restriction; in particular, a local `inc = (+) 1` cannot acquire a polymorphic type merely by adding one. Such an initializer is rejected outright at top level unless the v1+ `STANDALONE` exception applies; the value restriction still applies there.
 
-The v0 monomorphism restriction further keeps an **unsigned**, constrained binding monomorphic when it has no written parameters or outer lambda, even if its initializer is non-expansive. A complete signature may override this extra restriction when the value restriction permits generalization and the definition checks against it; a signature with holes cannot. Otherwise, unresolved trait predicates must be solved for the binding's one monotype. This restriction concerns constrained bindings only; it does not prevent generalizing an unconstrained non-expansive value.
+The v0 monomorphism restriction further keeps an **unsigned**, constrained binding monomorphic when it has no written value parameters or outer value lambda, even if its initializer is non-expansive. A complete signature may override this extra restriction when the value restriction permits generalization and the definition checks against it; a signature with holes cannot. Otherwise, unresolved trait predicates must be solved for the binding's one monotype. This restriction concerns constrained bindings only; it does not prevent generalizing an unconstrained non-expansive value.
 
 Within a recursive group, signed bindings may be used polymorphically at their declared schemes, while unsigned bindings use one monotype until the group boundary. Each definition must satisfy its signature and the value restriction. Missing parts of a signature containing holes are inferred without assuming polymorphic recursive use of those parts. The separate non-expansive and lambda-protection checks for cyclic initialization still apply.
 
@@ -854,10 +884,10 @@ Operations that would be default instance methods in Haskell are instead ordinar
 
 A trait or implementation may use an explicit empty block `{}`. This supports marker traits that bundle only supertrait requirements, such as Prelude's `Applicative` and `Monad`. Layout-controlled trait and implementation blocks remain nonempty.
 
-By default, every top-level value initializer must be non-expansive, whether signed, recursive, or acyclic; v1+ `STANDALONE` relaxes this only for acyclic top-level definitions. Every `impl` member initializer must still be non-expansive. Written parameters count as surrounding lambdas. Non-expansive forms are:
+By default, every top-level value initializer must be non-expansive, whether signed, recursive, or acyclic; v1+ `STANDALONE` relaxes this only for acyclic top-level definitions. Every `impl` member initializer must still be non-expansive. Written value parameters count as surrounding lambdas; type binders do not. Non-expansive forms are:
 
 - variables, literals, and constructors;
-- lambdas;
+- value lambdas (static type-only abstractions are classified by their body);
 - products, lists, and records whose components are non-expansive;
 - constructor applications whose arguments are non-expansive;
 - annotations around non-expansive expressions.
@@ -968,7 +998,7 @@ The initial language excludes:
 - comma-style record literals and record punning;
 - record patterns;
 - empty type bodies and empty `with` matches;
-- visible type application and explicit `forall`;
+- the `forall` keyword and higher-rank quantified signatures;
 - deriving, including the reserved `DERIVE` pragma;
 - lazy arrows `~>`, which replace the earlier prefix-`~` proposal;
 - private, deprecation, and compiler-option pragmas, and inline expression-level pragmas;
@@ -1022,19 +1052,6 @@ Record punning is unsupported; every supplied field needs an explicit pattern.
 
 ### 24.2 Evaluation and state
 
-#### Lazy arrows
-
-The reserved lazy function arrow is `~>`. When introduced, it will be type punctuation rather than an ordinary symbolic operator and will associate right like `->`. It is distinct from the strict arrow; inference defaults to `->`, and every lazy arrow must be written explicitly in a signature.
-
-```text
-and : Bool ~> Bool ~> Bool
-and x y = with x
-    True -> y
-    False -> False
-```
-
-A lazy argument is evaluated at its first demanded use, and subsequent uses share that result. Detailed sharing behavior and interaction with effects remain open.
-
 #### Mutable references (settled)
 
 The mutable-reference design is settled for v1+ as written. An explicit builtin-backed state module provides:
@@ -1057,7 +1074,7 @@ readRef : Ref a -> a
 
 The v1+ `Ref` design retains the v0 value restriction: expansive bindings such as `ref = newRef []` must not be generalized. Atomicity and interaction with fibers remain unspecified.
 
-### 24.3 Exceptions and concurrency (proposed interfaces)
+### 24.3 Exceptions (proposed interfaces)
 
 #### Exception primitives
 
@@ -1077,46 +1094,29 @@ throw : Exception e => e -> a
 catch : Exception e => (Unit -> a) -> (e -> a) -> a
 ```
 
-`throw` does not return normally. `catch action handler` runs `action ()`; it invokes `handler` for an exception of the statically selected type `e` and propagates other exceptions. An uncaught fiber exception is preserved as the `e` parameter of `Fiber e a` and returned by `join` as `Err e`.
+`throw` does not return normally. `catch action handler` runs `action ()`; it invokes `handler` for an exception of the statically selected type `e` and propagates other exceptions.
 
 `Exception e` has no source-level methods. Typed `catch` distinguishes nominal exception types, including through polymorphic `Exception e` uses, even when those types have identical value representations.
 
 These interfaces may change if existential errors are adopted (Section 24.6). Cleanup, nesting, interaction with effects, and standard `Exception` instances remain open.
 
-#### Concurrency primitives
+### 24.4 Pragmas
 
-An explicit v1+ library module exposes builtin-backed fibers and channels:
+#### Definition pragmas and eta expansion
+
+v1+ permits pragmas at declaration boundaries inside `impl` bodies, `where` groups, expression blocks, and `do` declaration sequences, as well as top level. These contexts extend the generic grammar to admit pragma items alongside their existing declarations. They do not admit pragmas as arbitrary expressions or enable local trait implementations. Module pragmas remain restricted to the module header; other directives keep their individual target restrictions.
+
+The argument-free `{-# ETA #-}` annotates the following named value definition, including an implementation member or local definition. It applies only to that definition, never as a module-wide or scope-wide flag, and is not inherited by sibling or nested definitions. Its initializer must have a function type. Before non-expansiveness checks, expand the complete initializer `e : A -> B` to `x -> e x` with a fresh parameter. Expand one outer arrow, not every arrow in a curried result type. Any immediately evaluated attached `where` group is part of `e` and is delayed with it:
 
 ```text
-{-# BUILTIN FIBER Fiber #-}
-Fiber : Type -> Type -> Type
-
-{-# BUILTIN CHAN Chan #-}
-Chan : Type -> Type
-
-{-# BUILTIN FORK fork #-}
-fork : Exception e => (Unit -> a) -> Fiber e a
-
-{-# BUILTIN JOIN join #-}
-join : Fiber e a -> Result e a
-
-{-# BUILTIN NEW_CHAN newChan #-}
-newChan : Unit -> Chan a
-
-{-# BUILTIN SEND send #-}
-send : Chan a -> a -> Unit
-
-{-# BUILTIN RECV recv #-}
-recv : Chan a -> a
+printer : String -> Unit
+{-# ETA #-}
+printer = makePrinter ()
 ```
 
-At call sites, `Unit` is introduced with `()`, for example `fork (() -> work)` and `newChan ()`.
+The resulting function initializer is non-expansive; check initialization safety and value-restriction eligibility after expansion. Recursive groups still require lambda-protected references, and ordinary type, constraint, and monomorphism rules still apply. The pragma is not an exemption from these checks. Non-function targets, bodyless declarations, unnamed pattern declarations, and pragma arguments are errors.
 
-`fork` schedules its thunk concurrently. Its first type parameter records the exception type. In the current v1+ interface, `join` waits and returns either `Ok value` or `Err exception` without existentially hiding that type. `send` and `recv` communicate through a typed channel; whether channels are buffered and how cancellation works remain unspecified.
-
-These declarations are not part of implicit Prelude. The v0 value restriction already prevents generalization of expansive bindings such as `channel = newChan ()`.
-
-### 24.4 Pragmas
+Eta expansion intentionally changes strict evaluation timing: `makePrinter ()` above runs when `printer` is applied, and runs again on each application. It does not pre-evaluate or memoize the original initializer. This is an explicit source transformation, not an automatically applied optimization. `ETA` is unavailable in v0.
 
 #### Private pragmas
 
@@ -1144,7 +1144,7 @@ type Complex =
 
 `PRIVATE member` leaves the type public but hides its ADT constructors or, for a record, its constructor and fields.
 
-Inline pragmas for individual constructors or local definitions are also deferred and may remain unsupported.
+Definition pragmas may appear in the v1+ declaration contexts described above. Individual directive targets, including private constructors and local definitions, still need targeting rules; arbitrary inline expression pragmas remain unsupported.
 
 #### Deprecation pragma
 
@@ -1219,21 +1219,7 @@ The proposed bootstrap policy gives every standard-library module, including `Pr
 
 The exact Prelude re-export list remains to be frozen; the proposed organization does not add implicit exports or alter primitive availability, declaration identity, instance ownership, or scope rules. v1+ also plans JSON and regular-expression support. APIs and individual exports remain open; the fine-grained control-trait design is retained. The library sketch is in [PRELUDE.md](PRELUDE.md#1-organization).
 
-### 24.6 Draft type abstraction
-
-#### Explicit type variables and application (v1+ draft)
-
-A tentative syntax introduces type variables in signatures with curly-braced binders, each optionally kind-annotated, and applies them positionally with explicit braces:
-
-```text
-foo : {a} -> Show a => a -> String
-foo {Int} 1
-
--- possible explicit type binder in a definition
-identity {a} (x : a) = x
-```
-
-A definition binder such as `{a}` would explicitly scope `a` over subsequent argument annotations and the body; this is the proposed route to `foo {a} (x : a) = x`, which remains invalid in v0. These binders range over types, not term values; dependent types are not implied. For example, `{f : Type -> Type}` would bind a higher-kinded variable. The order of binders determines the order of explicit type arguments. This syntax is draft only and may change if it causes parsing ambiguity; it is not part of v0.
+### 24.6 Existential type abstraction (proposal)
 
 #### Existential record type members (v1+ proposal)
 
@@ -1264,9 +1250,28 @@ with package { (SomeException se) -> ... }
 
 Construction infers the hidden witness from the value fields (`String` here). If retained, positional unpacking opens a fresh hidden witness without naming it; the type of `se` still uses that witness, which cannot escape. Named patterns may omit type members as well as value fields; `SomeException with { showErr = se }` leaves the witness unnamed. The explicit `Err = e` form names it when needed. Allowing type members as positional arguments could introduce parsing ambiguity: type applications and term applications share identifier and parenthesis forms, so the parser would need to distinguish type arguments from value arguments or patterns. An alternative is to reject positional patterns whenever the record has existential type members and require named record patterns for unpacking. This choice remains open; the positional match above is a candidate, not a committed rule. These construction and unpacking rules are drafts to be revised; inference details and records with only type members remain open. See [TAPL, Chapter 24](https://www.cis.upenn.edu/~bcpierce/tapl/contents.pdf).
 
-Existentials could also support a `SomeException`-like package for heterogeneous errors in v1+. If adopted, it may change the exception and concurrency interfaces above, including the current `Fiber e a`/`join` result types. That possibility does not commit to an existential error API yet.
+Existentials could also support a `SomeException`-like package for heterogeneous errors in v1+. If adopted, it may change the v1+ exception interface above and the v2+ concurrency interface (Section 25.4), including the current `Fiber e a`/`join` result types. That possibility does not commit to an existential error API yet.
 
 ## 25. v2+ language and library work
+
+### 25.1 Lazy arrows (v2+)
+
+The planned v2+ lazy function arrow is `~>`. When introduced, it will be type punctuation rather than an ordinary symbolic operator and will associate right like `->`. It is distinct from the strict arrow; inference defaults to `->`, and every lazy arrow must be written explicitly in a signature.
+
+```text
+and : Bool ~> Bool ~> Bool
+and x y = with x
+    True -> y
+    False -> False
+```
+
+A lazy argument is evaluated at its first demanded use, and subsequent uses share that result. Detailed sharing behavior and interaction with effects remain open.
+
+### 25.2 JavaScript backend and tail calls
+
+v2+ adds a simple JavaScript backend and tail-call optimization. The backend must preserve strict left-to-right evaluation, nominal identities, and initialization semantics. Tail-call coverage and the scope of any constant-stack guarantee remain to be specified; do not assume JavaScript engines provide the needed optimization. Backend implementation choices are recorded in IMPL.md.
+
+### 25.3 Packages and foreign interfaces
 
 v2+ plans include libraries beyond Prelude and a foreign-function interface (FFI). Its proposed declaration form mirrors builtin annotations:
 
@@ -1277,9 +1282,46 @@ log : String -> Unit
 
 `FOREIGN LANG "<name>" ident` associates an external implementation with an ordinarily declared local value. Its type comes from the ordinary declaration; the pragma need not be adjacent to it. Like all pragmas, it uses the generic grammar and is interpreted during semantic checking. Scope rules and implicit Prelude remain unchanged.
 
-`FOREIGN` is unavailable in v0. Accepted backends, symbol validation, type conversions, calling conventions, and exception behavior remain open. Backend and symbol designators are metadata, not local bindings. The WebAssembly GC backend, build system, dependency resolution, and foreign calling conventions are documented in [IMPL.md](IMPL.md#9-further-versioned-work).
+`FOREIGN` is unavailable in v0. Accepted backends, symbol validation, type conversions, calling conventions, and exception behavior remain open. Backend and symbol designators are metadata, not local bindings. Backend plans, the build system, dependency resolution, and foreign calling conventions are documented in [IMPL.md](IMPL.md#9-further-versioned-work).
 
-## 26. Remaining open design decisions
+### 25.4 Concurrency primitives (proposed interfaces)
+
+An explicit v2+ library module exposes builtin-backed fibers and channels:
+
+```text
+{-# BUILTIN FIBER Fiber #-}
+Fiber : Type -> Type -> Type
+
+{-# BUILTIN CHAN Chan #-}
+Chan : Type -> Type
+
+{-# BUILTIN FORK fork #-}
+fork : Exception e => (Unit -> a) -> Fiber e a
+
+{-# BUILTIN JOIN join #-}
+join : Fiber e a -> Result e a
+
+{-# BUILTIN NEW_CHAN newChan #-}
+newChan : Unit -> Chan a
+
+{-# BUILTIN SEND send #-}
+send : Chan a -> a -> Unit
+
+{-# BUILTIN RECV recv #-}
+recv : Chan a -> a
+```
+
+At call sites, `Unit` is introduced with `()`, for example `fork (() -> work)` and `newChan ()`.
+
+`fork` schedules its thunk concurrently. An uncaught fiber exception is preserved as the `e` parameter of `Fiber e a` and returned by `join` as `Err e`. Its first type parameter records the exception type. In the current v2+ interface, `join` waits and returns either `Ok value` or `Err exception` without existentially hiding that type. `send` and `recv` communicate through a typed channel; whether channels are buffered and how cancellation works remain unspecified.
+
+These declarations are not part of implicit Prelude. The v0 value restriction already prevents generalization of expansive bindings such as `channel = newChan ()`.
+
+## 26. v3+ backend work
+
+v3+ considers a WebAssembly GC backend or an LLVM backend. Selection, runtime representation, memory management, and foreign integration remain open. Either backend must preserve the language's evaluation and typing contracts.
+
+## 27. Remaining open design decisions
 
 Open language decisions include whether multiple imports may share a local module name, updates of existential records, existential record syntax, exhaustiveness for uninhabited subpatterns, and reference atomicity and interaction with fibers. The value restriction applies from v0 onward.
 

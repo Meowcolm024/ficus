@@ -38,3 +38,52 @@ test('only a bare colon starts a type annotation', () => {
   for (const source of [':', ': Int']) assert.ok(new RegExp(rule.begin, 'u').test(source));
   for (const source of ['::', ':+', '+:']) assert.equal(new RegExp(rule.begin, 'u').test(source), false);
 });
+
+for (const source of ['Just', 'Nothing', 'True', 'False', 'Point', 'Byte', 'Vec', 'Δέντρο']) {
+  test(`bare uppercase name has constructor scope in terms and type scope in types: ${source}`, () => {
+    for (const [context, scope] of [
+      ['term-identifier', 'entity.name.tag.constructor.ficus'],
+      ['identifier', 'entity.name.type.ficus'],
+    ]) {
+      const rule = grammar.repository[context].patterns[0];
+      assert.equal(new RegExp(rule.match, 'u').exec(source)[0], source);
+      assert.equal(rule.name, scope);
+    }
+  });
+}
+
+test('root terms and patterns use constructor identifiers without type overrides', () => {
+  const includes = grammar.patterns.map(rule => rule.include);
+  assert.ok(includes.includes('#term-identifier'));
+  for (const typeRule of ['#identifier', '#primitive-type', '#library-type']) {
+    assert.equal(includes.includes(typeRule), false);
+  }
+  const typeIncludes = grammar.repository['type-expression'].patterns.map(rule => rule.include);
+  assert.ok(typeIncludes.includes('#identifier'));
+  assert.equal(typeIncludes.includes('#term-identifier'), false);
+});
+
+for (const source of ['@Int', '@a', '@Data.Maybe.Maybe', '@_']) {
+  test(`explicit type argument uses type scopes: ${source}`, () => {
+    const rule = grammar.repository['explicit-type-argument'].patterns.find(rule => rule.match);
+    const match = new RegExp(rule.match, 'u').exec(source);
+    assert.equal(match[0], source);
+    assert.equal(rule.captures[1].name, 'keyword.operator.type-application.ficus');
+    assert.equal(rule.captures[2].patterns[0].include, '#type-expression');
+  });
+}
+
+test('longer @ operators are not explicit type arguments', () => {
+  for (const rule of grammar.repository['explicit-type-argument'].patterns) {
+    for (const source of ['@+Int', '@@Int', '+@Int']) {
+      assert.equal(new RegExp(rule.match ?? rule.begin, 'u').test(source), false);
+    }
+  }
+});
+
+test('explicit type arguments precede term scopes, and signature braces have a type context', () => {
+  const includes = grammar.patterns.map(rule => rule.include);
+  assert.ok(includes.indexOf('#explicit-type-argument') < includes.indexOf('#qualified-term'));
+  assert.ok(grammar.repository['type-expression'].patterns.some(rule => rule.include === '#type-quantifier'));
+  assert.equal(grammar.repository['type-quantifier'].patterns[0].include, '#type-expression');
+});

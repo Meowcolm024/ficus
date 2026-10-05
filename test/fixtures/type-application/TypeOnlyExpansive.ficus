@@ -1,0 +1,3 @@
+build : {a} -> Unit -> Unit
+build @a = makePrinter ()
+makePrinter () = (x : Unit) -> x

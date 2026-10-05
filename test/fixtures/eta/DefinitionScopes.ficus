@@ -1,0 +1,25 @@
+type Point = { x : Int; y : Int }
+makePrinter () = (text : String) -> ()
+makeShow () = (p : Point) -> "Point"
+
+printer : String -> Unit
+{-# ETA #-}
+printer = makePrinter ()
+
+impl Show Point =
+    {-# ETA #-}
+    show = makeShow ()
+
+whereUse text = local text where
+    {-# ETA #-}
+    local = makePrinter ()
+
+blockUse text =
+    {-# ETA #-}
+    local = makePrinter ()
+    local text
+
+doUse action text = do
+    {-# ETA #-}
+    local = makePrinter ()
+    action (local text)

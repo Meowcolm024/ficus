@@ -1,0 +1,3 @@
+id : {a} -> a -> a
+id @a (x : a) = x
+use () = id @Int @String 1

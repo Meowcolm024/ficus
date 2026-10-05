@@ -331,7 +331,7 @@ or : Bool -> Bool -> Bool
 
 Because function arguments are strict, `and` and `or` initially evaluate both arguments. Short-circuiting control flow should use `if`.
 
-Lazy arrows are deferred. Their reserved syntax is `~>`, replacing the earlier prefix-`~` proposal:
+Lazy arrows are deferred to v2+. Their reserved syntax is `~>`, replacing the earlier prefix-`~` proposal:
 
 ```text
 and : Bool ~> Bool ~> Bool
@@ -438,7 +438,7 @@ readLine : Unit -> String
 
 Opaque handles, `Vec a`, `Byte`, and low-level operations live in explicit library modules backed by `BUILTIN` declarations. They are not automatically re-exported by Prelude.
 
-The same applies to the proposed initial v1+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit builtin-backed concurrency module, not Prelude.
+The same applies to the proposed initial v2+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit builtin-backed concurrency module, not Prelude.
 
 The initial v1+ Prelude provides the marker:
 

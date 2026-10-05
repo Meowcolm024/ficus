@@ -1,0 +1,15 @@
+-- Parser-only cases: names need not resolve or type-check.
+-- Named definition: @a binds a, bar is a value parameter.
+definition @a bar = bar
+-- Lambda: the type-binder prefix precedes all value binders.
+typedLambda = @a bar -> bar
+-- Ordinary lambda: foo and bar are both value binders.
+ordinaryLambda = foo bar -> bar
+-- Application: @a supplies a type argument.
+application @a bar = foo @a bar
+-- Clause arrows are not lambda arrows in conditions or match guards.
+condition @a bar = if { foo @a bar -> 1; _ -> 0 }
+guard @a value = with value { Just bar if foo @a bar -> bar; Nothing -> 0 }
+-- Nested type and kind arrows must not select an enclosing lambda/clause.
+nestedType @a bar = if { foo @(a -> a) bar -> 1; _ -> 0 }
+kindLambda = @(f : Type -> Type) (x : f Int) -> x

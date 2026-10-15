@@ -18,6 +18,214 @@ build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
+    docs/SPEC.md
+    test/fixtures/eta/Arguments.ficus
+    test/fixtures/eta/Bodyless.ficus
+    test/fixtures/eta/DefinitionScopes.ficus
+    test/fixtures/eta/NonFunction.ficus
+    test/fixtures/lazy-arrows/ArrowMismatchV2.ficus
+    test/fixtures/lazy-arrows/CallByNameV2.ficus
+    test/fixtures/lazy-arrows/ParsingV2.ficus
+    test/fixtures/parsing/negative/BareAnnotatedLambda.ficus
+    test/fixtures/parsing/negative/BareOperatorPragmaArgument.ficus
+    test/fixtures/parsing/negative/BarePrefixOperator.ficus
+    test/fixtures/parsing/negative/ConcreteTypeBinder.ficus
+    test/fixtures/parsing/negative/DeclarationOnlyBlock.ficus
+    test/fixtures/parsing/negative/DoNotIndented.ficus
+    test/fixtures/parsing/negative/DoSignature.ficus
+    test/fixtures/parsing/negative/DotAfterDedent.ficus
+    test/fixtures/parsing/negative/DotAtItemBoundary.ficus
+    test/fixtures/parsing/negative/DotAtMatchBoundary.ficus
+    test/fixtures/parsing/negative/DotOperatorDeclaration.ficus
+    test/fixtures/parsing/negative/DotOperatorImport.ficus
+    test/fixtures/parsing/negative/DotOperatorReference.ficus
+    test/fixtures/parsing/negative/DoubleSemicolon.ficus
+    test/fixtures/parsing/negative/EmptyConstructorSelection.ficus
+    test/fixtures/parsing/negative/EmptyDo.ficus
+    test/fixtures/parsing/negative/EmptyExpressionBlock.ficus
+    test/fixtures/parsing/negative/EmptyIf.ficus
+    test/fixtures/parsing/negative/EmptyImportList.ficus
+    test/fixtures/parsing/negative/EmptyMatch.ficus
+    test/fixtures/parsing/negative/EmptyRecordWith.ficus
+    test/fixtures/parsing/negative/EmptyType.ficus
+    test/fixtures/parsing/negative/EmptyWhere.ficus
+    test/fixtures/parsing/negative/ExpressionNotIndented.ficus
+    test/fixtures/parsing/negative/HardKeywordBinding.ficus
+    test/fixtures/parsing/negative/IfNotIndented.ficus
+    test/fixtures/parsing/negative/ImportAfterDeclaration.ficus
+    test/fixtures/parsing/negative/ImportMembersTrailingComma.ficus
+    test/fixtures/parsing/negative/ImportTrailingComma.ficus
+    test/fixtures/parsing/negative/InfixConstructorDeclaration.ficus
+    test/fixtures/parsing/negative/InfixHeadAnnotated.ficus
+    test/fixtures/parsing/negative/InfixHeadDo.ficus
+    test/fixtures/parsing/negative/InfixHeadLocal.ficus
+    test/fixtures/parsing/negative/InfixHeadParenthesizedDo.ficus
+    test/fixtures/parsing/negative/InfixHeadParenthesizedLocal.ficus
+    test/fixtures/parsing/negative/InfixHeadParenthesizedTop.ficus
+    test/fixtures/parsing/negative/InfixHeadParenthesizedWhere.ficus
+    test/fixtures/parsing/negative/InfixHeadTop.ficus
+    test/fixtures/parsing/negative/InfixHeadWhere.ficus
+    test/fixtures/parsing/negative/InterleavedTypeArgument.ficus
+    test/fixtures/parsing/negative/InterpolationApplication.ficus
+    test/fixtures/parsing/negative/InterpolationEmpty.ficus
+    test/fixtures/parsing/negative/InterpolationExpression.ficus
+    test/fixtures/parsing/negative/InterpolationOperator.ficus
+    test/fixtures/parsing/negative/InterpolationProjection.ficus
+    test/fixtures/parsing/negative/InterpolationUpperName.ficus
+    test/fixtures/parsing/negative/InvalidEscape.ficus
+    test/fixtures/parsing/negative/KindLiteral.ficus
+    test/fixtures/parsing/negative/KindSignatureParameters.ficus
+    test/fixtures/parsing/negative/LambdaTypeBinderAfterValue.ficus
+    test/fixtures/parsing/negative/LeadingSemicolon.ficus
+    test/fixtures/parsing/negative/LeftOperatorSection.ficus
+    test/fixtures/parsing/negative/ListPatternTrailingComma.ficus
+    test/fixtures/parsing/negative/ListTrailingComma.ficus
+    test/fixtures/parsing/negative/LocalPragma.ficus
+    test/fixtures/parsing/negative/LowerModuleAlias.ficus
+    test/fixtures/parsing/negative/LowerModulePath.ficus
+    test/fixtures/parsing/negative/LowerPragmaName.ficus
+    test/fixtures/parsing/negative/LowerQualifiedOperator.ficus
+    test/fixtures/parsing/negative/MatchingTypeParameter.ficus
+    test/fixtures/parsing/negative/MissingBrace.ficus
+    test/fixtures/parsing/negative/MissingClauseArrow.ficus
+    test/fixtures/parsing/negative/MissingGuardCondition.ficus
+    test/fixtures/parsing/negative/MissingLambdaBody.ficus
+    test/fixtures/parsing/negative/MissingRecordDelimiter.ficus
+    test/fixtures/parsing/negative/MissingSemicolon.ficus
+    test/fixtures/parsing/negative/MixedPatternAssociativity.ficus
+    test/fixtures/parsing/negative/MixedPragmaName.ficus
+    test/fixtures/parsing/negative/MixedTypeAssociativity.ficus
+    test/fixtures/parsing/negative/MixedTypeBody.ficus
+    test/fixtures/parsing/negative/MixedUpperAssociativity.ficus
+    test/fixtures/parsing/negative/MixedValueAssociativity.ficus
+    test/fixtures/parsing/negative/MultipleCharacterLiteral.ficus
+    test/fixtures/parsing/negative/NestedTypeQuantifier.ficus
+    test/fixtures/parsing/negative/NewlineIsNotSemicolon.ficus
+    test/fixtures/parsing/negative/NumericPragmaArgument.ficus
+    test/fixtures/parsing/negative/OperatorAdjacentDots.ficus
+    test/fixtures/parsing/negative/OperatorTrailingDot.ficus
+    test/fixtures/parsing/negative/PragmaAdjacentString.ficus
+    test/fixtures/parsing/negative/ProductPatternTrailingComma.ficus
+    test/fixtures/parsing/negative/ProductTrailingComma.ficus
+    test/fixtures/parsing/negative/ProjectedQualifiedOperator.ficus
+    test/fixtures/parsing/negative/PubAliasedImport.ficus
+    test/fixtures/parsing/negative/PubBareImport.ficus
+    test/fixtures/parsing/negative/RangeExpressionOperator.ficus
+    test/fixtures/parsing/negative/RecordComma.ficus
+    test/fixtures/parsing/negative/RecordFieldSignature.ficus
+    test/fixtures/parsing/negative/RecordNotIndented.ficus
+    test/fixtures/parsing/negative/RecordPatternBinder.ficus
+    test/fixtures/parsing/negative/RecordPatternMatch.ficus
+    test/fixtures/parsing/negative/RecordPunning.ficus
+    test/fixtures/parsing/negative/RecordWithBadLayout.ficus
+    test/fixtures/parsing/negative/RecordWithEmptyUpdate.ficus
+    test/fixtures/parsing/negative/RecordWithMissingBlock.ficus
+    test/fixtures/parsing/negative/RecordWithPunning.ficus
+    test/fixtures/parsing/negative/ReservedBindArrow.ficus
+    test/fixtures/parsing/negative/ReservedFatArrow.ficus
+    test/fixtures/parsing/negative/RightOperatorSection.ficus
+    test/fixtures/parsing/negative/SignatureMultipleTargets.ficus
+    test/fixtures/parsing/negative/SignatureOnlyBlock.ficus
+    test/fixtures/parsing/negative/SignatureParameters.ficus
+    test/fixtures/parsing/negative/SingletonProduct.ficus
+    test/fixtures/parsing/negative/SymbolicModuleInType.ficus
+    test/fixtures/parsing/negative/TabEof.ficus
+    test/fixtures/parsing/negative/TopLevelProductPattern.ficus
+    test/fixtures/parsing/negative/TraitSignatureMultipleTargets.ficus
+    test/fixtures/parsing/negative/TraitSignatureParameters.ficus
+    test/fixtures/parsing/negative/TypeBinderAfterValue.ficus
+    test/fixtures/parsing/negative/TypeLiteralChar.ficus
+    test/fixtures/parsing/negative/TypeLiteralInteger.ficus
+    test/fixtures/parsing/negative/TypeLiteralString.ficus
+    test/fixtures/parsing/negative/UndelimitedNestedIf.ficus
+    test/fixtures/parsing/negative/UnmatchedClosingBrace.ficus
+    test/fixtures/parsing/negative/UnmatchedOpeningBrace.ficus
+    test/fixtures/parsing/negative/UnterminatedBlockComment.ficus
+    test/fixtures/parsing/negative/UnterminatedChar.ficus
+    test/fixtures/parsing/negative/UnterminatedPragma.ficus
+    test/fixtures/parsing/negative/UnterminatedString.ficus
+    test/fixtures/parsing/negative/UpperTypeParameter.ficus
+    test/fixtures/parsing/negative/ValueImportMembers.ficus
+    test/fixtures/parsing/negative/ValueInfixDefinition.ficus
+    test/fixtures/parsing/negative/ValueOperatorImportMembers.ficus
+    test/fixtures/parsing/negative/ValueOperatorPattern.ficus
+    test/fixtures/parsing/negative/WhereNotIndented.ficus
+    test/fixtures/parsing/positive/ControlInteraction.ficus
+    test/fixtures/parsing/positive/DeclarationsTypes.ficus
+    test/fixtures/parsing/positive/EmptyModule.ficus
+    test/fixtures/parsing/positive/ExpressionIntroducers.ficus
+    test/fixtures/parsing/positive/ImportsPragmas.ficus
+    test/fixtures/parsing/positive/LayoutBraces.ficus
+    test/fixtures/parsing/positive/NamesLiterals.ficus
+    test/fixtures/parsing/positive/Operators.ficus
+    test/fixtures/parsing/positive/PatternsAnnotations.ficus
+    test/fixtures/parsing/positive/PragmaComments.ficus
+    test/fixtures/parsing/positive/RecordWith.ficus
+    test/fixtures/parsing/positive/RefutabilityIsSemantic.ficus
+    test/fixtures/parsing/positive/SharedPrefixes.ficus
+    test/fixtures/parsing/positive/TypeBinders.ficus
+    test/fixtures/record-patterns/DuplicateTypeMemberV1.ficus
+    test/fixtures/record-patterns/MissingFieldEqualsV1.ficus
+    test/fixtures/record-patterns/ParsingV1.ficus
+    test/fixtures/record-patterns/PatternConcreteTypeV1.ficus
+    test/fixtures/record-patterns/PatternCoverageV1.ficus
+    test/fixtures/record-patterns/PositionalTypeV1.ficus
+    test/fixtures/record-patterns/PositionalValuesV1.ficus
+    test/fixtures/record-patterns/TypeMemberAtConstructionV1.ficus
+    test/fixtures/record-patterns/TypeMemberAtPatternV1.ficus
+    test/fixtures/record-patterns/WitnessEscapeV1.ficus
+    test/fixtures/semantics/name-resolution/negative/BuiltinMissingArgument.ficus
+    test/fixtures/semantics/name-resolution/negative/BuiltinStringTarget.ficus
+    test/fixtures/semantics/name-resolution/negative/BuiltinUnknownKey.ficus
+    test/fixtures/semantics/name-resolution/negative/BuiltinUnresolvedTarget.ficus
+    test/fixtures/semantics/name-resolution/negative/NoPreludeDo.ficus
+    test/fixtures/semantics/name-resolution/negative/NoPreludeInterpolation.ficus
+    test/fixtures/semantics/name-resolution/negative/RecordAllMemberSelection.ficus
+    test/fixtures/semantics/name-resolution/negative/RecordMemberSelection.ficus
+    test/fixtures/semantics/name-resolution/negative/ReservedConstructorBinding.ficus
+    test/fixtures/semantics/name-resolution/negative/ReservedListConstructorBinding.ficus
+    test/fixtures/semantics/name-resolution/negative/UnknownPragma.ficus
+    test/fixtures/semantics/name-resolution/support/Data/Complex.ficus
+    test/fixtures/semantics/type-checking/negative/AliasHole.ficus
+    test/fixtures/semantics/type-checking/negative/ExpansiveImpl.ficus
+    test/fixtures/semantics/type-checking/negative/ExpressionHole.ficus
+    test/fixtures/semantics/type-checking/negative/ImplHeadHole.ficus
+    test/fixtures/semantics/type-checking/negative/IntegerProjection.ficus
+    test/fixtures/semantics/type-checking/negative/NamedPatternAnnotation.ficus
+    test/fixtures/semantics/type-checking/negative/RecordWithDuplicateLabel.ficus
+    test/fixtures/semantics/type-checking/negative/RecordWithExpansiveTopLevel.ficus
+    test/fixtures/semantics/type-checking/negative/RecordWithMissingConstructionField.ficus
+    test/fixtures/semantics/type-checking/negative/RecordWithNonRecord.ficus
+    test/fixtures/semantics/type-checking/negative/RecordWithTypeChanging.ficus
+    test/fixtures/semantics/type-checking/negative/RecordWithUnknownLabel.ficus
+    test/fixtures/semantics/type-checking/negative/RefutableDoAnnotated.ficus
+    test/fixtures/semantics/type-checking/negative/RefutableDoConstructor.ficus
+    test/fixtures/semantics/type-checking/negative/RefutableDoInfix.ficus
+    test/fixtures/semantics/type-checking/negative/RefutableDoList.ficus
+    test/fixtures/semantics/type-checking/negative/RefutableDoLiteral.ficus
+    test/fixtures/semantics/type-checking/negative/RefutableNestedSingleConstructor.ficus
+    test/fixtures/semantics/type-checking/negative/SignedExpansiveTopLevel.ficus
+    test/fixtures/semantics/type-checking/negative/SpacedIntegerProjection.ficus
+    test/fixtures/semantics/type-checking/negative/TraitSignatureHole.ficus
+    test/fixtures/semantics/type-checking/positive/IrrefutableConstructors.ficus
+    test/fixtures/type-application/ConcreteBinder.ficus
+    test/fixtures/type-application/ExcessArgument.ficus
+    test/fixtures/type-application/HigherRank.ficus
+    test/fixtures/type-application/InterleavedArgument.ficus
+    test/fixtures/type-application/LambdaTypeBinderAfterValue.ficus
+    test/fixtures/type-application/Parsing.ficus
+    test/fixtures/type-application/PrefixBoundaries.ficus
+    test/fixtures/type-application/Rank1.ficus
+    test/fixtures/type-application/TypeOnlyExpansive.ficus
+    test/fixtures/parsing/expectations.json
+    test/fixtures/semantics/name-resolution/expectations.json
+    test/fixtures/semantics/type-checking/expectations.json
+    test/fixtures/eta/README.md
+    test/fixtures/lazy-arrows/README.md
+    test/fixtures/parsing/README.md
+    test/fixtures/record-patterns/README.md
+    test/fixtures/semantics/README.md
+    test/fixtures/type-application/README.md
 
 source-repository head
   type: git
@@ -25,6 +233,10 @@ source-repository head
 
 library
   exposed-modules:
+      Ficus.Syntax.Concrete
+      Ficus.Syntax.Parser
+      Ficus.Syntax.Parser.Lexer
+      Ficus.Syntax.Source
       Lib
   other-modules:
       Paths_ficus
@@ -49,6 +261,7 @@ library
     , containers
     , megaparsec
     , mtl
+    , pretty
     , text
     , transformers
     , vector
@@ -82,6 +295,7 @@ executable ficus
     , megaparsec
     , mtl
     , optparse-applicative
+    , pretty
     , text
     , transformers
     , vector
@@ -91,6 +305,7 @@ test-suite ficus-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Ficus.Parser.Spec
       Paths_ficus
   autogen-modules:
       Paths_ficus
@@ -110,11 +325,15 @@ test-suite ficus-test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds -Werror -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
+    , aeson
     , base >=4.7 && <5
     , containers
+    , directory
     , ficus
+    , filepath
     , megaparsec
     , mtl
+    , pretty
     , tasty
     , tasty-hunit
     , tasty-quickcheck

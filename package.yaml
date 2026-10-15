@@ -8,6 +8,10 @@ copyright: 2026 Meowcolm024
 extra-source-files:
   - README.md
   - CHANGELOG.md
+  - docs/SPEC.md
+  - test/fixtures/**/*.ficus
+  - test/fixtures/**/expectations.json
+  - test/fixtures/**/README.md
 
 description: Please see the README on GitHub at <https://github.com/Meowcolm024/ficus#readme>
 
@@ -19,6 +23,7 @@ dependencies:
   - mtl
   - transformers
   - vector
+  - pretty
 
 ghc-options:
   - -Wall
@@ -78,3 +83,6 @@ tests:
       - tasty-hunit
       - tasty-quickcheck
       - QuickCheck
+      - aeson
+      - directory
+      - filepath

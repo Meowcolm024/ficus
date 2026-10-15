@@ -1,0 +1,8 @@
+-- Explicit braces are delimiters even at the enclosing indentation.
+explicit =
+{ 1 }
+-- An expression on the introducer's line does not open a layout block.
+multilineHead
+  x = x
+multilineLambda = (x
+  y -> x)

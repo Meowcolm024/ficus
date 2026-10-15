@@ -38,7 +38,7 @@ The initial CLI command surface belongs to v1+. An internal execution harness ca
 
 Core remains unary and typed; Runtime raises arity only across intermediate application points without observable work. `if` stays distinct through Core. Runtime performs no string-based lookup. The implementation algorithms live in IMPL.md, not in the spec or this milestone table.
 
-M6 work may use validated Core fixtures once M3 stabilizes its interfaces, while M4–M5 extend inference. The formatter can develop alongside parser hardening. Use `test/fixtures/record-with/` as the initial parser-case inventory and add semantic/evaluation cases when those stages exist. These fixtures are not yet executable because the parser/test runner are scaffolds. Highest risks are layout/ambiguity, dictionary elaboration with strict initialization, and kinds with holes.
+M6 work may use validated Core fixtures once M3 stabilizes its interfaces, while M4–M5 extend inference. The formatter can develop alongside parser hardening. The v0 parser suite in `test/Ficus/Parser/Spec.hs` executes `test/fixtures/parsing/`, including record-with cases, and checks semantic fixture sources for parser acceptance. Add semantic/evaluation assertions when those stages exist; canonical formatting remains future work. Highest risks are layout/ambiguity, dictionary elaboration with strict initialization, and kinds with holes.
 
 ## 3. v1+, v2+, and v3+ roadmap
 

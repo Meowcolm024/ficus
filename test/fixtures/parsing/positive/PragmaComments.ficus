@@ -1,0 +1,5 @@
+{-# FUTURE {- ignored -} target #-}
+{-# FUTURE -- ignored
+    target "argument" #-}
+f = 1
+{-# {- before name -} FUTURE target #-}

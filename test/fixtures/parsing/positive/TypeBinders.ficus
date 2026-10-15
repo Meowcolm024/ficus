@@ -1,0 +1,16 @@
+identity : {a} -> a -> a
+identity @a (x : a) = x
+mapKind : {f : Type -> Type} -> {a : Type} -> f a -> f a
+mapKind @(f : Type -> Type) @a (x : f a) = x
+typeOnly = @a -> identity @a
+typeAndValue = @a (x : a) -> x
+kindLambda = @(f : Type -> Type) (x : f Int) -> x
+applications @a x = identity @a x
+compound x = identity @(Maybe Int) x
+listAtom x = identity @[Int] x
+qualifiedAtom x = identity @Data.Maybe.Maybe x
+holeAtom x = identity @_ x
+longOperator x y = x @+ y
+condition @a x = if { identity @a x -> 1; _ -> 0 }
+guard @a x = with x { y if identity @a y -> y; _ -> x }
+nestedArrow @a x = if { identity @(a -> a) x -> 1; _ -> 0 }

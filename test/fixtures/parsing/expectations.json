@@ -110,5 +110,17 @@
   "negative/UpperTypeParameter.ficus": {"kind": "SyntaxError", "span": [1, 7, 1, 9]},
   "negative/ValueInfixDefinition.ficus": {"kind": "SyntaxError", "span": [1, 4, 1, 5]},
   "negative/ValueOperatorPattern.ficus": {"kind": "SyntaxError", "span": [1, 18, 1, 18]},
-  "negative/WhereNotIndented.ficus": {"kind": "LayoutError", "span": [2, 1, 2, 6]}
+  "negative/WhereNotIndented.ficus": {"kind": "LayoutError", "span": [2, 1, 2, 6]},
+  "negative/ValueImportMembers.ficus": {"kind": "SyntaxError", "span": [1, 11, 1, 11]},
+  "negative/ValueOperatorImportMembers.ficus": {"kind": "SyntaxError", "span": [1, 14, 1, 14]},
+  "negative/LowerQualifiedOperator.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 9]},
+  "negative/ProjectedQualifiedOperator.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 9]},
+  "negative/SymbolicModuleInType.ficus": {"kind": "SyntaxError", "span": [1, 15, 1, 15]},
+  "negative/PragmaAdjacentString.ficus": {"kind": "SyntaxError", "span": [1, 11, 1, 20]},
+  "negative/TypeBinderAfterValue.ficus": {"kind": "SyntaxError", "span": [1, 5, 1, 5]},
+  "negative/LambdaTypeBinderAfterValue.ficus": {"kind": "SyntaxError", "span": [1, 10, 1, 11]},
+  "negative/InterleavedTypeArgument.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 9]},
+  "negative/NestedTypeQuantifier.ficus": {"kind": "SyntaxError", "span": [1, 6, 1, 6]},
+  "negative/ConcreteTypeBinder.ficus": {"kind": "SyntaxError", "span": [1, 4, 1, 6]},
+  "negative/TabEof.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 9]}
 }

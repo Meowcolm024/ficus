@@ -1,0 +1,2 @@
+type Box a = Box a
+f action = do { Box 0 <- action; () }

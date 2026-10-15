@@ -1,0 +1,3 @@
+type SomeException = { Err : Type; showErr : Err -> String }
+make () = SomeException ((e : String) -> e)
+use package = with package { SomeException se -> () }

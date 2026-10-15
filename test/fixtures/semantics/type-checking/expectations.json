@@ -16,6 +16,7 @@
   "negative/RefutableDoInfix.ficus": {"kind": "RefutablePattern", "span": [1, 17, 1, 25]},
   "negative/RefutableDoList.ficus": {"kind": "RefutablePattern", "span": [1, 17, 1, 19]},
   "negative/RefutableDoLiteral.ficus": {"kind": "RefutablePattern", "span": [1, 17, 1, 17]},
+  "negative/RefutableNestedSingleConstructor.ficus": {"kind": "RefutablePattern", "span": [2, 17, 2, 21]},
   "negative/SignedExpansiveTopLevel.ficus": {"kind": "ExpansiveInitializer", "span": [2, 9, 2, 15]},
   "negative/SpacedIntegerProjection.ficus": {"kind": "TypeMismatch", "span": [1, 8, 1, 14]},
   "negative/TraitSignatureHole.ficus": {"kind": "InvalidTypeHole", "span": [1, 24, 1, 24]}

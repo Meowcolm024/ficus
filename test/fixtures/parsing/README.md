@@ -18,3 +18,10 @@ and the prefixed rejection files incorporate the previous record-with corpus.
 
 Semantic rejections are separate in `../semantics/name-resolution/` and
 `../semantics/type-checking/`.
+
+`positive/RefutabilityIsSemantic.ficus` deliberately includes patterns whose
+coverage may fail after typing. Parser acceptance must not depend on a whitelist
+of supposedly irrefutable syntax. Existing v0 RecordPatternBinder/Match negatives
+remain version gates, not refutability checks. V1 record/type-member parser cases
+are inventoried in `../record-patterns/`; v2 lazy-arrow cases are in
+`../lazy-arrows/`.

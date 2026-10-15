@@ -1,0 +1,7 @@
+-- Parser-only: all supported patterns parse; coverage is a later typed check.
+constructor action = do { Box x <- action; x }
+nestedConstructor action = do { Box 0 <- action; () }
+listPattern action = do { [x] <- action; x }
+literalPattern action = do { 0 <- action; () }
+infixConstructor action = do { (x :+ y) <- action; x }
+annotatedConstructor action = do { ((Box x) : Box Int) <- action; x }

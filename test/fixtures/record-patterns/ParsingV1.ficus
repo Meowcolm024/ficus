@@ -1,0 +1,25 @@
+-- V1 parser-only: braces, layout construction, nested types, and shared prefixes.
+type Package = { Err : Type; value : Err }
+make () = Package with { Err = String; value = "text" }
+functionType () = Package with { Err = Int -> Int; value = (x : Int) -> x }
+nestedType () = Package with { Err = List (Int -> Int); value = [] }
+layoutType () = Package with
+    Err = Int -> Int
+    value = (x : Int) -> x
+unpack p = with p { Package with { Err = e; value = x } -> () }
+omitType p = with p { Package with { value = x } -> () }
+omitAll p = with p { Package with {} -> () }
+binder (Package with { Err = e; value = x }) = ()
+bareBinder Package with { Err = e; value = x } = ()
+followingBinder Package with {} y = y
+bareLambda () = Package with {} -> ()
+lambda () = (Package with { Err = e; value = x }) -> ()
+local p = { Package with { Err = e; value = x } = p; () }
+doForms action p = do
+    Package with { Err = e; value = x } <- action
+    Package with { value = y } = p
+    ()
+-- The nested constructor pattern belongs to a value field, not a type slot.
+nestedValue p = with p { Box with { item = Just x } -> x; _ -> 0 }
+-- @ remains ordinary type application outside named type-member slots.
+application @a p = with foo @a p { Package with { Err = e } -> () }

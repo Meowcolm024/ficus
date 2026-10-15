@@ -267,7 +267,7 @@ mapper = (Just value) fallback -> value
 
 Without parentheses, adjacent atomic patterns denote separate binders.
 
-Declaration heads cannot be infix patterns, even when parenthesized: `x :: xs = value` is invalid in every declaration context. Top-level definitions require a binding name; local and `do` `=` definitions also admit non-infix patterns such as `(a, b)`, `Just x`, and `[x, y]`. `(++) xs ys = ...` names a value operator and is valid. Infix patterns remain valid as parenthesized function arguments; `do` `<-` rejects them under its irrefutability rule (Section 10).
+Declaration heads cannot be infix patterns, even when parenthesized: `x :: xs = value` is invalid in every declaration context. Top-level definitions require a binding name; local and `do` `=` definitions also admit non-infix patterns such as `(a, b)`, `Just x`, and `[x, y]`. `(++) xs ys = ...` names a value operator and is valid. Infix patterns remain valid as parenthesized function arguments; `do` `<-` accepts them only when type-directed coverage proves them irrefutable (Section 10).
 
 ### 5.1 Qualification and shared syntax
 
@@ -618,7 +618,9 @@ with value
 
 A pattern fails or binds variables. Repeated variables in one pattern are invalid. Constructor, product, and list patterns require the corresponding shape. Literal patterns compare same-typed primitive values.
 
-For a v0 `do` `<-` bind, only variable patterns, `_`, `()`, and products whose elements are all irrefutable are irrefutable. All other patterns, including constructors, lists, literals, and infix constructor patterns, are refutable and rejected in this position.
+Refutability is determined after name resolution and type checking, using the same type-directed coverage analysis as exhaustiveness checking; it is not a syntactic category. A pattern is irrefutable when it covers every possible value of its inferred scrutinee type. Variables and wildcards cover any type; product and single-constructor patterns are irrefutable when their component patterns are. For example, `Box x` is irrefutable for `type Box a = Box a`, while `Just x` is refutable for `Maybe a` and `Box 0` is refutable for `Box Int`. Constructor spelling, prefix/infix notation, parentheses, and annotations do not independently decide refutability. Ordinary literal and fixed-length list patterns are refutable for their primitive/list types.
+
+A `do` `<-` bind requires a pattern proved irrefutable for the bound result type. Parse all otherwise supported patterns there; reject a refutable pattern, or one whose total coverage cannot be established, during type/coverage checking with the pattern as the primary span. Other pattern positions retain their ordinary match-failure behavior and exhaustiveness diagnostics. These checks do not change the separate syntactic restrictions on declaration heads or the self-delimiting syntax of binder patterns. Uninhabited-subpattern coverage remains future work (Section 24.1).
 
 Symbolic uppercase constructors may be used in prefix or infix patterns:
 
@@ -1048,7 +1050,7 @@ do
     consume px py qx qy
 ```
 
-Record punning is unsupported; every supplied field needs an explicit pattern.
+Record-pattern refutability is checked against the resolved record type and the supplied value-field patterns; omitted fields impose no restriction. A pattern with only irrefutable supplied fields is irrefutable, including `Point with {}`. A supplied refutable subpattern makes it refutable and invalid for `<-`. Opening a hidden type member does not test its identity and does not by itself make the pattern refutable. Record punning is unsupported; every supplied field needs an explicit pattern.
 
 ### 24.2 Evaluation and state
 
@@ -1241,14 +1243,18 @@ SomeException with { Err = e; showErr = se } = ...
 
 `Err = e` introduces a fresh named local **type variable** `e` for the hidden witness; it does not compare or match the member against a concrete type. `showErr = se` binds the runtime operation as a value. The type variable is scoped to use of the unpacked package; the value binder follows the enclosing pattern binding. A type member cannot be matched as a value or constructor, and type checking must prevent `e` from escaping the unpacking scope. Packaged operations remain callable through the hidden type's interface.
 
-In the current draft, type members are excluded from positional constructor arguments and, if positional patterns are retained, their slots; only value fields participate, in declaration order. Proposed construction and a candidate positional unpacking form are:
+Type members can be supplied or opened only through named `with` fields. Uppercase labels identify type-member slots: their construction right-hand sides are type expressions, and their pattern right-hand sides bind lowercase type-variable names. No `@` marker is used inside these slots:
 
 ```text
-SomeException ((e : String) -> e)
-with package { (SomeException se) -> ... }
+SomeException with { Err = String; showErr = (e : String) -> e }
+with package { SomeException with { Err = e; showErr = se } -> ... }
 ```
 
-Construction infers the hidden witness from the value fields (`String` here). If retained, positional unpacking opens a fresh hidden witness without naming it; the type of `se` still uses that witness, which cannot escape. Named patterns may omit type members as well as value fields; `SomeException with { showErr = se }` leaves the witness unnamed. The explicit `Err = e` form names it when needed. Allowing type members as positional arguments could introduce parsing ambiguity: type applications and term applications share identifier and parenthesis forms, so the parser would need to distinguish type arguments from value arguments or patterns. An alternative is to reject positional patterns whenever the record has existential type members and require named record patterns for unpacking. This choice remains open; the positional match above is a candidate, not a committed rule. These construction and unpacking rules are drafts to be revised; inference details and records with only type members remain open. See [TAPL, Chapter 24](https://www.cis.upenn.edu/~bcpierce/tapl/contents.pdf).
+The v1+ grammar extends record field blocks with `upper_ident, "=", type_expr`. In pattern contexts, a record pattern is `(upper_name | qualified_constructor), "with", block(record_pattern_field)`, where `record_pattern_field = ident, "=", pattern`; it is a self-delimiting binder pattern. Parse field patterns uniformly, then require an uppercase type-member slot to contain a bare lowercase type binder during semantic validation. This preserves ordinary constructor patterns in lowercase value fields. Explicit braces delimit record patterns; record construction retains its existing explicit/layout field blocks. Type-expression arrows in uppercase construction fields stay inside the field until its separator or closing delimiter.
+
+All supplied labels must be distinct and belong to the record. In construction, check each supplied type against the member's kind and check value fields against that witness, irrespective of field order. In a pattern, `Err = e` binds a fresh abstract witness, never tests for equality with a concrete type; `Err = String` is invalid there. Type members are not ordinary record type parameters, so `SomeException @String` cannot supply the hidden witness. Ordinary `@` type application still applies to explicitly quantified parameters, not record members.
+
+Type members occupy no positional constructor or pattern slots. Value fields retain their positional slots in declaration order: `SomeException ((e : String) -> e)` infers the witness, and `SomeException se` opens it anonymously without binding a type name. Named patterns may omit type members and value fields; `SomeException with { showErr = se }` also leaves the witness unnamed. Every unpacking enforces witness non-escape. Only a named `with` type-member pattern can give that witness a source name. The previous alternative of positional type-member arguments is excluded; positional value-only matching is retained. Detailed witness inference and records with only type members remain open. Updates of existential records remain open. See [TAPL, Chapter 24](https://www.cis.upenn.edu/~bcpierce/tapl/contents.pdf).
 
 Existentials could also support a `SomeException`-like package for heterogeneous errors in v1+. If adopted, it may change the v1+ exception interface above and the v2+ concurrency interface (Section 25.4), including the current `Fiber e a`/`join` result types. That possibility does not commit to an existential error API yet.
 
@@ -1256,7 +1262,7 @@ Existentials could also support a `SomeException`-like package for heterogeneous
 
 ### 25.1 Lazy arrows (v2+)
 
-The planned v2+ lazy function arrow is `~>`. When introduced, it will be type punctuation rather than an ordinary symbolic operator and will associate right like `->`. It is distinct from the strict arrow; inference defaults to `->`, and every lazy arrow must be written explicitly in a signature.
+The planned v2+ lazy function arrow is `~>`. When introduced, it will be type punctuation rather than an ordinary symbolic operator and will associate right like `->`. It is distinct from the strict arrow; neither `A ~> B` nor `A -> B` is a subtype of the other, and there is no implicit coercion between them. Type equality and unification distinguish the two arrows. Inference defaults to `->`, and every lazy arrow must be written explicitly in a signature.
 
 ```text
 and : Bool ~> Bool ~> Bool
@@ -1265,7 +1271,9 @@ and x y = with x
     False -> False
 ```
 
-A lazy argument is evaluated at its first demanded use, and subsequent uses share that result. Detailed sharing behavior and interaction with effects remain open.
+Lazy arrows use **call-by-name**, without memoization. Each demanded use of a lazy parameter evaluates the original argument expression again in its captured lexical environment. An unused argument is not evaluated. Effects, errors, and divergence therefore recur at each demanded use; the results of separate demands are not shared. Each demanded evaluation follows the ordinary strict, left-to-right rules, and surrounding strict arguments retain their ordinary evaluation order. An explicit strict local binding can evaluate a demand once and reuse its result.
+
+Matching a lazy argument against a variable or wildcard does not demand it. Any other parameter pattern demands the argument once for that matching attempt; its bound value components come from that evaluated value. Repeated references to a variable parameter demand it separately. Pattern coverage proofs do not remove observable demands. No automatic sharing, eager evaluation, or arrow coercion may change this behavior.
 
 ### 25.2 JavaScript backend and tail calls
 

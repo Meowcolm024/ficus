@@ -1,0 +1,4 @@
+-- Type punctuation ~> associates right; -> remains strict.
+f : Int ~> Int -> Int ~> Int
+f x y z = x + y + z
+apply @a x = g @(a ~> a) x

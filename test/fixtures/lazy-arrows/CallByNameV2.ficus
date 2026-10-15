@@ -1,0 +1,16 @@
+twice : Int ~> Int
+twice x = x + x
+skip : Int ~> Int
+skip _ = 0
+once : Int ~> Int
+once x = { value = x; value + value }
+type Box = Box Int
+unpack : Box ~> Int
+unpack (Box x) = x + x
+-- trace increments/logs and returns 1; define it in the future runtime harness.
+repeatEffects () = twice (trace ())
+skipEffects () = skip (trace ())
+explicitSharing () = once (trace ())
+patternDemand () = unpack (traceBox ())
+-- Each demanded computation retains ordinary left-to-right operand evaluation.
+leftToRight () = twice (left () + right ())

@@ -338,7 +338,7 @@ and : Bool ~> Bool ~> Bool
 or : Bool ~> Bool ~> Bool
 ```
 
-Once supported, these signatures can provide short-circuiting without exposing explicit thunks.
+Once supported, these signatures can provide short-circuiting without exposing explicit thunks. Lazy arguments use call-by-name without memoization: each demand evaluates again, and unused arguments are skipped. Lazy and strict arrows are distinct types with no subtyping or implicit coercion.
 
 ## 10. List functions
 

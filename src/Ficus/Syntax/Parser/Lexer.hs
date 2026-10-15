@@ -5,7 +5,9 @@ import Data.Char (isAlphaNum, isLower, isSpace, isUpper)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Ficus.Syntax.Source
+import Ficus.Error.Parser
+import Ficus.Syntax.Token
+import Ficus.Util.Source
 import Text.Megaparsec hiding (Token, sourceName, tokens)
 import Text.Megaparsec.Char
 
@@ -22,8 +24,8 @@ spanFrom file a = do
   b <- position
   pure (Span file a (if offset b > offset a then b {column = column b - 1, offset = offset b - 1} else b))
 
-failureAt :: Span -> Text -> Lexer a
-failureAt s msg = customFailure (Diagnostic LexicalError s msg)
+failureAt :: ParserErrorCode -> Span -> Text -> Lexer a
+failureAt code s msg = customFailure (Diagnostic code s msg)
 
 operatorChar :: Char -> Bool
 operatorChar c = c `elem` ("!#$%&*+/<=>?@\\^|-~:." :: String)
@@ -32,7 +34,7 @@ identChar :: Char -> Bool
 identChar c = isAlphaNum c || c == '_' || c == '\''
 
 lexSource :: FilePath -> Text -> Either Diagnostic ([Token], [Comment])
-lexSource file input = case runParser (scan <* eof) file input of
+lexSource file input = case snd (runParser' (scan <* eof) initialState) of
   Left bundle -> case bundleErrors bundle of
     FancyError _ es :| _ -> case [d | ErrorCustom d <- foldr (:) [] es] of
       d : _ -> Left d
@@ -40,7 +42,8 @@ lexSource file input = case runParser (scan <* eof) file input of
     _ -> Left fallback
   Right result -> Right result
   where
-    fallback = Diagnostic LexicalError (eofSpan file input) "invalid source character"
+    initialState = State input 0 (PosState input 0 (initialPos file) (mkPos tabWidth) "") []
+    fallback = Diagnostic InvalidSourceCharacter (eofSpan file input) "invalid source character"
     scan = do
       comments <- trivia
       done <- atEnd
@@ -53,11 +56,11 @@ lexSource file input = case runParser (scan <* eof) file input of
               open <- fixed "{-#" Punctuation
               beforeName <- trivia
               missingName <- atEnd
-              when missingName (failureAt (tokenSpan open) "unterminated pragma")
+              when missingName (failureAt UnterminatedPragma (tokenSpan open) "unterminated pragma")
               nameStart <- position
               nameText <- takeWhile1P (Just "pragma name") identChar
               ns <- spanFrom file nameStart
-              when (not (validPragmaName nameText)) (failureAt ns "expected ALL_CAPITAL pragma name")
+              when (not (validPragmaName nameText)) (failureAt InvalidPragmaName ns "expected ALL_CAPITAL pragma name")
               let nameToken = Token PragmaName nameText ns
               (inside, cs) <- pragmaTokens (tokenSpan open)
               (after, following) <- scan
@@ -95,7 +98,7 @@ lexSource file input = case runParser (scan <* eof) file input of
           pure ([close], comments)
         else
           if T.null rest
-            then failureAt opening "unterminated pragma"
+            then failureAt UnterminatedPragma opening "unterminated pragma"
             else do
               t <- ordinary
               (ts, cs) <- pragmaTokens opening
@@ -131,7 +134,7 @@ lexSource file input = case runParser (scan <* eof) file input of
         _ -> do
           void anySingle
           s <- spanFrom file a
-          failureAt s "invalid source character"
+          failureAt InvalidSourceCharacter s "invalid source character"
     embedded = do
       rest <- getInput
       case T.unpack (T.take 2 rest) of
@@ -146,14 +149,14 @@ lexSource file input = case runParser (scan <* eof) file input of
       void (char quote)
       characterCount <- contents quote a (0 :: Int)
       s <- spanFrom file a
-      when (kind == CharacterLiteral && characterCount /= 1) (failureAt s "character literal must contain one character")
+      when (kind == CharacterLiteral && characterCount /= 1) (failureAt InvalidCharacterLiteral s "character literal must contain one character")
       b <- getOffset
       pure (Token kind (T.take (b - offset a) (T.drop (offset a) input)) s)
     contents quote a n = do
       rest <- getInput
       case T.uncons rest of
-        Nothing -> spanFrom file a >>= \s -> failureAt s "unterminated literal"
-        Just ('\n', _) -> spanFrom file a >>= \s -> failureAt s "unterminated literal"
+        Nothing -> spanFrom file a >>= \s -> failureAt UnterminatedLiteral s "unterminated literal"
+        Just ('\n', _) -> spanFrom file a >>= \s -> failureAt UnterminatedLiteral s "unterminated literal"
         Just (c, _) | c == quote -> anySingle *> pure n
         Just ('\\', _) -> do
           esc <- position
@@ -162,7 +165,7 @@ lexSource file input = case runParser (scan <* eof) file input of
           s <- spanFrom file esc
           when
             (maybe True (\x -> x `notElem` ("\\'\"nrt" <> if quote == '"' then "{}" else "" :: String)) c)
-            (failureAt s "invalid escape")
+            (failureAt InvalidEscape s "invalid escape")
           contents quote a (n + 1)
         Just ('{', _) | quote == '"' -> do
           brace <- position
@@ -174,20 +177,20 @@ lexSource file input = case runParser (scan <* eof) file input of
               body <- takeWhileP Nothing (\c -> c /= '}' && c /= '"' && c /= '\n')
               close <- optional (char '}')
               s <- spanFrom file brace
-              when (close == Nothing) (failureAt (Span file brace brace) "unmatched opening brace")
-              when (not (validInterpolation body)) (failureAt s "expected lowercase interpolation name, optionally module-qualified")
+              when (close == Nothing) (failureAt UnmatchedInterpolationBrace (Span file brace brace) "unmatched opening brace")
+              when (not (validInterpolation body)) (failureAt InvalidInterpolation s "expected lowercase interpolation name, optionally module-qualified")
               contents quote a (n + 1)
         Just ('}', _) | quote == '"' -> do
           brace <- position
           void anySingle
           doubled <- optional (char '}')
-          when (doubled == Nothing) (failureAt (Span file brace brace) "unmatched closing brace")
+          when (doubled == Nothing) (failureAt UnmatchedInterpolationBrace (Span file brace brace) "unmatched closing brace")
           contents quote a (n + 1)
         _ -> anySingle *> contents quote a (n + 1)
     takeWhileUntil closing opening = do
       body <- manyTill anySingle (lookAhead (void (chunk closing) <|> eof))
       found <- optional (chunk closing)
-      when (found == Nothing) (failureAt opening "unterminated block comment")
+      when (found == Nothing) (failureAt UnterminatedBlockComment opening "unterminated block comment")
       pure (T.pack body)
 
 lineComment :: Text -> Bool
@@ -211,10 +214,4 @@ validInterpolation txt = case reverse (T.splitOn "." txt) of
     upper t = maybe False (\(c, cs) -> isUpper c && T.all identChar cs) (T.uncons t)
 
 eofSpan :: FilePath -> Text -> Span
-eofSpan file txt = Span file p p
-  where
-    p = T.foldl' advance (Position 1 1 0) txt
-    advance pos c = case c of
-      '\n' -> Position (line pos + 1) 1 (offset pos + 1)
-      '\t' -> pos {column = column pos + 8 - (column pos - 1) `mod` 8, offset = offset pos + 1}
-      _ -> pos {column = column pos + 1, offset = offset pos + 1}
+eofSpan = sourceEndSpan

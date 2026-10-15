@@ -3,7 +3,7 @@ module CLI (main) where
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.Version (showVersion)
-import Ficus.Syntax.Concrete (Diagnostic (..), Position (..), Span (..))
+import Ficus.Error.Pretty (prettyDiagnostic)
 import Ficus.Syntax.Concrete.Pretty (prettyModule)
 import Ficus.Syntax.Parser (parseModule)
 import Options.Applicative
@@ -25,7 +25,7 @@ main = do
       case input of
         Left err -> T.hPutStrLn stderr (T.pack (show err)) >> exitFailure
         Right source -> case parseModule sourceName source of
-          Left diagnostic -> reportDiagnostic diagnostic >> exitFailure
+          Left diagnostic -> T.hPutStrLn stderr (prettyDiagnostic source diagnostic) >> exitFailure
           Right concreteModule -> T.putStr (prettyModule concreteModule)
 
 versionText :: String
@@ -43,20 +43,3 @@ commandInfo =
             <> command "format" (info formatCommand (progDesc "Pretty-print a source file or stdin to stdout"))
         )
     formatCommand = Format <$> optional (strArgument (metavar "FILE" <> help "Source file; omit or use - for stdin")) <**> helper
-
-reportDiagnostic :: Diagnostic -> IO ()
-reportDiagnostic d =
-  T.hPutStrLn stderr $
-    T.pack (sourceFile s)
-      <> ":"
-      <> number (line p)
-      <> ":"
-      <> number (column p)
-      <> ": "
-      <> T.pack (show (diagnosticKind d))
-      <> ": "
-      <> diagnosticMessage d
-  where
-    s = primarySpan d
-    p = start s
-    number = T.pack . show

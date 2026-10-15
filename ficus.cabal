@@ -19,6 +19,7 @@ extra-source-files:
     README.md
     CHANGELOG.md
     docs/SPEC.md
+    docs/ERRORS.md
     test/fixtures/eta/Arguments.ficus
     test/fixtures/eta/Bodyless.ficus
     test/fixtures/eta/DefinitionScopes.ficus
@@ -130,6 +131,7 @@ extra-source-files:
     test/fixtures/parsing/negative/SingletonProduct.ficus
     test/fixtures/parsing/negative/SymbolicModuleInType.ficus
     test/fixtures/parsing/negative/TabEof.ficus
+    test/fixtures/parsing/negative/TabEscape.ficus
     test/fixtures/parsing/negative/TopLevelProductPattern.ficus
     test/fixtures/parsing/negative/TraitSignatureMultipleTargets.ficus
     test/fixtures/parsing/negative/TraitSignatureParameters.ficus
@@ -154,6 +156,7 @@ extra-source-files:
     test/fixtures/parsing/positive/DeclarationsTypes.ficus
     test/fixtures/parsing/positive/EmptyModule.ficus
     test/fixtures/parsing/positive/ExpressionIntroducers.ficus
+    test/fixtures/parsing/positive/FourColumnTabs.ficus
     test/fixtures/parsing/positive/ImportsPragmas.ficus
     test/fixtures/parsing/positive/LayoutBraces.ficus
     test/fixtures/parsing/positive/NamesLiterals.ficus
@@ -233,11 +236,14 @@ source-repository head
 
 library
   exposed-modules:
+      Ficus.Error.Parser
+      Ficus.Error.Pretty
       Ficus.Syntax.Concrete
       Ficus.Syntax.Concrete.Pretty
       Ficus.Syntax.Parser
       Ficus.Syntax.Parser.Lexer
-      Ficus.Syntax.Source
+      Ficus.Syntax.Token
+      Ficus.Util.Source
   other-modules:
       Paths_ficus
   autogen-modules:
@@ -306,6 +312,8 @@ test-suite ficus-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Ficus.Error.ParserSpec
+      Ficus.Error.PrettySpec
       Ficus.Parser.PrettySpec
       Ficus.Parser.Spec
       Paths_ficus

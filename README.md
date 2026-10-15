@@ -21,7 +21,8 @@ stack exec ficus -- format < test/fixtures/parsing/positive/LayoutBraces.ficus
 
 `format [FILE]` writes formatted source to stdout. Omit the file or use `-` to read
 stdin. Input files are never overwritten. Syntax errors go to stderr and return
-a nonzero exit status.
+a nonzero exit status. Diagnostics include a stable code such as `P0001`, the
+source line, and an underline. See [error codes](docs/ERRORS.md).
 
 `Ficus.Syntax.Concrete.Pretty.prettyModule` is a naive AST printer: it normalizes
 blocks to braces with four-space indentation, keeps literal spellings and

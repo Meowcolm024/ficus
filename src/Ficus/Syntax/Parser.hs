@@ -7,6 +7,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Ficus.Error.Parser
 import Ficus.Syntax.Concrete
 import Ficus.Syntax.Parser.Lexer (eofSpan, lexSource)
 import Text.Megaparsec hiding (Token, parse, tokens)
@@ -32,7 +33,7 @@ parseModule file source = do
   let s = Span file (Position 1 1 0) (end ending)
       result = ConcreteModule s (SourceOrigin s) ps is ds ts cs source
   case validateConcrete result of
-    Left msg -> Left (Diagnostic SyntaxError s msg)
+    Left msg -> Left (Diagnostic InvalidConcreteTree s msg)
     Right () -> Right result
   where
     firstError (e :| _) = e
@@ -43,7 +44,7 @@ parseModule file source = do
       _ -> ordinary ts ending err
     ordinary ts ending err =
       Diagnostic
-        SyntaxError
+        UnexpectedToken
         (case drop (errorOffset err) ts of t : _ -> tokenSpan t; [] -> ending)
         "unexpected token or end of input"
 
@@ -79,14 +80,14 @@ kind k = accept ((== k) . tokenKind)
 nextIs :: Text -> Parser Bool
 nextIs txt = maybe False ((== txt) . tokenText) <$> peek
 
-failHere :: DiagnosticKind -> Text -> Parser a
+failHere :: ParserErrorCode -> Text -> Parser a
 failHere k msg = do
   mt <- peek
   ending <- asks fileEnd
   customFailure (Diagnostic k (maybe ending tokenSpan mt) msg)
 
-failAt :: Span -> Text -> Parser a
-failAt s msg = customFailure (Diagnostic SyntaxError s msg)
+failAt :: ParserErrorCode -> Span -> Text -> Parser a
+failAt code s msg = customFailure (Diagnostic code s msg)
 
 -- Capture precisely the consumed source; layout delimiters have no synthetic
 -- tokens, so their ranges come from the first and last real tokens.
@@ -148,7 +149,7 @@ moduleParser = do
   is <- many (atItem useDeclaration)
   ds <- many (atItem topDeclaration)
   dot <- nextIs "."
-  when dot (failHere LayoutError "dot cannot cross a layout boundary")
+  when dot (failHere InvalidLayoutContinuation "dot cannot cross a layout boundary")
   eof
   pure (ps, is, ds)
 
@@ -170,7 +171,7 @@ pragma = located $ do
     checkSeparated previous (arg : rest) = do
       when
         (offset (start (location arg)) <= offset (end previous) + 1)
-        (failAt (location arg) "pragma arguments must be whitespace-separated")
+        (failAt InvalidPragmaArguments (location arg) "pragma arguments must be whitespace-separated")
       checkSeparated (location arg) rest
 
 useDeclaration :: Parser Import
@@ -181,7 +182,7 @@ useDeclaration = located $ do
   trailingPub <- nextIs "pub"
   when
     (trailingPub && case mode of ModuleOnly -> True; Aliased _ -> True; _ -> False)
-    (failHere SyntaxError "pub requires an explicit import list")
+    (failHere InvalidImport "pub requires an explicit import list")
   pure (Import ns mode)
   where
     selection = do
@@ -220,10 +221,10 @@ topDeclaration =
       p <- optional (try (lookAhead patternParser))
       t <- text "("
       case p >>= infixHead of
-        Just op -> failAt (nameLocation op) "infix declaration head"
+        Just op -> failAt InvalidDeclarationHead (nameLocation op) "infix declaration head"
         Nothing -> case p of
-          Just _ -> failAt (tokenSpan t) "top-level binding name required"
-          Nothing -> optional anyOperator *> failHere SyntaxError "invalid binding name"
+          Just _ -> failAt InvalidDeclarationHead (tokenSpan t) "top-level binding name required"
+          Nothing -> optional anyOperator *> failHere InvalidSyntax "invalid binding name"
 
 signature :: Parser Declaration
 signature = do
@@ -323,7 +324,7 @@ infixHead n = case concrete n of
   _ -> Nothing
 
 rejectInfixHead :: Pattern -> Parser ()
-rejectInfixHead = maybe (pure ()) (\op -> failAt (nameLocation op) "infix declaration head") . infixHead
+rejectInfixHead = maybe (pure ()) (\op -> failAt InvalidDeclarationHead (nameLocation op) "infix declaration head") . infixHead
 
 typeDeclaration :: Parser Declaration
 typeDeclaration = located $ do
@@ -344,15 +345,15 @@ typeDeclaration = located $ do
           ( do
               n <- lowerName
               colon <- nextIs ":"
-              when (not colon) (failAt (nameLocation n) "constructor name or field signature required")
+              when (not colon) (failAt InvalidDeclarationHead (nameLocation n) "constructor name or field signature required")
               void (text ":")
               FieldSignature n <$> typeExpression
           )
     constructorMember = Right <$> located (Constructor <$> upperName <*> many typeAtom)
     fieldOnly (Left f) = pure f
-    fieldOnly (Right c) = case concrete c of Constructor n _ -> failAt (nameLocation n) "mixed type body"
+    fieldOnly (Right c) = case concrete c of Constructor n _ -> failAt MixedTypeBody (nameLocation n) "mixed type body"
     constructorOnly (Right c) = pure c
-    constructorOnly (Left f) = case concrete f of FieldSignature n _ -> failAt (nameLocation n) "mixed type body"
+    constructorOnly (Left f) = case concrete f of FieldSignature n _ -> failAt MixedTypeBody (nameLocation n) "mixed type body"
 
 traverseBlock :: (a -> Parser b) -> Block a -> Parser (Block b)
 traverseBlock f b = Block (blockLocation b) (blockOrigin b) (blockDelimiter b) <$> traverse f (blockItems b)
@@ -447,7 +448,7 @@ qualifiedUpper = do
       dot <- nextIs "."
       if dot
         then do
-          when (nameNotation n /= Alphabetic) (failHere SyntaxError "module components must be uppercase identifiers")
+          when (nameNotation n /= Alphabetic) (failHere InvalidModuleName "module components must be uppercase identifiers")
           void (text ".")
           (n :) <$> qualifiedTail
         else pure [n]
@@ -461,7 +462,7 @@ lambda = do
   located $ do
     bs <- many typeBinder
     ps <- many binderPattern
-    when (null bs && null ps) (failHere SyntaxError "lambda binder required")
+    when (null bs && null ps) (failHere MissingBinder "lambda binder required")
     intro <- text "->"
     Lam bs ps <$> introducedExpression intro
 
@@ -483,7 +484,7 @@ introducedExpression intro = do
     Just t
       | line (start (tokenSpan t)) > ln ->
           if column (start (tokenSpan t)) <= base
-            then failHere LayoutError "expression must be indented"
+            then failHere InsufficientIndentation "expression must be indented"
             else expressionBlock t
     _ -> expression
 
@@ -541,8 +542,8 @@ expressionBlock intro = located $ do
   case reverse (blockItems b) of
     n : _ -> case concrete n of
       Expression _ -> pure (ExprBlock b)
-      LocalDeclaration _ -> failAt (closingSpan b) "expression block must end in an expression"
-    [] -> failHere SyntaxError "nonempty expression block required"
+      LocalDeclaration _ -> failAt MissingFinalExpression (closingSpan b) "expression block must end in an expression"
+    [] -> failHere EmptyBlock "nonempty expression block required"
   where
     closingSpan b = let s = blockLocation b in s {start = end s}
 
@@ -703,7 +704,7 @@ operators constructor op operand = do
           same = filter ((== lowest) . precedence . fst) pairs
       case same of
         (firstOp, _) : rest -> case filter ((/= rightAssociative firstOp) . rightAssociative . fst) rest of
-          (bad, _) : _ -> failAt (nameLocation bad) "mixed associativity in one precedence group"
+          (bad, _) : _ -> failAt MixedAssociativity (nameLocation bad) "mixed associativity in one precedence group"
           [] -> assemble lowest (rightAssociative firstOp) a pairs
         [] -> pure a
     assemble level right a pairs = do
@@ -729,7 +730,7 @@ block allowEmpty allowInline intro item = do
       n <- local (\e -> e {floorColumn = 0, singleLine = Nothing}) $ located $ unrestricted $ do
         void (text "{")
         done <- nextIs "}"
-        when (done && not allowEmpty) (failHere SyntaxError "nonempty block required")
+        when (done && not allowEmpty) (failHere EmptyBlock "nonempty block required")
         ns <- if done then pure [] else explicitItems
         void (text "}")
         pure ns
@@ -738,12 +739,12 @@ block allowEmpty allowInline intro item = do
       mt <- peek
       base <- asks itemColumn
       case mt of
-        Nothing -> failHere SyntaxError "block required"
+        Nothing -> failHere ExpectedBlock "block required"
         Just t -> do
           let p = start (tokenSpan t)
               later = line p > line (start (tokenSpan intro))
-          when (not later && not allowInline) (failHere SyntaxError "expected braces or a newline before block")
-          when (later && column p <= base) (failHere LayoutError "block must be indented")
+          when (not later && not allowInline) (failHere ExpectedBlock "expected braces or a newline before block")
+          when (later && column p <= base) (failHere InsufficientIndentation "block must be indented")
           n <- located (local (\e -> e {floorColumn = column p, singleLine = Nothing}) (layoutItems (column p)))
           pure (Block (location n) (origin n) Layout (concrete n))
   where
@@ -760,6 +761,6 @@ block allowEmpty allowInline intro item = do
       mt <- peek
       case mt of
         Just t | column (start (tokenSpan t)) == indent && tokenText t `notElem` ["}", ")", "]", ";"] -> do
-          when (tokenText t == ".") (failHere LayoutError "dot cannot begin a layout item")
+          when (tokenText t == ".") (failHere InvalidLayoutContinuation "dot cannot begin a layout item")
           (n :) <$> layoutItems indent
         _ -> pure [n]

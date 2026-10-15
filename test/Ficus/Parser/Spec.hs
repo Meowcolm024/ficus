@@ -7,6 +7,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
+import Ficus.Error.Parser
 import Ficus.Parser.PrettySpec qualified as Pretty
 import Ficus.Syntax.Concrete
 import Ficus.Syntax.Parser (parseModule)

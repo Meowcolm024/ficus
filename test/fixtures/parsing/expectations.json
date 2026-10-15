@@ -122,5 +122,6 @@
   "negative/InterleavedTypeArgument.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 9]},
   "negative/NestedTypeQuantifier.ficus": {"kind": "SyntaxError", "span": [1, 6, 1, 6]},
   "negative/ConcreteTypeBinder.ficus": {"kind": "SyntaxError", "span": [1, 4, 1, 6]},
-  "negative/TabEof.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 9]}
+  "negative/TabEof.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 9]},
+  "negative/TabEscape.ficus": {"kind": "LexicalError", "span": [1, 10, 1, 11]}
 }

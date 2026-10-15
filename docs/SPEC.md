@@ -85,6 +85,8 @@ A qualification or field-projection dot permits surrounding whitespace, subject 
 
 ## 4. Layout
 
+Tabs use four-column stops (columns 1, 5, 9, and so on) for indentation and source positions. A tab advances to the next stop; spaces advance one column.
+
 Layout applies only at grammar positions requiring `block1` or `block`. An indented block is equivalent to an explicit block with `{`, `;`, and `}` delimiters, using the indentation rules below.
 
 If the next token is not `{`, a layout block begins at that position. Its first token sets the block indentation. A later token at the same indentation starts an item; smaller indentation ends the block; greater indentation continues the current item. Blank lines and comments do not affect layout.

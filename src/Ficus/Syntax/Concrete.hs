@@ -1,7 +1,8 @@
 -- | A raw, source-oriented syntax with separate syntactic categories, following
 -- the approach of Agda.Syntax.Concrete. Nothing here resolves names or desugars.
 module Ficus.Syntax.Concrete
-  ( module Ficus.Syntax.Source,
+  ( module Ficus.Util.Source,
+    module Ficus.Syntax.Token,
     Located (..),
     at,
     Delimiter (..),
@@ -65,7 +66,8 @@ module Ficus.Syntax.Concrete
 where
 
 import Data.Text (Text)
-import Ficus.Syntax.Source
+import Ficus.Syntax.Token
+import Ficus.Util.Source
 
 data Located a = Located
   {location :: Span, origin :: Provenance, concrete :: a}

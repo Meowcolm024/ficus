@@ -234,10 +234,10 @@ source-repository head
 library
   exposed-modules:
       Ficus.Syntax.Concrete
+      Ficus.Syntax.Concrete.Pretty
       Ficus.Syntax.Parser
       Ficus.Syntax.Parser.Lexer
       Ficus.Syntax.Source
-      Lib
   other-modules:
       Paths_ficus
   autogen-modules:
@@ -270,6 +270,7 @@ library
 executable ficus
   main-is: Main.hs
   other-modules:
+      CLI
       Paths_ficus
   autogen-modules:
       Paths_ficus
@@ -305,6 +306,7 @@ test-suite ficus-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Ficus.Parser.PrettySpec
       Ficus.Parser.Spec
       Paths_ficus
   autogen-modules:

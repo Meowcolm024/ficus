@@ -18,9 +18,13 @@ The Haskell runner lives in `test/Ficus/Parser/Spec.hs`.
 Positive source comments specify grouping/boundary assertions. The runner also
 checks typed Concrete structure, comments, explicit/layout delimiters, ordinary
 names/operators, unresolved dotted chains, source preservation, and the Concrete
-boundary validator. QuickCheck exercises lossless parse/render/parse and rendering
-idempotence; `renderSource` returns the original source, not a canonical formatter.
-A canonical formatter and evaluator differential properties need their later stages.
+boundary validator. Every accepted fixture is also pretty-printed and reparsed;
+the full typed syntax and comment text must match after ignoring source maps and
+normalizing block delimiters to braces. Formatting must be idempotent. QuickCheck
+checks these properties on generated expressions as well as lossless source
+rendering (`renderSource`). Pretty-printer tests are in
+`test/Ficus/Parser/PrettySpec.hs`. Evaluator differential properties need the later
+evaluator stages.
 
 Semantic rejections are separate in `../semantics/name-resolution/` and
 `../semantics/type-checking/`. This suite checks that those sources parse, without

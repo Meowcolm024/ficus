@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Lib
+import CLI qualified
 
 main :: IO ()
-main = someFunc
+main = CLI.main

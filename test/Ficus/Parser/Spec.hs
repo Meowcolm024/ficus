@@ -7,6 +7,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
+import Ficus.Parser.PrettySpec qualified as Pretty
 import Ficus.Syntax.Concrete
 import Ficus.Syntax.Parser (parseModule)
 import System.Directory (listDirectory)
@@ -48,10 +49,13 @@ tests = do
           [rejectFixture (root </> path) e | (path, e) <- Map.toList expectations],
         testGroup "semantic errors remain parseable" (map acceptFixture semanticSources),
         structuralTests,
+        Pretty.tests,
         testGroup
           "lossless source properties"
           [ testProperty "parse/render/parse preserves Concrete tree" roundTrip,
-            testProperty "lossless rendering is idempotent" renderIdempotent
+            testProperty "lossless rendering is idempotent" renderIdempotent,
+            testProperty "pretty-print/parse preserves syntax" (\(Source source) -> Pretty.roundTrip source),
+            testProperty "pretty printing is idempotent" (\(Source source) -> Pretty.idempotent source)
           ]
       ]
 
@@ -67,6 +71,7 @@ acceptFixture path = testCase path $ do
       validateConcrete m @?= Right ()
       renderSource m @?= source
       parseModule path (renderSource m) @?= Right m
+      Pretty.assertRoundTrip m
 
 rejectFixture :: FilePath -> Expectation -> TestTree
 rejectFixture path (Expectation expectedKind expectedSpan) = testCase path $ do

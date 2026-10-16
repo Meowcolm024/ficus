@@ -87,7 +87,8 @@ Before adding a `{-# LANGUAGE ... #-}` pragma to a source file, inspect
 ### Before finishing
 
 - Inspect the diff for accidental or unrelated changes.
-- Run the relevant formatter/linter if the project already uses one.
+- Use `ormolu` for formatting.
+- Run the relevant linter if the project already uses one.
 - Run `stack build` and the relevant tests.
 - Do not suppress warnings or change expected test results merely to make
   checks pass.

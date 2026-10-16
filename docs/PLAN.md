@@ -33,9 +33,9 @@ Implement the proposed design in [IMPL §§1.4–1.6](IMPL.md#14-resolution-pass
 | --- | --- | --- |
 | M2a | Stage-neutral module/global/local/type-variable IDs, Abstract-owned Node wrapper, generated-origin metadata, diagnostic envelope and draft N-code registry | Inspect current Source/Parser/Pretty APIs; preserve P-code compatibility. Canonical globals retain original owner through aliases/re-exports; local shadowing produces different IDs. No Abstract imports of Concrete |
 | M2b | Module provider, header pragma classification, reserved identities, implicit Prelude edges, graph/cache and cycle diagnostics | M2a. Missing explicit/implicit modules, NO_IMPLICIT_PRELUDE bootstrap, unknown/unsupported/misplaced directives, BUILTIN retaining Prelude, implicit cycles. Specify provider root/distribution B17 before actual filesystem discovery; use a deterministic injected provider in unit tests |
-| M2c | Public export summaries, import selections, nominal record-member metadata, opened-name candidate sets, implementation visibility closure | M2b. Unused conflicts accepted; use-site ambiguity rejected, including implicit Prelude; canonical identity deduplication; invalid selections/missing exports checked immediately; conflicting pub exports rejected. A19 qualifier collisions remain blocked on their own decision |
+| M2c | Public export summaries, import selections, nominal record-member metadata, opened-name candidate sets, implementation visibility closure | M2b. Unused conflicts accepted; use-site ambiguity rejected, including implicit Prelude; canonical identity deduplication; invalid selections/missing exports checked immediately; conflicting pub exports rejected. Repeated qualifiers warn; use sites filter by exported name/namespace and canonical identity |
 | M2d | Clause/signature grouping, declaration preallocation, mutually visible versus sequential scopes, pattern/type-variable binding, BUILTIN target association | M2c. Equal written value arity checked before clause merging (N0012), excluding @ binders/RHS lambdas; forward top-level/where refs, sequential initializer seeing the previous binding, duplicate local/pattern/signature diagnostics, signature-local versus @-scoped variables, method ownership and target order independence |
-| M2e | Name/dotted-chain resolution, hygienic operator/do/interpolation and lambda-pattern lowering, record construction-versus-update classification | M2d. Canonical refs, no constructor-projection fallback, disabled sugar errors, registry-selected methods unaffected by local names, simple-binder lambdas with explicit matches, required do-coverage obligations, per-parameter match timing, ordered field RHSs and preserved where timing. B6 concatenation contract gates interpolation integration, not other resolution work |
+| M2e | Name/dotted-chain resolution, hygienic operator/do/interpolation and lambda-pattern lowering, record construction-versus-update classification | M2d. Canonical refs, no constructor-projection fallback, disabled sugar errors, registry-selected methods unaffected by local names, simple-binder lambdas with explicit matches, required do-coverage obligations, per-parameter match timing, ordered field RHSs and preserved where timing. Interpolation uses the separately configured Prelude.stringAppend contract |
 | M2f | Abstract validator and inference-facing module package | M2e. Structural tests for every Abstract form, simple-binder lambda invariant, common clause arity, ID closure/dominance, exports and obligations; no Concrete nodes or raw sugar. Symbolic typed field obligations and expression holes are allowed; unresolved lexical references and poison are not |
 | M2g | Resolver fixture runner, diagnostic rendering and M3 handoff | M2f. Multi-file positive/negative cases assert N-code/kind/primary/related spans, canonical targets and binder relations; parser still accepts semantic failures. Feed validated Abstract to a minimal HM checker, retaining clause/pattern and parameter metadata through Core elaboration |
 
@@ -58,10 +58,11 @@ Isolated graph projects and code/span/edge expectations live in its `graphs/`
 directory; M2g must discover every project source, not just top-level negatives.
 Existing negative manifests retain their authored kind/span contract; add code
 assertions when the resolver runner exists rather than bulk-renaming fixtures.
-Name-conflict timing is now settled in SPEC; source-root precedence, duplicate
-module-file handling, implicit-edge observable initialization order, library
-concatenation identity, and duplicate local module qualifiers remain explicit
-follow-ups. These cannot be silently selected by a map insertion order.
+Name-conflict timing is settled in SPEC. Source lookup now requires an
+unambiguous configured provider; duplicate matching files are configuration
+errors. Observable ordering of implicit versus explicit import initialization
+remains a follow-up. Concatenation uses Prelude.stringAppend; repeated module
+qualifiers warn and resolve at use sites by canonical identity.
 
 ### Required coverage
 
@@ -123,7 +124,7 @@ Existing IDs are retained for traceability. “Before” is the last implementat
 | A16 | Structural deriving rules | SPEC §24.4 | V1-G; preserve `{-# DERIVE #-}` attachment to the following empty `impl`, explicit contexts, rejection of nonempty bodies, and generic highlighting; initial scope is structural `Show`/`Eq` |
 | A17 | Expression interpolation delimiters and escaping | SPEC §24.5 | V1-L scanner extension |
 | A18 | Exception cleanup, nesting, effects, and standard instances | SPEC §24.3 | V1-E operational semantics; runtime identity alone does not settle these |
-| A19 | Whether multiple imports may share a local module name | SPEC §2/6/27; IMPL §1 | M2 collision handling; decide repeated imports and aliases of distinct modules without assuming shadowing, merging, ambiguity, or rejection |
+| A19 | Settled: shared module qualifiers | SPEC §2/6; IMPL §1 | Repeated qualifiers warn; requested exports filter candidates and canonical identities deduplicate at use sites |
 
 ### B. v0 conformance work and remaining gaps
 
@@ -135,8 +136,8 @@ Settled entries require implementation and fixtures, not new language decisions.
 | B2 | Settled in v0 | Scan bare/module-qualified interpolation names; expression interpolation is A17 | M1 |
 | B3 | Open lexical details | Specify identifier Unicode classes, remaining operator characters, numeric literal forms, tabs, BOM handling, and Unicode escapes; keep settled comment/dot/brace rules | M1 affected lexer paths |
 | B4 | Settled rule; invocation setup open | Every module path component is uppercase. Do not exempt an entry file or silently rename it `Main`; choose source-root/entry discovery compatible with the rule, or propose a SPEC change | M2 module loading; A1/A7 invocation |
-| B5 | Namespaces and deferred import ambiguity settled; module collisions open | Shared type/trait namespace, separate module/constructor namespaces, primitive spellings allowed as module bindings, use-site import ambiguity, identity deduplication, pub export conflict checks, specified import/member selections; local module-name collision policy remains open | M2; resolve A19 before module collision handling |
-| B6 | Identity settled; library API open | Retain source identity by defining module/name; builtin keys select implementation contracts, not scope. Specify the interpolation concatenation binding | M2 sugar integration |
+| B5 | Namespaces and deferred import ambiguity settled | Shared type/trait namespace, separate module/constructor namespaces, primitive spellings allowed as module bindings, use-site import ambiguity, identity deduplication, pub export conflict checks, specified import/member selections; module qualifiers follow the same deferred-use principle with warnings | M2 fixture coverage |
+| B6 | Concatenation identity settled | Prelude.stringAppend has STRING_APPEND and String -> String -> String; sugar registries are injected separately from resolver configuration | M2 sugar integration |
 | B7 | Settled | `Show String` is identity for interpolation | M7 |
 | B8 | Settled | `<-` requires total coverage of the inferred bound type, checked semantically; no parser whitelist, including for single-constructor/infix patterns | M3/M4 |
 | B9 | Representations settled; numeric edges open | Signed 64-bit wrapping `Int`, binary64 `Float`; specify literal ranges, division including zero, conversions, and float display | M3 affected primitives/literals; M7 display |
@@ -154,8 +155,19 @@ Settled entries require implementation and fixtures, not new language decisions.
 ## 5. Critical path and validation
 
 1. **M0–M1:** Introduce diagnostics and Concrete validation; settle affected B3 lexical gaps. B1/B2 are fixture work. A9/A13 do not authorize future syntax in v0.
-2. **M2:** Complete imports, namespaces, identity, and safe dependency analysis. Resolve B6's concatenation contract and B17's module-loading strategy; follow uppercase module naming from B4.
+2. **M2:** Complete imports, namespaces, identity, and safe dependency analysis. Use B6's stringAppend contract and explicit configurable providers for B17; follow uppercase module naming from B4.
 3. **M3:** Implement B11/B13 and strict evaluation through every stage. Settle only the numeric and primitive contracts needed by the slice (B9/B19), then complete them before release.
 4. **M4–M5:** Implement B14/B15 kind/field/alias rules before dependent trait checks. Cover B12/B16, dictionaries, visibility, and initialization.
 5. **M6–M7:** Verify arity raising and erasure against the oracle; finish Prelude, warnings, entry-point conventions (A1), and the conformance matrix. Run `stack build` and `stack test`, plus existing formatter/linter checks where applicable; do not accept changed diagnostics or goldens solely to pass checks.
 6. **Post-v0:** Resolve each A decision before its dependent work group. Keep draft syntax and proposed effect APIs out of the v0 grammar and runtime. Record decisions in SPEC.md or IMPL.md, then update this plan and associated fixtures.
+
+## Implemented resolution slice
+
+The frontend now has independent provider, header/pragma, graph discovery,
+interface/scope, and pure Concrete-to-Abstract translation APIs. The existing
+name-resolution negative, positive, and isolated graph fixtures execute in the
+resolver runner; successful outputs run the Abstract validator. Additional stage
+contract tests cover recovery, canonical sugar, lexical IDs, parameter matching,
+short module qualifiers, and source-ordered non-adjacent function clauses.
+Typed coverage, initialization safety, signature/primitive contracts, and
+inference-facing checked interfaces remain later milestones.

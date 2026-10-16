@@ -1,29 +1,41 @@
 -- | Render a diagnostic against the source text that its span references.
-module Ficus.Error.Pretty (prettyDiagnostic) where
+module Ficus.Error.Pretty (prettyDiagnostic, prettyDiagnosticRelativeTo) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Ficus.Error.Parser
+import Ficus.Error.Diagnostic
 import Ficus.Util.Source
+import System.FilePath (equalFilePath, isAbsolute, joinPath, normalise, splitDirectories, takeDrive)
 import Text.PrettyPrint qualified as P
+
+-- | Render source locations relative to an absolute working directory. Paths
+-- embedded in diagnostic messages are deliberately left unchanged.
+prettyDiagnosticRelativeTo :: (ToDiagnostic d) => FilePath -> Text -> d -> Text
+prettyDiagnosticRelativeTo directory = prettyDiagnosticWithPath (relativeSourcePath directory)
 
 -- | No source is read from disk. Callers supply the exact text they parsed,
 -- which also permits diagnostics for stdin and unsaved editor buffers.
 -- Columns count Unicode characters, with four-column tab stops, as in parsing.
-prettyDiagnostic :: Text -> Diagnostic -> Text
-prettyDiagnostic source diagnostic = T.pack (P.render (P.vcat (map (P.text . T.unpack) output)))
+prettyDiagnostic :: (ToDiagnostic d) => Text -> d -> Text
+prettyDiagnostic = prettyDiagnosticWithPath id
+
+prettyDiagnosticWithPath :: (ToDiagnostic d) => (FilePath -> FilePath) -> Text -> d -> Text
+prettyDiagnosticWithPath displayPath source input = T.pack (P.render (P.vcat (map (P.text . T.unpack) output)))
   where
-    s = primarySpan diagnostic
+    diagnostic = toDiagnostic input
+    s = diagnosticSpan diagnostic
     firstLine = line (start s)
     lastLine = line (end s)
     header =
-      T.pack (sourceFile s)
+      T.pack (displayPath (sourceFile s))
         <> ":"
         <> number firstLine
         <> ":"
         <> number (column (start s))
-        <> ": error["
-        <> renderParserErrorCode (diagnosticCode diagnostic)
+        <> ": "
+        <> (case diagnosticSeverity diagnostic of Error -> "error"; Warning -> "warning")
+        <> "["
+        <> diagnosticCode diagnostic
         <> "]: "
         <> diagnosticMessage diagnostic
     referenced =
@@ -37,9 +49,11 @@ prettyDiagnostic source diagnostic = T.pack (P.render (P.vcat (map (P.text . T.u
       [] -> 1
     gutter = T.replicate gutterWidth " " <> " |"
     output =
-      header : case referenced of
-        [] -> []
-        _ -> gutter : excerpt referenced
+      ( header : case referenced of
+          [] -> []
+          _ -> gutter : excerpt referenced
+      )
+        ++ ["note: " <> T.pack (displayPath (sourceFile span')) <> ":" <> number (line (start span')) <> ":" <> number (column (start span')) <> ": " <> label | (span', label) <- diagnosticRelated diagnostic]
     excerpt rows
       | length rows <= 4 = concatMap renderLine rows
       | otherwise =
@@ -59,6 +73,18 @@ prettyDiagnostic source diagnostic = T.pack (P.render (P.vcat (map (P.text . T.u
             gutter <> " " <> T.replicate (from - 1) " " <> T.replicate (to - from + 1) "^"
           ]
     number = T.pack . show
+
+relativeSourcePath :: FilePath -> FilePath -> FilePath
+relativeSourcePath directory file
+  | not (isAbsolute directory && isAbsolute file) = file
+  | not (equalFilePath (takeDrive directory) (takeDrive file)) = file
+  | otherwise =
+      let (parents, children) = removeCommon (splitDirectories (normalise directory)) (splitDirectories (normalise file))
+          parts = replicate (length parents) ".." ++ children
+       in if null parts then "." else joinPath parts
+  where
+    removeCommon (a : as) (b : bs) | equalFilePath a b = removeCommon as bs
+    removeCommon as bs = (as, bs)
 
 expandTabs :: Text -> Text
 expandTabs text = T.concat (reverse parts)

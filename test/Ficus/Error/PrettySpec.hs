@@ -2,8 +2,9 @@ module Ficus.Error.PrettySpec (tests) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Parser
-import Ficus.Error.Pretty (prettyDiagnostic)
+import Ficus.Error.Pretty (prettyDiagnostic, prettyDiagnosticRelativeTo)
 import Ficus.Syntax.Parser (parseModule)
 import Ficus.Util.Source
 import Test.Tasty
@@ -13,7 +14,22 @@ tests :: TestTree
 tests =
   testGroup
     "source-referenced diagnostics"
-    [ testCase "header, source line and inclusive underline" $
+    [ testCase "source paths are relative without changing search paths" $ do
+        let s = Span "/project/src/Main.ficus" (Position 1 1 0) (Position 1 1 0)
+            d = D.Diagnostic "N0201" D.Error s "searched /project/library/Absent.ficus" Nothing [(s {sourceFile = "/project/library/Prelude.ficus"}, "dependency")]
+            output = prettyDiagnosticRelativeTo "/project" "x" d
+        assertBool "relative primary source path" ("src/Main.ficus:1:1:" `T.isPrefixOf` output)
+        contains "note: library/Prelude.ficus:1:1:" output
+        contains "searched /project/library/Absent.ficus" output
+        assertBool "absolute source path omitted" (not ("/project/src/Main.ficus" `T.isInfixOf` output)),
+      testCase "source paths outside the working directory use parent components" $ do
+        let d = (diagnostic UnexpectedToken 1 1 1 1) {primarySpan = Span "/workspace/library/Prelude.ficus" (Position 1 1 0) (Position 1 1 0)}
+        contains "../library/Prelude.ficus:1:1:" (prettyDiagnosticRelativeTo "/workspace/app" "x" d),
+      testCase "relative and virtual source filenames remain unchanged" $ do
+        let d = diagnostic UnexpectedToken 1 1 1 1
+        contains "Demo.ficus:1:1:" (prettyDiagnosticRelativeTo "/project" "x" d)
+        contains "<stdin>:1:1:" (prettyDiagnosticRelativeTo "/project" "x" (d {primarySpan = (primarySpan d) {sourceFile = "<stdin>"}})),
+      testCase "header, source line and inclusive underline" $
         prettyDiagnostic "answer = nope\n" (diagnostic UnexpectedToken 1 10 1 13)
           @?= "Demo.ficus:1:10: error[P0001]: problem\n  |\n1 | answer = nope\n  |          ^^^^",
       testCase "four-column tab stops" $ do

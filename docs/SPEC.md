@@ -10,7 +10,7 @@ Sections 2–22 specify v0; Section 23 lists exclusions. Section 24 groups plann
 
 Each file defines one module. Its path and filename determine its module name; there is no `module` declaration.
 
-Relative to a configured source root, directory and file components form the dotted module path. For example, `Data/Map.ficus` defines `Data.Map`. Every component must be an uppercase identifier.
+Relative to a configured source root, directory and file components form the dotted module path. For example, `Data/Map.ficus` defines `Data.Map`. Every component must be an uppercase identifier. A configured module provider may map a logical module path to a physical source file (including an explicit Prelude source file); module identity follows the logical path.
 
 ```text
 use Foo
@@ -23,7 +23,7 @@ use Data.Map (Map)
 use Data.Map (..) pub
 ```
 
-`use Foo` imports only the module name. `as` selects a local alias. An import list introduces its named public members; `..` introduces all public members.
+`use Foo` imports only the final module component as a local qualifier. For example, `use Data.Int` permits `Int.member`, not `Data.Int.member`. `as` replaces that qualifier: `use Data.Int as I` permits only `I.member`. An import list introduces its named public members; `..` introduces all public members.
 
 Modules and types have separate namespaces: module `Data.Map` and type `Map` may coexist.
 
@@ -36,7 +36,7 @@ use Data.Int as I   -- valid: binds the module name I
 use Data.Int as Type -- valid: binds a module alias, not the kind Type
 ```
 
-Whether two module imports may bind the same local module name remains open, including repeated imports of the same module and aliases shared by distinct modules. No shadowing, merging, ambiguity, or rejection policy is selected yet. Import-name conflicts among values, types, and constructors follow the use-site rule below, independently of this open module-name policy.
+Multiple module imports may share a local qualifier. Repeated bindings emit a warning. Routes to the same module are deduplicated; distinct modules remain candidates. A qualified occurrence is resolved against the candidates that export its terminal name in the requested namespace: no candidate is a missing-export error, one canonical defining entity succeeds, and distinct defining entities are ambiguous. Import order never selects a winner. An unused qualifier conflict is permitted.
 
 A type import may explicitly select ADT constructors:
 
@@ -59,7 +59,7 @@ use Data.Map as M pub   -- invalid
 
 Import conflicts are checked at use sites. Distinct imported entities with the same spelling in one namespace may coexist when unused; an occurrence requiring that name is an ambiguity error unless qualification or lexical scope selects one entity. This includes names brought in by implicit Prelude. Multiple import/re-export routes to the same defining entity do not create ambiguity. Import order does not select a winner. Missing modules, nonexistent exports, and invalid member selections remain errors even when the imported name is unused.
 
-Publishing an ambiguous name is also a use: `pub` re-exports must provide a unique defining entity for each exported spelling and namespace. Distinct entities exported under the same name are rejected at the re-export, even without an expression using them. Re-exporting the same entity through multiple routes is valid. Duplicate local module-name bindings remain the separate open decision above.
+Publishing an ambiguous name is also a use: `pub` re-exports must provide a unique defining entity for each exported spelling and namespace. Distinct entities exported under the same name are rejected at the re-export, even without an expression using them. Re-exporting the same entity through multiple routes is valid. Module qualifier conflicts follow the same use-site principle, as described above.
 
 Imports are initialized once, in source order, before the importing module. Import cycles are static errors.
 
@@ -85,7 +85,7 @@ Literals include decimal integers and floats, characters in single quotes, and s
 
 A symbolic operator is a nonempty sequence of operator characters, using maximal munch after comment and reserved-token recognition. A dot may occur within an operator only when flanked on both sides by non-dot operator characters, as in `+.+`; it cannot begin or end one. A colon-led operator is an upper operator; every other operator is a value operator. Bare `@`, `:`, `=`, `->`, `<-`, `=>`, and `.` are reserved in their grammatical roles. `..` is reserved for import lists and is invalid as an expression operator. `::` is lexed and parsed as an ordinary upper operator but has reserved list-constructor semantics.
 
-A qualification or field-projection dot permits surrounding whitespace, subject to layout and block boundaries. `x.field`, `x .field`, `x. field`, and `x . field` have the same meaning. This also applies to module paths and qualified names, such as `Data . People . default . name`. `1.foo` and `1 . foo` are syntactically projections but fail typing because `Int` has no fields. Float tokens, `..`, and dots embedded in symbolic operators such as `+.+` retain their lexical meanings.
+A qualification or field-projection dot permits surrounding whitespace, subject to layout and block boundaries. `x.field`, `x .field`, `x. field`, and `x . field` have the same meaning. This also applies to module paths and qualified names, such as `People . default . name`. `1.foo` and `1 . foo` are syntactically projections but fail typing because `Int` has no fields. Float tokens, `..`, and dots embedded in symbolic operators such as `+.+` retain their lexical meanings.
 
 ## 4. Layout
 
@@ -277,7 +277,7 @@ Declaration heads cannot be infix patterns, even when parenthesized: `x :: xs = 
 
 ### 5.1 Qualification and shared syntax
 
-In an upper-identifier-led dotted chain ending in an uppercase name, the preceding uppercase components name a module path and the final one names an exported type in a type expression or an exported constructor in a term or pattern. When a lowercase segment follows an uppercase prefix, the whole uppercase prefix names a module path and the first lowercase segment names its exported value; later lowercase segments are field projections of that value. Constructors cannot be projected from directly: `Person.name` names value `name` from module `Person` or is rejected; `A.B.c` names `c` from module `A.B`. Modules are not values. `(Person "Ada" 36).name` projects a constructed value.
+In an upper-identifier-led dotted chain ending in an uppercase name, the preceding uppercase components must name a visible module qualifier and the final one names an exported type in a type expression or an exported constructor in a term or pattern. When a lowercase segment follows an uppercase prefix, the whole uppercase prefix must name a visible module qualifier and the first lowercase segment names its exported value; later lowercase segments are field projections of that value. Constructors cannot be projected from directly: `Person.name` names value `name` from module `Person` or is rejected; `B.c` names `c` from the module bound as `B` (for example by `use A.B`); canonical module paths do not themselves introduce qualifiers. Modules are not values. `(Person "Ada" 36).name` projects a constructed value.
 
 Shared syntactic prefixes have the following meanings at the current nesting and layout depth:
 
@@ -291,7 +291,7 @@ Delimiters inside nested blocks do not classify an outer item: `Person with` fol
 
 ## 6. Names and scope
 
-Values, constructors, fields, and modules have their respective namespaces; types and traits share one namespace. A type and a trait with the same name cannot coexist in one scope. Multiple pattern clauses defining one value form a single binding and are matched in source order. Duplicate local declarations in one namespace and scope, other than clauses of that binding, are errors, except that duplicate local module-name bindings remain an open decision (Section 2).
+Values, constructors, fields, and modules have their respective namespaces; types and traits share one namespace. A type and a trait with the same name cannot coexist in one scope. Multiple pattern clauses defining one value form a single binding and are matched in source order. Duplicate local declarations in one namespace and scope, other than clauses of that binding, are errors, with module qualifiers handled by the warning and use-site rules in Section 2.
 
 All clauses of one named function binding must have the same **written value arity**: the number of value parameter patterns before `=`. Each pattern counts as one parameter, including a product or parenthesized constructor pattern. Explicit `@` type binders do not count. A signature's arrow count, a lambda returned by the right-hand side, and later eta expansion do not change this arity. A mismatch is a static error before the clauses can be combined:
 
@@ -305,7 +305,7 @@ bar x y = y    -- valid: both clauses have two parameters
 
 This applies wherever clauses belong to one binding, including top-level, mutually visible `where` groups, and implementation members. Separate sequential bindings that shadow the same spelling remain separate bindings; their arities need not agree. Repeated zero-parameter definitions remain duplicate declarations, not alternative pattern clauses.
 
-Scope is lexical and innermost-first. Sequential bindings in an expression or `do` block may shadow earlier local bindings, including bindings in the same block; each later right-hand side still sees the previous binding until its own initializer finishes. Shadowing emits a warning. Names within one mutually visible `where` or top-level group, and duplicate names within one pattern, remain duplicate-declaration errors. Import collisions among values, types, and constructors are errors only when a name is used or ambiguously re-exported; resolve such uses by qualification, selective imports, or ordinary lexical scope; the policy for colliding local module names remains open.
+Scope is lexical and innermost-first. Sequential bindings in an expression or `do` block may shadow earlier local bindings, including bindings in the same block; each later right-hand side still sees the previous binding until its own initializer finishes. Shadowing emits a warning. Names within one mutually visible `where` or top-level group, and duplicate names within one pattern, remain duplicate-declaration errors. Import collisions among values, types, and constructors are errors only when a name is used or ambiguously re-exported; resolve such uses by qualification, selective imports, or ordinary lexical scope; colliding local module qualifiers follow Section 2.
 
 Lambda parameters scope over their body. Pattern variables scope over the corresponding guard and branch. A sequential binding scopes over later block items only. A `where` name scopes over its whole group and the expression preceding `where`.
 
@@ -422,7 +422,7 @@ Person with
     name = "Ada"
     age = 36
 
-Data.People.Person with { name = "Ada"; age = 36 }
+People.Person with { name = "Ada"; age = 36 }
 ```
 
 Named fields may appear in any order and evaluate in source order. `person.name` projects a field. Record patterns are deferred; initial-language matching uses the positional constructor.
@@ -439,7 +439,7 @@ For `e.field`, the receiver must resolve to a nominal record containing `field`;
 Dotted module qualification is resolved before projection. A qualified value expression consists of a known module path, one exported lowercase value, then zero or more lowercase field projections. Qualified constructors are allowed in construction and patterns but cannot be projected from directly:
 
 ```text
-Data.People.default.address.city
+People.default.address.city
 ```
 
 Here `Data.People` is the module, `default` is its exported value, and `address.city` is a projection chain. Section 5.1 defines the qualified value boundary.
@@ -646,7 +646,7 @@ Symbolic uppercase constructors may be used in prefix or infix patterns:
 (:+) x xs  -> ...
 x :+ xs    -> ...
 x :: xs    -> ...
-Data.People.Person name age -> ...
+People.Person name age -> ...
 ```
 
 After a pattern matches, its optional guard runs. A false guard continues with the next clause. If none succeeds, evaluation raises a match error.
@@ -721,7 +721,7 @@ append = xs ++ ys
 
 `.` is reserved punctuation for module qualification and field projection. It cannot be declared, imported, referenced as `(.)`, or used as an infix function.
 
-Qualified operator references use a module path followed by a parenthesized operator, for example `Data.List.(++)`. Bare operators are infix only, and v0 has no operator sections: `(x +)` and `(+ y)` are invalid.
+Qualified operator references use a module path followed by a parenthesized operator, for example `List.(++)` after `use Data.List`. Bare operators are infix only, and v0 has no operator sections: `(x +)` and `(+ y)` are invalid.
 
 Infix declaration heads are invalid. Thus `xs ++ ys = ...` is not a function definition. Constructor declarations follow the same rule: `(:+) a (Chain a)` is valid in a type body, while an infix constructor declaration is not.
 
@@ -941,14 +941,14 @@ In v0, `{name}` embeds one variable, and `{Module.name}` embeds one qualified va
 
 ```text
 "hello {name}"
-"hello {Data.Greetings.name}"
+"hello {Greetings.name}"
 "literal \{name\}"
 "sum {x + y}"  -- invalid in v0
 ```
 
 Interpolation denotes left-associated concatenation of literal segments and `show` calls. Segments and variable uses evaluate left-to-right. Each embedded variable adds its required `Show` constraint. `Show String` is the identity, so interpolating a `String` does not add quotation marks. A string without interpolation is a plain `String`.
 
-The `Show` method and concatenation operation come from the Prelude. In a `NO_IMPLICIT_PRELUDE` module, an interpolated string is a static error; ordinary string literals remain available.
+The `Show` method and concatenation operation come from the Prelude. Concatenation uses the canonical `Prelude.stringAppend` value, whose ordinary signature is `String -> String -> String` and whose compiler association is `STRING_APPEND`. Aliases, re-exports, local shadowing, and source spelling do not change the identity used by desugaring. In a `NO_IMPLICIT_PRELUDE` module, an interpolated string is a static error; ordinary string literals remain available.
 
 ## 19. Builtin declarations
 
@@ -1349,7 +1349,7 @@ v3+ considers a WebAssembly GC backend or an LLVM backend. Selection, runtime re
 
 ## 27. Remaining open design decisions
 
-Open language decisions include whether multiple imports may share a local module name, updates of existential records, existential record syntax, exhaustiveness for uninhabited subpatterns, and reference atomicity and interaction with fibers. The value restriction applies from v0 onward.
+Open language decisions include updates of existential records, existential record syntax, exhaustiveness for uninhabited subpatterns, and reference atomicity and interaction with fibers. The value restriction applies from v0 onward.
 
 Entry-point argument, reporting, and exit-status conventions remain open. Compiler artifact schemas and other implementation questions are tracked in [IMPL.md](IMPL.md).
 

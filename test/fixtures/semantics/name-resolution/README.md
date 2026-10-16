@@ -1,7 +1,8 @@
 # Name resolution fixtures and proposed M2 runner
 
-The current parser runner checks negative semantic sources for parser acceptance;
-it does not yet execute resolution or validate N codes. Keep that separation.
+The parser runner checks semantic sources for parser acceptance. The independent
+resolver runner executes this directory and checks authored diagnostic kinds,
+codes, primary spans, graph order, and successful Abstract validation.
 Existing expectations retain their original kinds/spans. New entries additionally
 record draft codes and source roots; unknown JSON fields are harmless to the
 current parser-acceptance check. These authored manifests are not AST goldens.
@@ -37,8 +38,8 @@ clause grouping, sequential shadowing/initializer visibility, duplicate binders,
 @ type scopes, alias/module/type separation, qualified constructors, and deferred
 record fields. Generated-origin assertions cover do, interpolation, and clause
 lowering; identity assertions compare relations, not allocator-specific integers.
-Keep duplicate local module-alias tests pending A19 instead of choosing a default.
-No resolver/AST fixture execution is claimed by this inventory.
+Repeated module qualifiers warn; stage-contract tests cover unused conflicts,
+member-filtered qualification, identity deduplication, and use-site ambiguity.
 
 ## Written clause arity
 

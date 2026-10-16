@@ -32,7 +32,7 @@ The reference implementation is written in Haskell. Each boundary should have a 
 
 Before name resolution, every module receives the six reserved primitive types. The frontend additionally imports Prelude unless the module has `NO_IMPLICIT_PRELUDE`. It rejects `do` and string interpolation when that import is disabled rather than attempting ordinary name resolution for their dependencies.
 
-Keep type and trait declarations in one namespace. Keep module bindings separate from type/kind bindings and permit primitive spellings and `Type` as local module names or aliases. A bare `use Data.Int` binds module Int without rebinding the primitive type; qualification resolves through the module namespace. Module spelling does not change primitive ownership. The policy for multiple imports sharing a local module name is open, so do not assume overwrite, merge, or rejection semantics; settle it before implementing collision handling. Store compiler-known library entities by their defining module and declared name after name resolution; aliases and re-exports must not change the registry key.
+Keep type and trait declarations in one namespace. Keep module bindings separate from type/kind bindings and permit primitive spellings and `Type` as local module names or aliases. A bare `use Data.Int` binds module Int without rebinding the primitive type; qualification resolves through the module namespace. Module spelling does not change primitive ownership. Repeated module qualifiers warn. At a qualified use, filter by exported terminal name and namespace, then deduplicate by canonical defining identity; distinct surviving identities are ambiguous. Bare imports bind only their final component; aliased imports bind only the alias. Store compiler-known library entities by their defining module and declared name after name resolution; aliases and re-exports must not change the registry key.
 
 The Concrete AST stores a dotted expression as an unresolved base-and-segments chain. For an uppercase-only chain, name resolution treats all but the last component as a module path and the last as a type in a type expression or a constructor in a term or pattern; with a lowercase segment, it treats the whole uppercase prefix as a module path and that first lowercase segment as a value. Later lowercase segments become field projections. Reject direct projection from a constructor. Preserve the unresolved Concrete form until this step, and reject a missing module or export rather than reinterpreting the chain as constructor projection.
 
@@ -44,7 +44,7 @@ Core metadata should connect inferred types and resolved references to source oc
 
 ### 1.2 Abstract declarations
 
-Abstract syntax represents resolved values, type aliases, data/record declarations, traits, and implementations with separate constructors. Attach each signature and validated declaration pragma to its declaration identity; do not encode type/trait declarations as value expressions. Check equal written value arity and group source-ordered clauses into one value definition/ordered case matrix, retaining resolved patterns, per-clause scopes/where groups, and the number of written value parameters. Keep named clause groups until inference/coverage checking. Normalize lambda parameter patterns to simple binders plus explicit Abstract matches during resolution/desugaring; patterns remain on those matches for checking. Named clause groups are compiled to Core afterward. This refines the earlier proposal to lower every clause group to lambdas immediately, without changing source evaluation or initialization behavior. The proposed interface and pass order are in Sections 1.4–1.6.
+Abstract syntax represents resolved values, type aliases, data/record declarations, traits, and implementations with separate constructors. Attach each signature and validated declaration pragma to its declaration identity; do not encode type/trait declarations as value expressions. Check equal written value arity and group source-ordered clauses into one value definition/ordered case matrix, retaining resolved patterns, per-clause scopes/where groups, and the number of written value parameters. Keep named clause groups until inference/coverage checking. Normalize lambda parameter patterns to simple binders plus explicit Abstract matches during resolution/desugaring; patterns remain on those matches for checking. Named clause groups are compiled to Core afterward. This refines the earlier proposal to lower every clause group to lambdas immediately, without changing source evaluation or initialization behavior. The interface and pass contracts are in Sections 1.4–1.6.
 
 ### 1.3 Parsing and formatter checks
 
@@ -79,7 +79,7 @@ Diagnostics render source excerpts and primary-span underlines through `Ficus.Er
 
 ### 1.4 Resolution passes and canonical names (proposed M2 design)
 
-The resolver accepts validated Concrete modules plus a source-root/module-provider configuration. It returns a validated Abstract module, export summary, source-reference index, and diagnostics. These are engineering proposals, not implemented resolver APIs. Parser implementation exists; module loading, resolution, and inference are separate upcoming work.
+The resolver accepts validated Concrete modules plus a source-root/module-provider configuration. It returns a validated Abstract module, export summary, source-reference index, and diagnostics. The resolver implementation separates Provider (file lookup), Header/Pragma (semantic directives), Discovery (module graph), Scope (interfaces and import candidates), and Desugar (pure translation). Ficus.Resolve composes them; inference remains separate.
 
 Use canonical qualified identities for globals. A reference written as `M.insert`, after `use Data.Map as M`, denotes the original `Data.Map.insert`. Re-exporting it through Prelude or another module keeps that owner and identity. Store structured module paths and declaration IDs, not dotted strings to split during later passes. Namespace and declaration role are part of lookup metadata: a record type and its constructor can have the same displayed qualified spelling but different identities. Reserved compiler primitives use stable intrinsic IDs, not invented source-module ownership. Locals, lambda binders, pattern variables, and scoped type variables use fresh IDs, with spelling retained only for diagnostics/pretty printing. Canonicalization does not make an otherwise unimported name accessible.
 
@@ -116,7 +116,7 @@ Process dependencies before importers. Initially export summaries can be in-memo
 - Missing modules/exports and malformed semantic selections fail immediately, even if unused. Reserved names remain protected. Distinct local declarations are still checked for duplicates independently of import candidates. Do not misclassify an imported candidate set as repeated source declarations.
 - `pub` is a demand on the public export map. Union selected entities with existing public declarations/re-exports by namespace/spelling; identical canonical identities coalesce. Different identities under one exported name fail at the re-export, with the conflicting export/declaration as a related span. A successful export summary never contains unresolved ambiguity.
 - Collect visible implementation identities separately from opened names, following SPEC's implementation visibility/closure rules for each import edge. Do not make instance visibility depend on whether an ordinary imported spelling is used.
-- Keep duplicate local module qualifier bindings behind open decision A19. Candidate sets for ordinary imported entities do not settle alias reuse; no rejection, overwrite, or merge policy is implied for qualifiers.
+- Keep qualifier candidate sets and all import routes. Repeated qualifiers warn, but an unused conflict is legal; qualification demands only entities exporting the requested name.
 
 Use-site conflict checking and identity deduplication follow the relevant model in [Haskell 2010 §5.5.2](https://www.haskell.org/onlinereport/haskell2010/haskellch5.html#x11-1030005.5.2); Ficus retains its own import forms, acyclic modules, separate field namespace, and selected re-export rule.
 
@@ -151,7 +151,7 @@ Resolve names before generating sugar references, then refer directly to selecte
 | `@T`, `{a}`, type/kind annotations | Separate type application, signature quantifiers, and scoped annotation syntax; kind/type checking remains later |
 | List/product/unit and literals | Dedicated semantic aggregate/literal nodes with intrinsic identities where needed; literal decoding/range validation has its own diagnostics |
 
-Check the module mode before expanding do/interpolation: under NO_IMPLICIT_PRELUDE they fail even if the user explicitly imports Bind or Show. When enabled, sugar uses compiler-known library identities through the registry, unaffected by a local `bind`/`show` spelling or ambiguous ordinary imports. The interpolation concatenation entity/contract remains B6; inject that registry entry in tests rather than silently selecting `++` or a source module. Negation likewise uses the existing primitive/numeric contract rather than an invented name lookup.
+Check the module mode before expanding do/interpolation: under NO_IMPLICIT_PRELUDE they fail even if the user explicitly imports Bind or Show. When enabled, sugar uses compiler-known library identities through the registry, unaffected by a local `bind`/`show` spelling or ambiguous ordinary imports. Interpolation uses the canonical Prelude.stringAppend binding associated with STRING_APPEND. Inject sugar contracts through a separate extensible SugarRegistry, independent of ResolveConfig; fixture-only configurations live in tests. Negation likewise uses the existing primitive/numeric contract rather than an invented name lookup.
 
 Lower lambda parameter patterns to explicit matches here as described below. Do not lower named clause groups, field constraints, dictionaries, or ETA here. Lambda/where and source parameter metadata must survive so inference and Core lowering preserve initialization points. Build a resolved reference graph for recursive groups, including type references separately; checking expansiveness, signature conformance, recursion protection, and dictionary-induced initialization edges belongs to inference/elaboration.
 
@@ -586,6 +586,23 @@ ficus format [-f FILE]
 ficus lsp
 ```
 
+The current early-development `compile FILE...` command runs discovery, parsing,
+and name resolution only. It returns success when those stages pass, emits no
+artifacts, and neither requires nor invokes `main`. Errors return nonzero;
+warnings do not fail the command. The future full compilation behavior below
+remains planned.
+
+`--library DIR` replaces the default bundled library root and is repeatable.
+`--prelude FILE` overrides the source of canonical Prelude without renaming it;
+its dependencies use the configured roots. Repeatable `--source-root DIR`
+selects project roots; absent that flag, input file directories supply the roots.
+Overlapping roots with distinct module identities and duplicate module files are
+errors. These discovery options are for early development and subject to change.
+`library/Prelude.ficus` is an initial copy of the fixture Prelude, bundled as
+package data rather than found relative to the current working directory.
+`Ficus.Library.Contracts` holds its provisional compiler/sugar contracts;
+fixture-only configuration remains in tests.
+
 `compile` runs the frontend and runtime lowering and emits only interface files and textual Runtime AST object files before the v2+ JavaScript backend. `run FILE` explicitly selects the module represented by FILE as the entry module, validates its own `main`, and executes it with the evaluator. Compilation alone does not select or invoke an entry module. `repl` starts an interactive evaluator session and optionally loads a file. `format` parses to Concrete AST and pretty-prints it with layout as a naive formatter. `lsp` initially exposes semantic highlighting, jumping to definitions, and showing inferred types using the spans, declaration identities, and provenance retained across AST stages.
 
 The command surface is settled; output paths, optional-file loading behavior, and formatter input/output details remain open.
@@ -647,3 +664,27 @@ Use dependency SCCs to limit the relaxed initializer check to acyclic top-level 
 Attach ETA metadata only to its target binding; do not store it as a module or scope default or propagate it to sibling or nested bindings. After definition grouping and type inference establish the initializer's function type, elaborate argument-free ETA into one fresh unary lambda applying the original complete initializer to its parameter. Retain attached where initialization inside that delayed initializer and retain written-parameter metadata for its original internal application points. Use the directive/binding origin's span and provenance for generated nodes. Do not evaluate the initializer into a temporary outside the lambda or flatten across its work.
 
 Perform initialization non-expansiveness, recursive lambda-protection, and value-restriction eligibility checks on the expanded initializer; ordinary signature, constraint, and source-based monomorphism checks remain in force. Do not generalize the original expansive initializer before expansion. Resolve bodyless, non-function, and pattern-binding targets as errors. The v1+ source fixture inventory is in `test/fixtures/eta/`; it is not wired into the scaffold runner. Planned checks cover top-level, implementation-member, where, expression-block, and do definitions, immediate where work, repeated effects on application, curried intermediate work, recursion checks, and invalid arguments/targets/placement.
+
+## Frontend implementation API
+
+`Ficus.Resolve.Provider.fileProvider` accepts explicit source roots and either
+`PreludeFromRoots` or `PreludeFile path`. The latter supplies the source of the
+canonical Prelude module without deriving its identity from the override filename.
+Duplicate matching files are configuration errors; root order does not choose one.
+`moduleIdentity` validates a path relative to an explicitly chosen root.
+`discoverModules` accepts an injected provider and one or more entry identities;
+it parses modules once and retains independent parse, lookup, and cycle errors.
+`resolveGraph` and `resolveModule` accept independent resolver and sugar contracts.
+Test support defines the fixture registry; the compile driver injects the separate
+early-development library contracts. Resolution uses ReaderT for
+lexical environments, State for IDs/diagnostics, and ExceptT for local recovery.
+A failed declaration does not stop other declarations or modules; failed modules
+are excluded from successful Abstract output. Consumers must check diagnostics
+before compiling an entire graph. Inference owns typed safety and coverage checks.
+
+Module directives are classified by a semantic pragma table, and retained in
+ModuleOptions. Extending the table and option interpretation does not require
+parser branches. STANDALONE and OPTIONS remain unavailable until their versioned
+semantics are implemented. `Ficus.Error.Diagnostic.ToDiagnostic` adapts typed
+phase diagnostics to a shared envelope; prettyDiagnostic handles any such value,
+including warning severity and related source labels, without file IO.

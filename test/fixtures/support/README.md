@@ -39,9 +39,9 @@ for this library; unknown keys elsewhere remain errors:
 | STRING_LENGTH | String -> Int |
 
 Register sugar identities by declaration ownership: the bind method of trait
-Prelude.Bind, the show method of Prelude.Show, and Prelude.(++) for interpolation
-concatenation. These are fixture contracts for the injected registry; B6's
-production concatenation identity and the full primitive API remain separate.
+Prelude.Bind, the show method of Prelude.Show, and Prelude.stringAppend for interpolation
+concatenation. These are fixture contracts for the injected registry; the full production primitive API remains separate. STRING_APPEND supplies
+stringAppend; (++) is an ordinary wrapper.
 Targets keep their normal Prelude defining identity; BUILTIN keys are metadata.
 Show String returns its input without quoting. Boolean combinators are strict
 v0 functions; use if for short-circuiting. Integer implementations must preserve

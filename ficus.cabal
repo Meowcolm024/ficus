@@ -292,6 +292,9 @@ extra-source-files:
     test/fixtures/semantics/README.md
     test/fixtures/support/README.md
     test/fixtures/type-application/README.md
+data-files:
+    library/Prelude.ficus
+    library/README.md
 
 source-repository head
   type: git
@@ -299,12 +302,30 @@ source-repository head
 
 library
   exposed-modules:
+      Ficus.Compile
+      Ficus.Desugar.Registry
+      Ficus.Error.Diagnostic
       Ficus.Error.Parser
       Ficus.Error.Pretty
+      Ficus.Error.Resolve
+      Ficus.Library.Contracts
+      Ficus.Resolve
+      Ficus.Resolve.Desugar
+      Ficus.Resolve.Discovery
+      Ficus.Resolve.Header
+      Ficus.Resolve.Pragma
+      Ficus.Resolve.Provider
+      Ficus.Resolve.Scope
+      Ficus.Syntax.Abstract
+      Ficus.Syntax.Abstract.Dependencies
+      Ficus.Syntax.Abstract.Validate
       Ficus.Syntax.Concrete
       Ficus.Syntax.Concrete.Pretty
+      Ficus.Syntax.Literal
+      Ficus.Syntax.Name
       Ficus.Syntax.Parser
       Ficus.Syntax.Parser.Lexer
+      Ficus.Syntax.Pragma
       Ficus.Syntax.Token
       Ficus.Util.Source
   other-modules:
@@ -328,9 +349,12 @@ library
   build-depends:
       base >=4.7 && <5
     , containers
+    , directory
+    , filepath
     , megaparsec
     , mtl
     , pretty
+    , stm
     , text
     , transformers
     , vector
@@ -360,12 +384,15 @@ executable ficus
   build-depends:
       base >=4.7 && <5
     , containers
+    , directory
     , ficus
+    , filepath
     , haskeline
     , megaparsec
     , mtl
     , optparse-applicative
     , pretty
+    , stm
     , text
     , transformers
     , vector
@@ -375,10 +402,13 @@ test-suite ficus-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Ficus.CompileSpec
       Ficus.Error.ParserSpec
       Ficus.Error.PrettySpec
       Ficus.Parser.PrettySpec
       Ficus.Parser.Spec
+      Ficus.Resolve.Spec
+      Ficus.Resolve.Support
       Paths_ficus
   autogen-modules:
       Paths_ficus
@@ -407,6 +437,7 @@ test-suite ficus-test
     , megaparsec
     , mtl
     , pretty
+    , stm
     , tasty
     , tasty-hunit
     , tasty-quickcheck

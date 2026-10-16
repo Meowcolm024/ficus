@@ -44,7 +44,7 @@ double x = x + x
 foo : _ -> _ _ Int
 foo x = (1, x)
 
-idid = ((x : Int) -> x) (x -> x)
+idid = ((x : Int) -> x) (x -> _)
 
 bar : Foo.Bar
 bar = Foo.Bar with { bar = "bar" }

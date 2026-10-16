@@ -13,6 +13,7 @@ where
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Ficus.Error.Diagnostic qualified as D
 import Ficus.Util.Source (Span)
 import Text.Megaparsec (ShowErrorComponent (..))
 
@@ -109,3 +110,6 @@ diagnosticKind = parserErrorKind . diagnosticCode
 
 instance ShowErrorComponent Diagnostic where
   showErrorComponent = T.unpack . diagnosticMessage
+
+instance D.ToDiagnostic Diagnostic where
+  toDiagnostic d = D.Diagnostic (renderParserErrorCode (diagnosticCode d)) D.Error (primarySpan d) (diagnosticMessage d) Nothing []

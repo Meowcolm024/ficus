@@ -14,6 +14,10 @@ extra-source-files:
   - test/fixtures/**/expectations.json
   - test/fixtures/**/README.md
 
+data-files:
+  - library/**/*.ficus
+  - library/README.md
+
 description: Please see the README on GitHub at <https://github.com/Meowcolm024/ficus#readme>
 
 dependencies:
@@ -25,6 +29,9 @@ dependencies:
   - transformers
   - vector
   - pretty
+  - directory
+  - filepath
+  - stm
 
 ghc-options:
   - -Wall
@@ -85,5 +92,3 @@ tests:
       - tasty-quickcheck
       - QuickCheck
       - aeson
-      - directory
-      - filepath

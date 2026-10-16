@@ -38,8 +38,10 @@ intEq : Int -> Int -> Bool
 intLt : Int -> Int -> Bool
 {-# BUILTIN INT_SHOW intShow #-}
 intShow : Int -> String
-{-# BUILTIN STRING_APPEND (++) #-}
+{-# BUILTIN STRING_APPEND stringAppend #-}
+stringAppend : String -> String -> String
 (++) : String -> String -> String
+(++) left right = stringAppend left right
 {-# BUILTIN STRING_EQ stringEq #-}
 stringEq : String -> String -> Bool
 {-# BUILTIN STRING_LENGTH stringLength #-}

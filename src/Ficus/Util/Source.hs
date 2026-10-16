@@ -19,7 +19,10 @@ data Position = Position {line :: Int, column :: Int, offset :: Int}
 data Span = Span {sourceFile :: FilePath, start :: Position, end :: Position}
   deriving (Eq, Ord, Show)
 
-newtype Provenance = SourceOrigin Span deriving (Eq, Show)
+data Provenance
+  = SourceOrigin Span
+  | GeneratedOrigin Text Span
+  deriving (Eq, Show)
 
 data Comment = Comment {commentText :: Text, commentSpan :: Span}
   deriving (Eq, Show)

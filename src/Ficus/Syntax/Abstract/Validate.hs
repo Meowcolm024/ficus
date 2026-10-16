@@ -22,11 +22,14 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       unless (start (abstractSpan m) <= end (abstractSpan m)) (bad "reversed module span")
       unless (abstractOrigin m == SourceOrigin (abstractSpan m)) (bad "invalid module provenance")
       mapM_ validateExport (Map.toList (abstractExports m))
-      mapM_ (\((owner, label), field) -> do role owner [RecordRole]; unless (owner == fieldOwner field && label == fieldLabel field) (bad "inconsistent field descriptor")) (Map.toList (abstractFields m))
+      mapM_ (\(gid, entity) -> do global gid; unless (gid == entityId entity) (bad "inconsistent entity identity")) (Map.toList (abstractEntities m))
+      mapM_ (\((owner, label), field) -> do validName label; role owner [RecordRole]; unless (owner == fieldOwner field && label == fieldLabel field) (bad "inconsistent field descriptor")) (Map.toList (abstractFields m))
+      mapM_ (validName . occurrenceSpelling) (abstractOccurrences m)
       mapM_ global (Map.elems (builtinAssociations m))
       group (abstractDeclarations m)
     bad :: Text -> Check a
     bad = lift . Left
+    validName spelling = unless (spelling /= "_") (bad "wildcard used as a name")
     validNode :: Node a -> Check ()
     validNode n = do
       let s = nodeSpan n
@@ -38,7 +41,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
     onNode f n = validNode n >> f (nodeValue n)
     global gid = case gid of
       IntrinsicId _ -> pure ()
-      _ -> unless (Map.member gid (abstractEntities m)) (bad "unknown canonical global identity")
+      GlobalId _ _ spelling -> validName spelling >> unless (Map.member gid (abstractEntities m)) (bad "unknown canonical global identity")
     role gid allowed = do
       global gid
       case gid of
@@ -59,8 +62,8 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
     withValues xs = local (\s -> s {values = Set.union xs (values s)})
     withTypes :: Set TypeVarId -> Check a -> Check a
     withTypes xs = local (\s -> s {types = Set.union xs (types s)})
-    binder b = onNode (const (pure ())) b
-    typeBinder b = onNode (\(_, _, k) -> mapM_ kind k) b
+    binder b = onNode (\(_, spelling) -> validName spelling) b
+    typeBinder b = onNode (\(_, spelling, k) -> validName spelling >> mapM_ kind k) b
     typeIds bs = Set.fromList [i | b <- bs, let (i, _, _) = nodeValue b]
     binders :: [TypeBinder] -> Check a -> Check a
     binders bs action = do
@@ -122,7 +125,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       Where p g e -> do
         case p of AfterValueParameters n | n <= 0 -> bad "invalid where timing"; _ -> pure ()
         withValues (groupIds g) (group g >> expr e)
-      Project e selector -> expr e >> onNode (const (pure ())) selector
+      Project e selector -> expr e >> onNode validName selector
       ConstructRecord gid fs -> role gid [RecordConstructorRole] >> mapM_ assignment fs
       UpdateRecord e fs -> expr e >> mapM_ assignment fs
       Product es -> mapM_ expr es
@@ -131,7 +134,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       Negate e -> expr e
     nonempty :: [a] -> Check ()
     nonempty xs = unless (not (null xs)) (bad "unexpected empty Abstract sequence")
-    assignment = onNode (\(_, e) -> expr e)
+    assignment = onNode (\(label, e) -> validName label >> expr e)
     matchClause = onNode (\(p, g, e) -> patterns [p] (mapM_ expr g >> expr e))
     statements [] rest = rest
     statements (s : ss) rest =
@@ -157,7 +160,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       PatternDefinition p e -> expr e >> patterns [p] (pure ())
       AliasDefinition gid bs k t -> role gid [AliasRole] >> mapM_ kind k >> binders bs (ty t)
       DataDefinition gid bs k cs -> role gid [DataRole] >> mapM_ kind k >> binders bs (mapM_ (onNode (\(c, ts) -> role c [ConstructorRole] >> mapM_ ty ts)) cs)
-      RecordDefinition gid bs k ctor fs -> role gid [RecordRole] >> role ctor [RecordConstructorRole] >> mapM_ kind k >> binders bs (mapM_ (onNode (\(_, t) -> ty t)) fs)
+      RecordDefinition gid bs k ctor fs -> role gid [RecordRole] >> role ctor [RecordConstructorRole] >> mapM_ kind k >> binders bs (mapM_ (onNode (\(label, t) -> validName label >> ty t)) fs)
       OpaqueBuiltinType gid _ k -> global gid >> kind k
       TraitDefinition gid b supers methods -> role gid [TraitRole] >> binders [b] (mapM_ predicate supers >> mapM_ declaration methods)
       MethodDefinition gid s -> role gid [MethodRole] >> scheme s

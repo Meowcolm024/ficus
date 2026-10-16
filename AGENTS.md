@@ -17,7 +17,7 @@ Never change language behavior without updating SPEC.md in the same change.
 - `if` stays a distinct node through Core. Do not desugar it to `with`.
 - Runtime AST does no string-based name lookup.
 - Evaluation order is strict and left-to-right everywhere. Preserve it in any optimization.
-- Expression holes are hard errors after inference and never reach Core.
+- Expression holes may appear in Core for continuing elaboration and diagnostics. Elaboration reports them as hard errors; Runtime lowering independently rejects every hole and never emits a Runtime hole or stub.
 
 ## Testing
 

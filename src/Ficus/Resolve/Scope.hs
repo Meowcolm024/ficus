@@ -38,8 +38,8 @@ collectNames owner m =
   where
     entity ns role parent n = ((ns, C.nameText n), Entity (GlobalId owner ns (C.nameText n)) role (C.nameLocation n) parent)
     entries d = case C.concrete d of
-      C.FunctionClause n _ _ _ _ -> [entity ValueNS ValueRole Nothing n]
-      C.TypeSignature n _ -> [entity ValueNS ValueRole Nothing n]
+      C.FunctionClause n _ _ _ _ -> [entity ValueNS ValueRole Nothing n | C.nameText n /= "_"]
+      C.TypeSignature n _ -> [entity ValueNS ValueRole Nothing n | C.nameText n /= "_"]
       C.KindSignature n _ -> [entity TypeNS DataRole Nothing n | not (any (definesType (C.nameText n)) (C.moduleDeclarations m))]
       C.TypeAlias n _ _ -> [entity TypeNS AliasRole Nothing n]
       C.DataDeclaration n _ body ->
@@ -47,7 +47,7 @@ collectNames owner m =
          in case body of
               C.Constructors b -> entity TypeNS DataRole Nothing n : [entity ConstructorNS ConstructorRole (Just tid) c | C.Located _ _ (C.Constructor c _) <- C.blockItems b]
               C.Fields _ -> [entity TypeNS RecordRole Nothing n, entity ConstructorNS RecordConstructorRole (Just tid) n]
-      C.TraitDeclaration _ n _ b -> entity TypeNS TraitRole Nothing n : [entity ValueNS MethodRole (Just (GlobalId owner TypeNS (C.nameText n))) method | C.Located _ _ (C.TypeSignature method _) <- C.blockItems b]
+      C.TraitDeclaration _ n _ b -> entity TypeNS TraitRole Nothing n : [entity ValueNS MethodRole (Just (GlobalId owner TypeNS (C.nameText n))) method | C.Located _ _ (C.TypeSignature method _) <- C.blockItems b, C.nameText method /= "_"]
       _ -> []
     definesType spelling d = case C.concrete d of
       C.TypeAlias n _ _ -> C.nameText n == spelling
@@ -63,9 +63,11 @@ collectNames owner m =
     fieldDuplicates d = case C.concrete d of
       C.DataDeclaration _ _ (C.Fields block) -> snd (foldl checkField (Map.empty, []) (C.blockItems block))
       _ -> []
-    checkField (seen, ds) (C.Located _ _ (C.FieldSignature n _)) = case Map.lookup (C.nameText n) seen of
-      Just old -> (seen, ds ++ [(diagnostic DuplicateDeclaration (C.nameLocation n) "duplicate record field") {relatedSpans = [(C.nameLocation old, "earlier field")]}])
-      Nothing -> (Map.insert (C.nameText n) n seen, ds)
+    checkField (seen, ds) (C.Located _ _ (C.FieldSignature n _))
+      | C.nameText n == "_" = (seen, ds ++ [diagnostic ReservedName (C.nameLocation n) "a record field requires a name"])
+      | otherwise = case Map.lookup (C.nameText n) seen of
+          Just old -> (seen, ds ++ [(diagnostic DuplicateDeclaration (C.nameLocation n) "duplicate record field") {relatedSpans = [(C.nameLocation old, "earlier field")]}])
+          Nothing -> (Map.insert (C.nameText n) n seen, ds)
     checkSignature (seen, ds) n = case Map.lookup (C.nameText n) seen of
       Just old -> (seen, ds ++ [(diagnostic DuplicateSignature (C.nameLocation n) "duplicate kind signature") {relatedSpans = [(C.nameLocation old, "first signature")]}])
       Nothing -> (Map.insert (C.nameText n) n seen, ds)
@@ -113,6 +115,7 @@ buildScope header m own interfaces = foldl importOne (initial, own, []) (C.modul
       Just old | entityId old /= entityId e -> (exports, ds ++ [(diagnostic AmbiguousReexport s "conflicting public exports") {relatedSpans = [(entitySpan old, "earlier public entity"), (entitySpan e, "conflicting entity")]}])
       _ -> (Map.insert key e exports, ds)
     select iface (selected, ds) item = case C.concrete item of
+      C.ImportItem n _ | C.nameText n == "_" -> (selected, ds ++ [diagnostic ReservedName (C.nameLocation n) "_ is not an importable name"])
       C.ImportItem n members ->
         let ns = if C.nameSpace n == C.LowerName then ValueNS else TypeNS
             found = Map.lookup (ns, C.nameText n) (publicNames iface)
@@ -141,4 +144,4 @@ buildScope header m own interfaces = foldl importOne (initial, own, []) (C.modul
     orElse Nothing y = y
 
 collectFields :: ModuleId -> C.ConcreteModule -> Map (GlobalId, Text) FieldDescriptor
-collectFields owner m = Map.fromList [((gid, C.nameText name), FieldDescriptor gid (C.nameText name) (C.nameLocation name)) | C.Located _ _ (C.DataDeclaration n _ (C.Fields block)) <- C.moduleDeclarations m, let gid = GlobalId owner TypeNS (C.nameText n), C.Located _ _ (C.FieldSignature name _) <- C.blockItems block]
+collectFields owner m = Map.fromList [((gid, C.nameText name), FieldDescriptor gid (C.nameText name) (C.nameLocation name)) | C.Located _ _ (C.DataDeclaration n _ (C.Fields block)) <- C.moduleDeclarations m, let gid = GlobalId owner TypeNS (C.nameText n), C.Located _ _ (C.FieldSignature name _) <- C.blockItems block, C.nameText name /= "_"]

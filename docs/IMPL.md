@@ -124,7 +124,7 @@ Use-site conflict checking and identity deduplication follow the relevant model 
 
 - Allocate IDs for top-level and mutually visible where declarations before traversing their bodies. Group clauses by their owning value definition, preserving order and all clause spans; attach signatures to the corresponding declaration in that declaration list, not to an imported namesake. A signature-only name can be a provisional declaration fulfilled by a valid BUILTIN association; reject an unfulfilled ordinary signature after all associations are known. Diagnose duplicate signatures and independent duplicate definitions separately from legitimate clause grouping. Before combining clauses, check equal written value arity as specified in SPEC §6: count parameter patterns before `=`, excluding @ binders, RHS lambdas and signature arrows. Report N0012 on the later inconsistent clause head, relating it to the first head. Check during declaration grouping/desugaring before type inference; do not repair a mismatch by eta expansion. Preserve a common arity and every original count/span for validation and where timing. Sequential shadowing bindings are not grouped together; repeated zero-parameter definitions remain duplicate declarations.
 - Predeclare nominal types, aliases, constructors, traits, methods, fields, and implementations in their specified namespaces. Record constructor/field ownership and nominal identity explicitly. Same-spelled entities in permitted separate namespaces remain distinct. Nominal fields carry their owner, so a diagnostic may display Data.People.Person.name without treating that display as a new source-level value path.
-- Resolve function/lambda patterns with a fresh local ID per binder. Check duplicate binders across the complete pattern/parameter list. Guards and clause bodies see that clause's binders; other clauses do not. Bind `_` as a wildcard without allocating a value variable; `_name` is ordinary.
+- Resolve function/lambda patterns with a fresh local ID per binder. Check duplicate binders across the complete pattern/parameter list. Guards and clause bodies see that clause's binders; other clauses do not. Bind `_` as a wildcard without allocating a value variable; `_name` is ordinary. Wildcard declaration heads are translated to anonymous PatternDefinition Wildcard nodes, not ValueDefinitions. Keep each initializer, its source order, and where plan; allocate no global/local name, and never group repeated wildcard heads. Reject parameterized wildcard heads and all name-only uses of `_` during resolution.
 - For sequential expression/do declarations, resolve the initializer against the previous environment, then extend it for later items. Self-reference is not introduced by a sequential declaration. Shadowing gets a warning and a new ID. For mutually visible where/top-level groups, predeclared bindings are available throughout; SCC safety is checked later.
 - Maintain separate type-variable scopes. Explicit `@a` binders enter later parameter annotations/body/where scopes. A signature's explicit `{a}` and implicit free variables get signature-local IDs; a definition's `@` IDs are aligned positionally by checking, not unified merely because they share text. Named annotation variables without a permitted binder remain invalid. Infer kind/type holes later; no resolver metavariables or solved types belong in Abstract.
 - Resolve implementation member definitions against their trait member identities in the implementation's member scope. Repeated `show` definitions in different implementations are not duplicate global functions; record an implementation ID plus member ID and let elaboration build evidence.
@@ -262,7 +262,7 @@ This is a representation sketch, not compilable Haskell: supporting records and 
 | `CoverageObligation` | Live match/pattern/clause IDs, original spans, required-total versus warning-only reason, or a discharged-simple-binder record attached to its lambda ID. Do-bind obligations survive generated lambda/match conversion |
 | `Occurrence` | Source spelling/span, selected canonical reference or binder definition, and import-route metadata for navigation; no retained Concrete AST |
 
-An expression hole has an identity/origin but no inference metavariable yet. Abstract validation accepts it; inference reports its zonked type and forbids it in Core. Similarly a type hole is syntax consumed by kind/type inference. Resolve implicit signature variables once per signature in a stable traversal; binder order exposed to explicit application comes only from written explicit quantifiers, never incidental traversal order.
+An expression hole has an identity/origin but no inference metavariable yet. Abstract validation accepts it. Inference retains a typed goal using the shared parameterized expression syntax, continues elaboration, and reports its zonked type, lexical context, and blocking constraints after checking; it may retain typed holes in diagnostic Core, but reports them as elaboration errors and forbids them in accepted Core. Runtime lowering independently rejects any remaining hole. The detailed goal/recovery contract is in [TYPECHECKING.md](TYPECHECKING.md#expression-hole-goals-and-continuing-elaboration). Similarly a type hole is syntax consumed by kind/type inference. Resolve implicit signature variables once per signature in a stable traversal; binder order exposed to explicit application comes only from written explicit quantifiers, never incidental traversal order.
 
 The source `id : {a} -> a -> a; id @b (x : b) = x` has distinct signature and definition TypeVarIds, an ordered explicit quantifier, and a clause-local value ID for x. Elaboration aligns/checks the type binders. A term reference to an imported id uses its defining module's GlobalId; applying `@Int` adds a TypeApply node, without introducing a runtime lambda or delay.
 
@@ -277,6 +277,11 @@ A failed name use produces a diagnostic and, only in a recovery-only tree, a poi
 Diagnostics, explicit draft N/T code mappings, primary/related-span conventions, and warning severity are in [ERRORS.md](ERRORS.md#proposed-resolution-and-elaboration-diagnostics). Each pass's acceptance fixtures and validator checks are tracked in PLAN M2a–M2g. No canonical ID allocation order or map iteration order is allowed to alter runtime effects.
 
 ## 2. Type checker
+
+The detailed proposed pass contracts, generalization schedule, evidence-aware
+initialization checks, and implementation checkpoints are in
+[TYPECHECKING.md](TYPECHECKING.md). That document refines this section without
+changing SPEC.md or claiming an implemented type checker.
 
 The type checker may follow *Typing Haskell in Haskell* (THIH), simplified for Ficus. Useful parts include:
 
@@ -300,7 +305,7 @@ The built-in list, binary-product, and function constructors participate in kind
 
 For a value signature, expression annotation, or pattern annotation, each `_` becomes a fresh type metavariable with a fresh kind metavariable. Unification may solve a hole to a proper type or a higher-kinded constructor such as `(*)`. After checking the inferred expression or binding, zonk the written skeleton, retain residual inferred predicates, and generalize only where the v0 value restriction permits. Reject type holes in alias right-hand sides, data bodies, trait member signatures, implementation heads, and other type-only locations.
 
-Parse kind atoms as ordinary uppercase names, then resolve the reserved `Type` kind during semantic checking; do not hardcode `Type` in the parser. Kind annotations on alias, ADT, record, and trait parameters constrain inferred kinds. Share the type-parameter parser across these declarations: each parameter binds a lowercase name, optionally annotated with a kind, and never performs type matching. An optional top-level kind signature also constrains the alias's inferred kind; check it consistently with parameter annotations. Every `_` in a kind signature is a fresh kind metavariable to solve from the declaration; default any still-unconstrained kind variable to `Type` after inference and issue a warning. A standalone `_` in a non-binder, non-pattern expression position is an expression hole: infer and zonk its type, then issue a hard error showing that type and the hole's span, even if inference otherwise succeeds. Do not lower an expression hole to Core or Runtime AST.
+Parse kind atoms as ordinary uppercase names, then resolve the reserved `Type` kind during semantic checking; do not hardcode `Type` in the parser. Kind annotations on alias, ADT, record, and trait parameters constrain inferred kinds. Share the type-parameter parser across these declarations: each parameter binds a lowercase name, optionally annotated with a kind, and never performs type matching. An optional top-level kind signature also constrains the alias's inferred kind; check it consistently with parameter annotations. Every `_` in a kind signature is a fresh kind metavariable to solve from the declaration; default any still-unconstrained kind variable to `Type` after inference and issue a warning. A standalone `_` in a non-binder, non-pattern expression position is an expression hole: retain its typed goal and continue inference/elaboration, then issue its contextual hard-error diagnostic after solving the available constraints, even if inference otherwise succeeds. Core AST may retain expression-hole nodes for continued elaboration and diagnostics. Elaboration must report them as errors, and Runtime lowering must independently reject them rather than emitting a hole or stub.
 
 Reject partial applications and direct or indirect cycles of transparent aliases. Check recursive ADT SCCs for regularity before kind inference accepts them: occurrences must use declared parameters unchanged and in order, including through mutual recursion.
 
@@ -363,6 +368,20 @@ Future `FOREIGN LANG "symbol" name` uses the same parsed pragma representation a
 
 ## 3. Core AST
 
+The more explicit proposed typed calculus, polymorphic dictionary method fields,
+runtime match-failure representation, and independent validator are in
+[TYPECHECKING §6](TYPECHECKING.md#6-proposed-core-calculus-and-ast). The grammar
+below is a compact overview; it omits scheme abstraction/instantiation and failure
+continuations described there. Inference and finalized Core share a parameterized
+`ExprF`/`Expr ty` structure; there is no separate checked expression datatype.
+Private work records retain unresolved pattern, field, and evidence plans.
+Continuing expression-hole elaboration uses shared `Hole` nodes and the
+`PartialElaboration` result described in
+[TYPECHECKING §4](TYPECHECKING.md#expression-hole-goals-and-continuing-elaboration).
+Core includes typed hole nodes for diagnostic output. Elaboration reports each
+hole as an error; completeness validation accepts only hole-free Core. Runtime
+lowering independently rejects holes even if earlier checks were bypassed.
+
 A compact Core AST should stay close to the type-checker's elaboration result. Functions and applications are unary and curried; trait evidence is explicit. One possible grammar is:
 
 ```ebnf
@@ -370,6 +389,7 @@ module  = { data_decl | dict_decl | bind } ;
 
 bind    = name ":" type "=" expr ;
 expr    = variable
+        | hole hole_id
         | literal
         | fun binder "->" expr
         | app expr expr
@@ -452,7 +472,9 @@ Elaboration must preserve the specification's evaluation order. The Core AST val
 
 ## 4. Runtime AST
 
-Runtime AST erases static types, type arguments, schemes, trait predicates, and source names not needed for diagnostics. Dictionaries remain only when their fields are used at runtime.
+Runtime lowering must check the entire input Core module for expression holes before erasure or optimization, including unused bindings, lambda bodies, dictionary methods, and unselected branches. Encountering a hole returns a structured error at its original span and prevents Runtime output, even if elaboration or completeness validation was bypassed. The lowering traversal also explicitly rejects the hole constructor; no runtime stub or delayed failure is generated.
+
+Runtime AST has no expression-hole constructor. It erases static types, type arguments, schemes, trait predicates, and source names not needed for diagnostics. Dictionaries remain only when their fields are used at runtime.
 
 A compact form is:
 

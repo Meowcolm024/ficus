@@ -1,6 +1,6 @@
 -- | Structural dependencies only. SCCs are not evidence of safe strict
 -- initialization; inference checks protection, expansiveness and dictionaries.
-module Ficus.Syntax.Abstract.Dependencies (Dependencies (..), bindingDependencies, bindingComponents) where
+module Ficus.Syntax.Abstract.Dependencies (Dependencies (..), declarationDependencies, bindingDependencies, bindingComponents) where
 
 import Data.Graph (SCC, stronglyConnComp)
 import Data.Map.Strict (Map)
@@ -45,6 +45,8 @@ patternBinders p = case nodeValue p of
   NegatedPattern q -> patternBinders q
   _ -> []
 
+-- | Also available for anonymous discard initializers, which have no entry in
+-- the name-indexed binding graph. They must still be checked and initialized.
 declarationDependencies :: Declaration -> Dependencies
 declarationDependencies d = case nodeValue d of
   ValueDefinition _ sig body -> foldMap scheme sig <> case body of BuiltinBody _ -> mempty; ClausesBody _ cs -> foldMap clause cs

@@ -1,9 +1,9 @@
 # Error codes and source diagnostics
 
 Public error codes consist of one uppercase phase prefix and four decimal digits.
-`P` covers the parser frontend, including lexing and layout. `N` and `T` are
-reserved for name resolution and type checking; their proposed registry is below.
-Only the P registry is implemented today.
+`P` covers the parser frontend, including lexing and layout; `N` covers resolution;
+`T` covers type checking and elaboration. P and v0 N codes are implemented;
+future-feature N entries and the T registry below remain implementation contracts.
 Once published, a code must not be reassigned to a different error. Messages may
 change independently of codes.
 
@@ -50,7 +50,7 @@ underlined, EOF gets a visible caret, and long multiline spans elide middle line
 If the referenced line is unavailable, the header still includes the filename,
 position, code, and message.
 
-## Resolution and proposed elaboration diagnostics
+## Shared semantic diagnostic conventions
 
 Resolution N codes are implemented in `Ficus.Error.Resolve`; the future-feature
 and T assignments remain an elaboration contract. Render mappings are explicit,
@@ -66,6 +66,8 @@ N0101, PreludeRequired to N0120, and InvalidImportSelection to N0205. An existin
 InvalidPatternAnnotation due to a missing scoped type variable maps to N0007;
 a well-scoped but incompatible annotation is a T error.
 
+## Resolution diagnostics (N)
+
 | Code | Proposed constructor / meaning | Primary location; related locations |
 | --- | --- | --- |
 | N0001 | UnresolvedName | Failing name occurrence, including a BUILTIN target |
@@ -73,7 +75,7 @@ a well-scoped but incompatible annotation is a T error.
 | N0003 | WrongNamespace | Used occurrence; resolved entity declaration explaining its role |
 | N0004 | DuplicateDeclaration | Later independent local declaration; earlier declaration (not competing imports) |
 | N0005 | DuplicatePatternBinder | Repeated binder; first binder in the same pattern/parameter list |
-| N0006 | ReservedName | Attempted binding; reserved entity identity, if source-defined |
+| N0006 | ReservedName | Attempted reserved binding or use of `_` where a name is required; reserved entity identity, if source-defined |
 | N0007 | InvalidTypeVariableScope | Unbound type-variable occurrence in an annotation; enclosing binder/signature context |
 | N0010 | DuplicateSignature | Later signature target; first signature |
 | N0011 | MissingSignatureTarget | Signature name without a defining clause or valid BUILTIN association |
@@ -95,6 +97,25 @@ a well-scoped but incompatible annotation is a T error.
 | N0205 | InvalidImportSelection | Invalid constructor/record member selection; owning type declaration |
 | N0206 | AmbiguousReexport | Conflicting later pub token; earlier public declaration/re-export and candidate identities |
 | N0207 | ModuleNotImportable | Import edge to a future STANDALONE module; its header pragma |
+| N0901 | Shadowing (warning) | New sequential binder; hidden binder |
+| N0902 | RepeatedModuleQualifier (warning) | Repeated qualifier import; earlier bindings; distinct modules are checked at use sites |
+
+N0002 is emitted only when a candidate set is demanded by an occurrence;
+N0206 checks publication even if no expression refers to the name. Deduplicate
+candidates by canonical defining identity, never by import path or display text.
+Do not emit N0004 for an unused opened-import conflict. Repeated module qualifiers
+warn with N0902; qualified uses select by exported terminal name and namespace
+and report N0002 only for distinct surviving identities.
+
+## Type checking and elaboration diagnostics (T, proposed)
+
+Inference, typed coverage, initialization safety, builtin contracts, and Core
+validation own these errors. A well-resolved field label can still fail typed
+selection; a well-scoped annotation can still fail unification. The staged
+ownership and proposed Core checks are in [TYPECHECKING.md](TYPECHECKING.md).
+
+| Code | Proposed constructor / meaning | Primary location; related locations |
+| --- | --- | --- |
 | T0001 | TypeMismatch | Incompatible use/initializer; expected signature or originating constraint |
 | T0002 | InfiniteType | Occurs-check origin; binding/use that introduced the cyclic equation |
 | T0003 | KindMismatch | Supplied type or kind annotation; expected-kind origin |
@@ -102,7 +123,7 @@ a well-scoped but incompatible annotation is a T error.
 | T0005 | ExcessTypeArguments | First excess @ argument; explicit quantifier declaration |
 | T0006 | TypeBinderMismatch | Definition/lambda binder; corresponding signature binder list |
 | T0099 | InvalidCoreTree | Invalid generated/source origin; internal boundary failure |
-| T0101 | ExpressionHole | Hole occurrence, with inferred zonked type |
+| T0101 | ExpressionHole | Hole occurrence; zonked expected/inferred type, relevant lexical bindings and their types, blocking constraints and their origins; emitted after continuing inference/elaboration |
 | T0102 | UnresolvedWeakType | Binding/receiver origin; uses keeping it unresolved |
 | T0103 | InvalidTypeHole | Hole in a prohibited type-only location |
 | T0201 | ExpansiveInitializer | Complete immediate initializer; relevant top-level/member declaration |
@@ -118,17 +139,24 @@ a well-scoped but incompatible annotation is a T error.
 | T0501 | BuiltinContractMismatch | Declared signature/kind; BUILTIN key contract and association |
 | T0502 | MissingBuiltinSignature | BUILTIN target; absent/incomplete ordinary signature |
 | T0503 | UnexpectedBuiltinDefinition | Extra source body; signature-backed builtin association |
-| N0902 | RepeatedModuleQualifier (warning) | Repeated qualifier import; earlier bindings; distinct modules are checked at use sites |
-| N0901 | Shadowing (warning) | New sequential binder; hidden binder |
 | T0901 | NonExhaustiveMatch (warning) | Match/function origin; uncovered case |
 | T0902 | RedundantClause (warning) | Redundant clause; covering earlier clauses |
 | T0903 | KindDefaulting (warning) | Parameter/kind-hole origin; selected default |
 
-N0002 is emitted only when a candidate set is demanded by an occurrence;
-N0206 checks publication even if no expression refers to the name. Deduplicate
-candidates by canonical defining identity, never by import path or display text.
-Do not emit N0004 for an unused opened-import conflict. Repeated module qualifiers warn with N0902; qualified uses select by exported
-terminal name and namespace and report N0002 only for distinct surviving identities.
+## Provenance, recovery, and rendering
+
+Expression holes are typed goals, not poison from an earlier error. Keep them in
+shared typed expression nodes while checking surrounding expressions and independent
+declarations; emit one T0101 per source hole after available constraints have been
+solved. Knowing a goal's type does not supply its missing term. Report the goal's
+lexical context at its occurrence, not names introduced later or shadowed there.
+Related constraint diagnostics explain blockers; suppress cascades caused solely
+by missing hole evidence without suppressing independent type errors. Goals and
+typed hole nodes may remain in diagnostic Core returned for tooling. Elaboration
+still reports T0101 and cannot accept the module. Runtime lowering independently
+rejects any Core hole, with its source span, before optimization/erasure; this is
+an expression-hole error, not T0099 for a malformed tree. No Runtime hole or stub
+is emitted, including for unused bindings or unselected branches.
 
 For generated nodes, primary spans point to the actual originating construct:
 implicit Prelude uses a zero-width module-start/header anchor, do-generated

@@ -110,11 +110,15 @@ failAt code s msg = emit (diagnostic code s msg) >> throwError ()
 recover :: Resolve a -> Resolve (Maybe a)
 recover action = (Just <$> action) `catchError` const (pure Nothing)
 
+requireName :: C.Name -> Resolve ()
+requireName n = when (C.nameText n == "_") (failAt ReservedName (C.nameLocation n) "_ is a wildcard or hole, not a name")
+
 recordOccurrence :: C.Name -> Reference -> [Span] -> Resolve ()
 recordOccurrence n ref routes = modify' (\s -> s {occurrences = A.Occurrence (C.nameLocation n) (C.nameText n) ref routes : occurrences s})
 
 lookupEntity :: Namespace -> C.Name -> Resolve A.Entity
 lookupEntity ns n = do
+  requireName n
   env <- ask
   let key = (ns, C.nameText n)
       intrinsic = [A.Entity gid role (C.nameLocation n) Nothing | (space, txt, gid, role) <- primitiveNames, space == ns, txt == C.nameText n]
@@ -134,6 +138,7 @@ demand _ n candidates = case candidates of
 
 valueRef :: C.Name -> Resolve A.Expr
 valueRef n = do
+  requireName n
   locals <- asks envValues
   case Map.lookup (C.nameText n) locals of
     Just ref -> recordOccurrence n ref [] >> nameNode n (A.Ref ref)
@@ -150,6 +155,7 @@ valueRef n = do
 -- Resolve the entire module prefix once. No constructor-projection fallback.
 qualified :: Namespace -> [C.Name] -> C.Name -> Resolve A.Entity
 qualified ns prefix terminal = do
+  requireName terminal
   scope <- asks envScope
   let path = map C.nameText prefix
   case Map.findWithDefault [] path (moduleQualifiers scope) of
@@ -233,7 +239,8 @@ withTypes bs action = do
   where
     add (table, binders) b = case C.concrete b of
       C.TypeBinder n annotation -> do
-        when (C.nameText n == "_" || Map.member (C.nameText n) table) (failAt DuplicatePatternBinder (C.nameLocation n) "invalid or repeated type binder")
+        requireName n
+        when (Map.member (C.nameText n) table) (failAt DuplicatePatternBinder (C.nameLocation n) "repeated type binder")
         i <- TypeVarId <$> newId
         k <- traverse kindNode annotation
         binder <- sourceNode b (i, C.nameText n, k)
@@ -387,6 +394,7 @@ expr e = case C.concrete e of
             _ -> failAt InvalidAbstractTree (C.location clause) "missing match pattern"
     field f = case C.concrete f of
       C.Field n rhs w -> do
+        requireName n
         result <- withWhere 0 w (expr rhs)
         sourceNode f (C.nameText n, result)
 
@@ -427,7 +435,7 @@ dottedExpr whole base names = case C.concrete base of
       A.Constructor _ -> failAt WrongNamespace (C.location base) "cannot project directly from a constructor"
       _ -> foldM project receiver names
   where
-    project receiver n = do selector <- nameNode n (C.nameText n); sourceNode whole (A.Project receiver selector)
+    project receiver n = do requireName n; selector <- nameNode n (C.nameText n); sourceNode whole (A.Project receiver selector)
 
 requirePrelude :: Span -> Resolve ()
 requirePrelude s = do
@@ -528,7 +536,7 @@ localBindings ds = do
   pure (names, ())
   where
     definitionNames d = case C.concrete d of
-      C.FunctionClause n _ _ _ _ -> [(True, n)]
+      C.FunctionClause n _ _ _ _ -> [(True, n) | C.nameText n /= "_"]
       C.PatternBinding p _ _ -> [(False, n) | n <- patternNames p]
       _ -> []
     checkDeclaration seen (function, n) = case Map.lookup (C.nameText n) seen of
@@ -543,7 +551,7 @@ localBindings ds = do
         throwError ()
       Nothing -> pure (Map.insert (C.nameText n) n seen)
     declared d = case C.concrete d of
-      C.FunctionClause n _ _ _ _ -> [n]
+      C.FunctionClause n _ _ _ _ -> [n | C.nameText n /= "_"]
       C.PatternBinding p _ _ -> patternNames p
       _ -> []
     add table n | Map.member (C.nameText n) table = pure table
@@ -554,11 +562,19 @@ declarations recursive ds = declarationsWith recursive Map.empty ds
 
 declarationsWith :: Bool -> Map Text Reference -> [C.Declaration] -> Resolve A.BindingGroup
 declarationsWith recursive allocated ds = do
-  let keys = nub [C.nameText n | C.Located _ _ decl <- ds, n <- case decl of C.FunctionClause x _ _ _ _ -> [x]; C.TypeSignature x _ -> [x]; _ -> []]
+  let keys = nub [C.nameText n | C.Located _ _ decl <- ds, n <- case decl of C.FunctionClause x _ _ _ _ -> [x]; C.TypeSignature x _ -> [x]; _ -> [], C.nameText n /= "_"]
   values <- forM keys $ \key -> recover (valueDefinition allocated key ds)
   others <- forM ds $ \d -> case C.concrete d of
-    C.FunctionClause {} -> pure Nothing
-    C.TypeSignature {} -> pure Nothing
+    C.FunctionClause n bs ps body w
+      | C.nameText n == "_" -> recover $ do
+          unless (null bs && null ps) (requireName n)
+          wildcard <- nameNode n A.Wildcard
+          rhs <- withWhere 0 w (expr body)
+          sourceNode d (A.PatternDefinition wildcard rhs)
+      | otherwise -> pure Nothing
+    C.TypeSignature n _
+      | C.nameText n == "_" -> recover (failAt ReservedName (C.nameLocation n) "a signature requires a name")
+      | otherwise -> pure Nothing
     C.KindSignature n k -> case [() | C.Located _ _ decl <- ds, sameType n decl] of
       _ : _ -> pure Nothing
       [] -> recover $ do
@@ -683,8 +699,14 @@ otherDeclaration allocated siblings d = case C.concrete d of
           entities = Map.unions (Map.fromList [(A.entityId x, x) | x <- Map.elems (envOwn env)] : map allEntities (Map.elems (scopeInterfaces (envScope env))))
           memberNames = Map.fromList [(name, GlobalRef gid) | (gid@(GlobalId _ ValueNS name), entity) <- Map.toList entities, A.entityOwner entity == Just traitId]
       let memberRefs = Map.fromList [(C.nameText n, ref) | C.Located _ _ (C.FunctionClause n _ _ _ _) <- C.blockItems block, Just ref <- [Map.lookup (C.nameText n) memberNames]]
-      forM_ [n | C.Located _ _ (C.FunctionClause n _ _ _ _) <- C.blockItems block, Map.notMember (C.nameText n) memberNames] $ \n -> emit (diagnostic MissingExport (C.nameLocation n) "trait has no such method")
-      group <- local (\e -> e {envValues = memberRefs `Map.union` envValues e}) (declarationsWith True memberRefs (C.blockItems block))
+      forM_ [n | C.Located _ _ (C.FunctionClause n _ _ _ _) <- C.blockItems block, Map.notMember (C.nameText n) memberNames] $ \n ->
+        if C.nameText n == "_"
+          then emit (diagnostic ReservedName (C.nameLocation n) "an implementation member requires a name")
+          else emit (diagnostic MissingExport (C.nameLocation n) "trait has no such method")
+      let namedMember member = case C.concrete member of
+            C.FunctionClause n _ _ _ _ -> C.nameText n /= "_"
+            _ -> True
+      group <- local (\e -> e {envValues = memberRefs `Map.union` envValues e}) (declarationsWith True memberRefs (filter namedMember (C.blockItems block)))
       pure (context, head', A.declarations group)
     sourceNode d (A.ImplementationDefinition ident types context head' members)
   _ -> failAt InvalidAbstractTree (C.location d) "unexpected declaration in conversion"
@@ -704,6 +726,7 @@ collectBuiltins pragmas = forM_ [p | p@(C.Located _ _ (C.Pragma n _)) <- pragmas
     Left err -> emit err >> throwError ()
     Right directive | directiveName directive == "BUILTIN" -> case C.concrete p of
       C.Pragma _ [C.Located _ _ (C.IdentifierArgument key), C.Located _ _ (C.IdentifierArgument target)] -> do
+        requireName target
         keys <- asks (builtinKeys . envConfig)
         unless (Set.member (C.nameText key) keys) (failAt UnknownBuiltin (C.nameLocation key) "unknown compiler builtin key")
         own <- asks envOwn

@@ -409,6 +409,7 @@ test-suite ficus-test
       Ficus.Parser.Spec
       Ficus.Resolve.Spec
       Ficus.Resolve.Support
+      Ficus.Resolve.WildcardSpec
       Paths_ficus
   autogen-modules:
       Paths_ficus

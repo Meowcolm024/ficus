@@ -18,7 +18,7 @@ This document is non-normative. [SPEC.md](SPEC.md) defines language behavior and
 | M1 | Syntax | Lexer, parser-driven layout, Megaparsec, Concrete AST, dynamic spelling-based operator grouping, concrete pretty-printer | v0 grammar and layout fixtures pass; round-trip and idempotence properties pass |
 | M2 | Resolution and Abstract AST | Module graph/import cycles, imports/re-exports, namespaces, uncommitted dotted chains, declaration identity, clause grouping, `do`/interpolation, dependency analysis | Abstract validator passes; unresolved/duplicate member names, deferred import ambiguity/use-site errors, pub conflicts, and the separately selected module collision policy, unsafe recursive dependencies, and Prelude-disabled sugar are covered; sequential shadowing warns |
 | M3 | End-to-end slice | HM without traits, value restriction, signed/unsigned recursion, first-order ADTs, products, lists, patterns, distinct `if`, strict blocks and `where`, typed Core, minimal Runtime and compiled evaluator, ordinary declarations with resolved `BUILTIN` metadata and primitives | A program with list functions and mutually recursive functions runs through all four stages; all boundary validators run in tests |
-| M4 | Types complete | Kinds and defaulting, rank-1 explicit signature quantifiers, scoped @ binders/type applications, parenthesized pattern annotations with scoped type variables, kind-annotated alias parameters and regular recursive ADTs, built-in higher-kinded constructors, type/kind holes, expression-hole errors, record construction/update and deferred field constraints | Kind, alias, hole, annotated-pattern, and record fixtures pass; pending projection variables remain monomorphic; expression holes cannot reach Core |
+| M4 | Types complete | Kinds and defaulting, rank-1 explicit signature quantifiers, scoped @ binders/type applications, parenthesized pattern annotations with scoped type variables, kind-annotated alias parameters and regular recursive ADTs, built-in higher-kinded constructors, type/kind holes, expression-hole errors, record construction/update and deferred field constraints | Kind, alias, hole, annotated-pattern, and record fixtures pass; pending projection variables remain monomorphic; expression holes remain representable in diagnostic Core but fail elaboration; Runtime lowering independently rejects them |
 | M5 | Traits | Haskell 98 heads, superclass cycles, visible implementation sets, orphan/overlap checks, method constraints, ambiguity and monomorphism restrictions, explicit dictionaries, default non-expansive top-level/member initializers | `Functor []`, `Bifunctor (*)`, marker `Monad`, thunked Seq, and short-circuiting Alternative Maybe work; signed/unsigned constrained bindings and constrained methods are covered; derived functions remain outside dictionaries |
 | M6 | Runtime completeness | Safe arity raising, single-constructor/single-field wrapper erasure, lexical addresses and numeric IDs, dictionary erasure only when evidence is unused, Runtime validator, direct interpreter oracle, runtime provenance | Compiled and direct evaluators agree on values, errors, and effect order; partial/extra applications and intermediate `where` initialization are covered |
 | M7 | Prelude and v0 conformance | Proposed v0 builtin/Class/System.IO/Data inventory (PRELUDE §1), explicit thunked sequencing/choice and derived seqLeft/seqRight, explicit stdlib bootstrap imports, reviewed implicit Prelude exports excluding Data.Map, explicit entry-module selection and required own `main` with either supported signature, exhaustiveness/redundancy warnings, end-to-end scripts | Every v0 spec rule has a fixture; sample scripts run; required decisions are reflected in their owner documents; Stack build/tests pass |
@@ -63,6 +63,18 @@ unambiguous configured provider; duplicate matching files are configuration
 errors. Observable ordering of implicit versus explicit import initialization
 remains a follow-up. Concatenation uses Prelude.stringAppend; repeated module
 qualifiers warn and resolve at use sites by canonical identity.
+
+### M3–M5 breakdown: inference, elaboration, and typed Core
+
+[TYPECHECKING.md](TYPECHECKING.md) refines M3–M5 into T0–T12, with dependencies,
+acceptance evidence, module ownership, and a proposed typed Core calculus. T0–T6
+provide the trait-free M3 execution slice; T7–T8 finish kinds, explicit type
+operations, holes, and nominal fields for M4; T9–T12 add qualified inference,
+evidence, dictionaries, and checked interfaces for M5. These are planned steps,
+not completed work. Read the binding-boundary schedule before implementing
+generalization: value restriction, monomorphism restriction, initialization
+admissibility, and recursive protection are separate checks. Recheck initialization
+after evidence insertion, before publishing validated Core.
 
 ### Required coverage
 

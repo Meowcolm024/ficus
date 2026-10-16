@@ -259,7 +259,11 @@ Lexical productions are defined in Section 3.
 
 `if` conditions and pattern guards exclude unparenthesized lambdas to disambiguate the clause arrow. Parenthesized lambdas are allowed. Nested conditionals require their own delimited blocks: `if { if { _ -> True } -> True; _ -> False }` is valid, but `if if if _ -> True -> True -> True` is not.
 
-`_` has ordinary identifier syntax: it is a wildcard in binders and patterns, an unconditional fallback as a whole `if` condition, and a hole in expression, type, or kind positions (Section 7.4).
+`_` has ordinary identifier syntax: it is a wildcard in binders and patterns, an unconditional fallback as a whole `if` condition, and a hole in expression, type, or kind positions (Section 7.4). It never denotes a source name.
+
+A declaration `_ = expr` is an anonymous wildcard binding: it retains the initializer and its ordinary strict evaluation, initialization restrictions, and attached `where` timing, but introduces no value identity, scope entry, or export. Repeated wildcard bindings are independent declarations in source order, not duplicate definitions or function clauses. This form is allowed at top level, in `where` groups, and in expression-block and `do` declarations.
+
+A wildcard head cannot take value or `@` parameters: `_ x = x` and `_ @a = expr` are invalid because those forms require a function name; `_ = x -> x` discards a function expression instead. `_ : Int` is not a valid signature target. `_` cannot name a field or method, be an import selection or qualified member, or be a `BUILTIN` target. Type parameters, explicit type binders, and signature quantifiers also require names other than `_`. These restrictions are checked semantically, without parser special cases. `_name` remains an ordinary name.
 
 `binder_pattern` is deliberately self-delimiting so adjacent function parameters remain unambiguous. Atomic, product, and list patterns may be binders directly. A constructor application or infix pattern must be parenthesized to form one binder:
 
@@ -273,7 +277,7 @@ mapper = (Just value) fallback -> value
 
 Without parentheses, adjacent atomic patterns denote separate binders.
 
-Declaration heads cannot be infix patterns, even when parenthesized: `x :: xs = value` is invalid in every declaration context. Top-level definitions require a binding name; local and `do` `=` definitions also admit non-infix patterns such as `(a, b)`, `Just x`, and `[x, y]`. `(++) xs ys = ...` names a value operator and is valid. Infix patterns remain valid as parenthesized function arguments; `do` `<-` accepts them only when type-directed coverage proves them irrefutable (Section 10).
+Declaration heads cannot be infix patterns, even when parenthesized: `x :: xs = value` is invalid in every declaration context. Top-level definitions require a binding name or a standalone wildcard head `_`; local and `do` `=` definitions also admit non-infix patterns such as `(a, b)`, `Just x`, and `[x, y]`. `(++) xs ys = ...` names a value operator and is valid. Infix patterns remain valid as parenthesized function arguments; `do` `<-` accepts them only when type-directed coverage proves them irrefutable (Section 10).
 
 ### 5.1 Qualification and shared syntax
 
@@ -560,7 +564,7 @@ foo x = (1, x)
 
 In the second example, the constructor hole becomes `(*)` and its argument hole becomes `Int`. Type holes require a value definition, annotated expression, or annotated pattern; they are invalid in aliases, data bodies, trait signatures, implementation heads, and other type-only positions. Kind holes are allowed as specified in Section 7.3.
 
-Standalone `_` is a wildcard in binders and patterns, and an expression hole elsewhere. Expression holes are hard errors after inference; diagnostics show their inferred types, including remaining variables, and source locations.
+Standalone `_` is a wildcard in binders and patterns, and an expression hole elsewhere. An expression hole does not immediately abort inference or elaboration: the compiler continues checking the surrounding program using a typed placeholder, collecting constraints and independent diagnostics. After checking, each hole is a hard error whose diagnostic shows its inferred or expected type (including remaining variables), source location, relevant in-scope bindings and their types, and any constraints still blocking the goal. A hole remains an error even when its type is fully known; type inference does not fill in the missing expression. Expression holes may remain in Core AST for continued elaboration and diagnostics, but their presence prevents successful compilation. Lowering from Core to Runtime AST must independently report an error if any expression hole is found, including in unused bindings or unselected branches; it must not erase the hole or replace it with a runtime stub or failure. Runtime AST contains no expression holes.
 
 ## 8. Built-in algebraic forms
 

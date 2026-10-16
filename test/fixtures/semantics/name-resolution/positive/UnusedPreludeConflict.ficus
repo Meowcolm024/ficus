@@ -1,0 +1,2 @@
+use Resolve.Left (not)
+answer = 0

@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Left
+use Right
+answer = 1

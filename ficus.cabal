@@ -20,6 +20,9 @@ extra-source-files:
     CHANGELOG.md
     docs/SPEC.md
     docs/ERRORS.md
+    test/fixtures/desugaring/pattern-lambdas/DoBindingsV0.ficus
+    test/fixtures/desugaring/pattern-lambdas/RecordV1.ficus
+    test/fixtures/desugaring/pattern-lambdas/SourcesV0.ficus
     test/fixtures/eta/Arguments.ficus
     test/fixtures/eta/Bodyless.ficus
     test/fixtures/eta/DefinitionScopes.ficus
@@ -177,10 +180,48 @@ extra-source-files:
     test/fixtures/record-patterns/TypeMemberAtConstructionV1.ficus
     test/fixtures/record-patterns/TypeMemberAtPatternV1.ficus
     test/fixtures/record-patterns/WitnessEscapeV1.ficus
+    test/fixtures/semantics/name-resolution/graphs/AliasCycle/src/A.ficus
+    test/fixtures/semantics/name-resolution/graphs/AliasCycle/src/B.ficus
+    test/fixtures/semantics/name-resolution/graphs/Diamond/src/Left.ficus
+    test/fixtures/semantics/name-resolution/graphs/Diamond/src/Main.ficus
+    test/fixtures/semantics/name-resolution/graphs/Diamond/src/Right.ficus
+    test/fixtures/semantics/name-resolution/graphs/Diamond/src/Shared.ficus
+    test/fixtures/semantics/name-resolution/graphs/ImplicitPreludeCycle/src/Helper.ficus
+    test/fixtures/semantics/name-resolution/graphs/ImplicitPreludeCycle/src/Main.ficus
+    test/fixtures/semantics/name-resolution/graphs/ImplicitPreludeCycle/src/Prelude.ficus
+    test/fixtures/semantics/name-resolution/graphs/LongCycle/src/A.ficus
+    test/fixtures/semantics/name-resolution/graphs/LongCycle/src/B.ficus
+    test/fixtures/semantics/name-resolution/graphs/LongCycle/src/C.ficus
+    test/fixtures/semantics/name-resolution/graphs/MissingImplicitPrelude/src/Main.ficus
+    test/fixtures/semantics/name-resolution/graphs/MissingUnusedModule/src/Main.ficus
+    test/fixtures/semantics/name-resolution/graphs/MutualImport/src/A.ficus
+    test/fixtures/semantics/name-resolution/graphs/MutualImport/src/B.ficus
+    test/fixtures/semantics/name-resolution/graphs/NoPreludeNoLibrary/src/Main.ficus
+    test/fixtures/semantics/name-resolution/graphs/PreludeBootstrap/src/Base.ficus
+    test/fixtures/semantics/name-resolution/graphs/PreludeBootstrap/src/Main.ficus
+    test/fixtures/semantics/name-resolution/graphs/PreludeBootstrap/src/Prelude.ficus
+    test/fixtures/semantics/name-resolution/graphs/PreludeSelfCycle/src/Main.ficus
+    test/fixtures/semantics/name-resolution/graphs/PreludeSelfCycle/src/Prelude.ficus
+    test/fixtures/semantics/name-resolution/graphs/ReexportCycle/src/A.ficus
+    test/fixtures/semantics/name-resolution/graphs/ReexportCycle/src/B.ficus
+    test/fixtures/semantics/name-resolution/graphs/SelfImport/src/Main.ficus
+    test/fixtures/semantics/name-resolution/graphs/UnusedSelectionCycle/src/A.ficus
+    test/fixtures/semantics/name-resolution/graphs/UnusedSelectionCycle/src/B.ficus
+    test/fixtures/semantics/name-resolution/graphs/ValueRecursion/src/Main.ficus
+    test/fixtures/semantics/name-resolution/negative/AmbiguousImports.ficus
+    test/fixtures/semantics/name-resolution/negative/AmbiguousPrelude.ficus
+    test/fixtures/semantics/name-resolution/negative/AmbiguousReexport.ficus
     test/fixtures/semantics/name-resolution/negative/BuiltinMissingArgument.ficus
     test/fixtures/semantics/name-resolution/negative/BuiltinStringTarget.ficus
     test/fixtures/semantics/name-resolution/negative/BuiltinUnknownKey.ficus
     test/fixtures/semantics/name-resolution/negative/BuiltinUnresolvedTarget.ficus
+    test/fixtures/semantics/name-resolution/negative/ClauseArityMismatch.ficus
+    test/fixtures/semantics/name-resolution/negative/ClauseArityMismatchImpl.ficus
+    test/fixtures/semantics/name-resolution/negative/ClauseArityMismatchSigned.ficus
+    test/fixtures/semantics/name-resolution/negative/ClauseArityMismatchTypeBinder.ficus
+    test/fixtures/semantics/name-resolution/negative/ClauseArityMismatchWhere.ficus
+    test/fixtures/semantics/name-resolution/negative/MissingUnusedExport.ficus
+    test/fixtures/semantics/name-resolution/negative/ModuleMissing.ficus
     test/fixtures/semantics/name-resolution/negative/NoPreludeDo.ficus
     test/fixtures/semantics/name-resolution/negative/NoPreludeInterpolation.ficus
     test/fixtures/semantics/name-resolution/negative/RecordAllMemberSelection.ficus
@@ -188,7 +229,22 @@ extra-source-files:
     test/fixtures/semantics/name-resolution/negative/ReservedConstructorBinding.ficus
     test/fixtures/semantics/name-resolution/negative/ReservedListConstructorBinding.ficus
     test/fixtures/semantics/name-resolution/negative/UnknownPragma.ficus
+    test/fixtures/semantics/name-resolution/positive/CanonicalAlias.ficus
+    test/fixtures/semantics/name-resolution/positive/CanonicalReexport.ficus
+    test/fixtures/semantics/name-resolution/positive/ClauseArityDifferentScopes.ficus
+    test/fixtures/semantics/name-resolution/positive/ClauseArityPatternSlots.ficus
+    test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus
+    test/fixtures/semantics/name-resolution/positive/EqualClauseArityTypeBinders.ficus
+    test/fixtures/semantics/name-resolution/positive/LocalBinderHidesImports.ficus
+    test/fixtures/semantics/name-resolution/positive/SameEntityReexport.ficus
+    test/fixtures/semantics/name-resolution/positive/SameEntityViaReexport.ficus
+    test/fixtures/semantics/name-resolution/positive/SequentialDifferentArities.ficus
+    test/fixtures/semantics/name-resolution/positive/UnusedImportConflict.ficus
+    test/fixtures/semantics/name-resolution/positive/UnusedPreludeConflict.ficus
     test/fixtures/semantics/name-resolution/support/Data/Complex.ficus
+    test/fixtures/semantics/name-resolution/support/Resolve/Bridge.ficus
+    test/fixtures/semantics/name-resolution/support/Resolve/Left.ficus
+    test/fixtures/semantics/name-resolution/support/Resolve/Right.ficus
     test/fixtures/semantics/type-checking/negative/AliasHole.ficus
     test/fixtures/semantics/type-checking/negative/ExpansiveImpl.ficus
     test/fixtures/semantics/type-checking/negative/ExpressionHole.ficus
@@ -211,6 +267,8 @@ extra-source-files:
     test/fixtures/semantics/type-checking/negative/SpacedIntegerProjection.ficus
     test/fixtures/semantics/type-checking/negative/TraitSignatureHole.ficus
     test/fixtures/semantics/type-checking/positive/IrrefutableConstructors.ficus
+    test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus
+    test/fixtures/support/Prelude.ficus
     test/fixtures/type-application/ConcreteBinder.ficus
     test/fixtures/type-application/ExcessArgument.ficus
     test/fixtures/type-application/HigherRank.ficus
@@ -222,12 +280,17 @@ extra-source-files:
     test/fixtures/type-application/TypeOnlyExpansive.ficus
     test/fixtures/parsing/expectations.json
     test/fixtures/semantics/name-resolution/expectations.json
+    test/fixtures/semantics/name-resolution/graphs/expectations.json
     test/fixtures/semantics/type-checking/expectations.json
+    test/fixtures/desugaring/pattern-lambdas/README.md
     test/fixtures/eta/README.md
     test/fixtures/lazy-arrows/README.md
     test/fixtures/parsing/README.md
     test/fixtures/record-patterns/README.md
+    test/fixtures/semantics/name-resolution/graphs/README.md
+    test/fixtures/semantics/name-resolution/README.md
     test/fixtures/semantics/README.md
+    test/fixtures/support/README.md
     test/fixtures/type-application/README.md
 
 source-repository head

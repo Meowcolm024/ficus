@@ -1,0 +1,129 @@
+-- Shared fixture library; keep definitions here until the re-export layout is ready.
+{-# NO_IMPLICIT_PRELUDE #-}
+
+trait Eq a =
+    (==) : a -> a -> Bool
+
+trait Eq a => Ord a =
+    compare : a -> a -> Ordering
+
+trait Show a =
+    show : a -> String
+
+trait Bind f =
+    bind : f a -> (a -> f b) -> f b
+
+trait Pure f =
+    pure : a -> f a
+
+trait Functor f =
+    map : (a -> b) -> f a -> f b
+
+type Ordering = { Less; Equal; Greater }
+type Maybe a = { Nothing; Just a }
+
+{-# BUILTIN INT_ADD (+) #-}
+(+) : Int -> Int -> Int
+{-# BUILTIN INT_SUB (-) #-}
+(-) : Int -> Int -> Int
+{-# BUILTIN INT_MUL (*) #-}
+(*) : Int -> Int -> Int
+{-# BUILTIN INT_DIV (/) #-}
+(/) : Int -> Int -> Int
+{-# BUILTIN INT_REM (%) #-}
+(%) : Int -> Int -> Int
+{-# BUILTIN INT_EQ intEq #-}
+intEq : Int -> Int -> Bool
+{-# BUILTIN INT_LT intLt #-}
+intLt : Int -> Int -> Bool
+{-# BUILTIN INT_SHOW intShow #-}
+intShow : Int -> String
+{-# BUILTIN STRING_APPEND (++) #-}
+(++) : String -> String -> String
+{-# BUILTIN STRING_EQ stringEq #-}
+stringEq : String -> String -> Bool
+{-# BUILTIN STRING_LENGTH stringLength #-}
+stringLength : String -> Int
+
+negate : Int -> Int
+negate x = 0 - x
+
+not : Bool -> Bool
+not value = with value { True -> False; False -> True }
+
+-- Ordinary v0 functions: both arguments have already been evaluated.
+(&&) : Bool -> Bool -> Bool
+(&&) left right = with left { True -> right; False -> False }
+(||) : Bool -> Bool -> Bool
+(||) left right = with left { True -> True; False -> right }
+and : Bool -> Bool -> Bool
+and left right = left && right
+or : Bool -> Bool -> Bool
+or left right = left || right
+
+impl Eq Int =
+    (==) left right = intEq left right
+impl Ord Int =
+    compare left right = if
+        intLt left right -> Less
+        intEq left right -> Equal
+        _ -> Greater
+impl Eq Bool =
+    (==) left right = with (left, right)
+        (True, True) -> True
+        (False, False) -> True
+        _ -> False
+impl Eq String =
+    (==) left right = stringEq left right
+impl Eq Unit =
+    (==) () () = True
+
+(/=) : Eq a => a -> a -> Bool
+(/=) left right = not (left == right)
+(<) : Ord a => a -> a -> Bool
+(<) left right = with compare left right { Less -> True; _ -> False }
+(<=) : Ord a => a -> a -> Bool
+(<=) left right = with compare left right { Greater -> False; _ -> True }
+(>) : Ord a => a -> a -> Bool
+(>) left right = right < left
+(>=) : Ord a => a -> a -> Bool
+(>=) left right = right <= left
+
+impl Show Int =
+    show value = intShow value
+impl Show Bool =
+    show value = with value { True -> "True"; False -> "False" }
+impl Show String =
+    show value = value
+impl Show Unit =
+    show () = "()"
+impl Show a => Show (Maybe a) =
+    show value = with value
+        Nothing -> "Nothing"
+        Just item -> "Just (" ++ show item ++ ")"
+impl Eq a => Eq (Maybe a) =
+    (==) left right = with (left, right)
+        (Nothing, Nothing) -> True
+        (Just x, Just y) -> x == y
+        _ -> False
+
+impl Bind Maybe =
+    bind value next = with value { Nothing -> Nothing; Just item -> next item }
+impl Pure Maybe =
+    pure value = Just value
+impl Functor Maybe =
+    map f value = with value { Nothing -> Nothing; Just item -> Just (f item) }
+
+maybe : b -> (a -> b) -> Maybe a -> b
+maybe fallback f value = with value { Nothing -> fallback; Just item -> f item }
+fromMaybe : a -> Maybe a -> a
+fromMaybe fallback value = maybe fallback (item -> item) value
+isJust : Maybe a -> Bool
+isJust value = with value { Nothing -> False; Just _ -> True }
+isNothing : Maybe a -> Bool
+isNothing value = not (isJust value)
+
+id : {a} -> a -> a
+id @a (value : a) = value
+const : {a} -> {b} -> a -> b -> a
+const @a @b (value : a) (ignored : b) = value

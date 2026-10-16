@@ -1,0 +1,21 @@
+-- Inference/elaboration smoke cases using only the shared implicit Prelude.
+arithmetic () = (1 + 2) * 3 - 4
+negation () = negate 2
+quotient () = 8 / 2
+remainder () = 8 % 3
+boolean () = not False && (1 < 2)
+stringOps () = "a" ++ "b"
+stringSize () = stringLength "abc"
+interpolation : Int -> String
+interpolation number = "value={number}"
+booleanInterpolation : Bool -> String
+booleanInterpolation flag = "flag={flag}"
+stringInterpolation : String -> String
+stringInterpolation text = "text={text}"
+maybeProgram () = do { value <- Just 1; Just (value + 1) }
+maybeFailure () = do { value <- Nothing; Just (value + 1) }
+pairProgram () = do { (x, y) <- Just (1, 2); Just (x + y) }
+maybeFallback () = fromMaybe 0 Nothing
+maybeEquality () = Just 1 == Just 1
+maybeDisplay () = show (Just 1)
+explicitType () = id @Int 1

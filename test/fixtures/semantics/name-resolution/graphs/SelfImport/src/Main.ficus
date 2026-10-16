@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Main
+answer = 1

@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Resolve.Left (x)
+use Resolve.Right (x)
+answer = 0

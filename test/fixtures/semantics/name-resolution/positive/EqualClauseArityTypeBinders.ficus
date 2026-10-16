@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+foo : {a} -> a -> Int -> a
+foo @a (x : a) 0 = x
+foo @b (x : b) y = x

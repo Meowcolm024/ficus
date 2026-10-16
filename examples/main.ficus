@@ -47,7 +47,7 @@ foo x = (1, x)
 idid = ((x : Int) -> x) (x -> x)
 
 bar : Foo.Bar
-bar = Foo.Bar with {}
+bar = Foo.Bar with { bar = "bar" }
 
 trait Bifunctor (f : Type -> Type -> Type) =
     bimap : (a -> c) -> (b -> d) -> f a b -> f c d

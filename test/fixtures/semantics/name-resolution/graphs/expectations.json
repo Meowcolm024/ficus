@@ -1,0 +1,380 @@
+{
+  "SelfImport": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ImportCycle",
+    "code": "N0203",
+    "primary": {
+      "file": "Main.ficus",
+      "span": [
+        2,
+        5,
+        2,
+        8
+      ],
+      "origin": "ExplicitImport"
+    },
+    "cycle": [
+      "Main",
+      "Main"
+    ],
+    "related": []
+  },
+  "MutualImport": {
+    "entry": "A.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ImportCycle",
+    "code": "N0203",
+    "primary": {
+      "file": "B.ficus",
+      "span": [
+        2,
+        5,
+        2,
+        5
+      ],
+      "origin": "ExplicitImport"
+    },
+    "cycle": [
+      "A",
+      "B",
+      "A"
+    ],
+    "related": [
+      {
+        "file": "A.ficus",
+        "span": [
+          2,
+          5,
+          2,
+          5
+        ],
+        "origin": "ExplicitImport"
+      }
+    ]
+  },
+  "LongCycle": {
+    "entry": "A.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ImportCycle",
+    "code": "N0203",
+    "primary": {
+      "file": "C.ficus",
+      "span": [
+        2,
+        5,
+        2,
+        5
+      ],
+      "origin": "ExplicitImport"
+    },
+    "cycle": [
+      "A",
+      "B",
+      "C",
+      "A"
+    ],
+    "related": [
+      {
+        "file": "A.ficus",
+        "span": [
+          2,
+          5,
+          2,
+          5
+        ],
+        "origin": "ExplicitImport"
+      },
+      {
+        "file": "B.ficus",
+        "span": [
+          2,
+          5,
+          2,
+          5
+        ],
+        "origin": "ExplicitImport"
+      }
+    ]
+  },
+  "AliasCycle": {
+    "entry": "A.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ImportCycle",
+    "code": "N0203",
+    "primary": {
+      "file": "B.ficus",
+      "span": [
+        2,
+        5,
+        2,
+        5
+      ],
+      "origin": "ExplicitImport"
+    },
+    "cycle": [
+      "A",
+      "B",
+      "A"
+    ],
+    "related": [
+      {
+        "file": "A.ficus",
+        "span": [
+          2,
+          5,
+          2,
+          5
+        ],
+        "origin": "ExplicitImport"
+      }
+    ]
+  },
+  "UnusedSelectionCycle": {
+    "entry": "A.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ImportCycle",
+    "code": "N0203",
+    "primary": {
+      "file": "B.ficus",
+      "span": [
+        2,
+        5,
+        2,
+        5
+      ],
+      "origin": "ExplicitImport"
+    },
+    "cycle": [
+      "A",
+      "B",
+      "A"
+    ],
+    "related": [
+      {
+        "file": "A.ficus",
+        "span": [
+          2,
+          5,
+          2,
+          5
+        ],
+        "origin": "ExplicitImport"
+      }
+    ]
+  },
+  "ReexportCycle": {
+    "entry": "A.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ImportCycle",
+    "code": "N0203",
+    "primary": {
+      "file": "B.ficus",
+      "span": [
+        2,
+        5,
+        2,
+        5
+      ],
+      "origin": "ExplicitImport"
+    },
+    "cycle": [
+      "A",
+      "B",
+      "A"
+    ],
+    "related": [
+      {
+        "file": "A.ficus",
+        "span": [
+          2,
+          5,
+          2,
+          5
+        ],
+        "origin": "ExplicitImport"
+      }
+    ]
+  },
+  "ImplicitPreludeCycle": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ImportCycle",
+    "code": "N0203",
+    "primary": {
+      "file": "Helper.ficus",
+      "span": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "origin": "ImplicitPrelude"
+    },
+    "cycle": [
+      "Prelude",
+      "Helper",
+      "Prelude"
+    ],
+    "related": [
+      {
+        "file": "Prelude.ficus",
+        "span": [
+          2,
+          5,
+          2,
+          10
+        ],
+        "origin": "ExplicitImport"
+      }
+    ]
+  },
+  "PreludeSelfCycle": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ImportCycle",
+    "code": "N0203",
+    "primary": {
+      "file": "Prelude.ficus",
+      "span": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "origin": "ImplicitPrelude"
+    },
+    "cycle": [
+      "Prelude",
+      "Prelude"
+    ],
+    "related": []
+  },
+  "MissingImplicitPrelude": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ModuleNotFound",
+    "code": "N0201",
+    "primary": {
+      "file": "Main.ficus",
+      "span": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "origin": "ImplicitPrelude"
+    },
+    "missingModule": "Prelude"
+  },
+  "MissingUnusedModule": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "error",
+    "kind": "ModuleNotFound",
+    "code": "N0201",
+    "primary": {
+      "file": "Main.ficus",
+      "span": [
+        2,
+        5,
+        2,
+        10
+      ],
+      "origin": "ExplicitImport"
+    },
+    "missingModule": "Absent"
+  },
+  "NoPreludeNoLibrary": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "success",
+    "modules": [
+      "Main"
+    ],
+    "implicitPreludeEdges": []
+  },
+  "PreludeBootstrap": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "success",
+    "modules": [
+      "Main",
+      "Prelude",
+      "Base"
+    ],
+    "implicitPreludeEdges": [
+      [
+        "Main",
+        "Prelude"
+      ]
+    ]
+  },
+  "Diamond": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "success",
+    "modules": [
+      "Main",
+      "Left",
+      "Right",
+      "Shared"
+    ],
+    "initializationOrder": [
+      "Shared",
+      "Left",
+      "Right",
+      "Main"
+    ],
+    "loadCounts": {
+      "Shared": 1
+    },
+    "implicitPreludeEdges": []
+  },
+  "ValueRecursion": {
+    "entry": "Main.ficus",
+    "sourceRoots": [
+      "src"
+    ],
+    "result": "success",
+    "modules": [
+      "Main"
+    ],
+    "implicitPreludeEdges": []
+  }
+}

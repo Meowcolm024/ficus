@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+first x = foo x where { foo y = y }
+second x = foo x x where { foo y z = z }

@@ -24,7 +24,7 @@ source
 This split is intentional:
 
 - Concrete AST faithfully preserves parsed source structure, comments, pragmas, and explicit versus indentation-based blocks for diagnostics and layout-aware pretty printing as a naive formatter.
-- Abstract AST has surface sugar removed and every name resolved.
+- Abstract AST removes syntactic sugar and resolves lexical references to canonical identities; typed field selection, pattern coverage, and evidence insertion remain inference/elaboration work.
 - Core AST is the small, typed, explicit result of inference and elaboration.
 - Runtime AST is optimized for simple and efficient interpretation.
 
@@ -44,7 +44,7 @@ Core metadata should connect inferred types and resolved references to source oc
 
 ### 1.2 Abstract declarations
 
-Desugaring normalizes value and type declarations to `ident = <abstract expression>`, with associated signatures, pragmas, and provenance kept as declaration metadata. Type-level expressions remain distinct from value expressions. Multiple clauses defining one value are grouped in source order into one binding: value parameters become lambdas over fresh binders, with a single `with` expression matching their arguments. Retain the number of written value parameters, excluding static type binders, so the top-level non-expansiveness check includes `where` initialization at the correct application point. This grouping precedes duplicate-binding checks; independent duplicate declarations remain errors. Preserve clause ordering, patterns, guards, and evaluation behavior.
+Abstract syntax represents resolved values, type aliases, data/record declarations, traits, and implementations with separate constructors. Attach each signature and validated declaration pragma to its declaration identity; do not encode type/trait declarations as value expressions. Check equal written value arity and group source-ordered clauses into one value definition/ordered case matrix, retaining resolved patterns, per-clause scopes/where groups, and the number of written value parameters. Keep named clause groups until inference/coverage checking. Normalize lambda parameter patterns to simple binders plus explicit Abstract matches during resolution/desugaring; patterns remain on those matches for checking. Named clause groups are compiled to Core afterward. This refines the earlier proposal to lower every clause group to lambdas immediately, without changing source evaluation or initialization behavior. The proposed interface and pass order are in Sections 1.4–1.6.
 
 ### 1.3 Parsing and formatter checks
 
@@ -76,6 +76,205 @@ For named declarations, require a `binding_name` at the head. Expression blocks,
 Consider property-based tests with a Concrete AST generator that renders valid combinations of indentation and explicit braces. Check that parsing pretty-printed concrete syntax preserves structure modulo formatting and spans, that comments survive, and that formatting is idempotent. Retain negative fixtures separately so invalid syntax is not normalized into an accepted form by the generator.
 
 Diagnostics render source excerpts and primary-span underlines through `Ficus.Error.Pretty`, using the exact parsed text and four-column tab stops. Parser diagnostics have stable `P`-prefixed codes; `N` and `T` are reserved for name resolution and type checking. See [ERRORS.md](ERRORS.md) for the registry. This follows the source-referenced style of `rustc`. A small set of humorous messages may explain attempts at dependent types, such as `foo : Int -> Type`, or suggest traits for `bar : Type -> Bool`. Suggested fixes are deferred.
+
+### 1.4 Resolution passes and canonical names (proposed M2 design)
+
+The resolver accepts validated Concrete modules plus a source-root/module-provider configuration. It returns a validated Abstract module, export summary, source-reference index, and diagnostics. These are engineering proposals, not implemented resolver APIs. Parser implementation exists; module loading, resolution, and inference are separate upcoming work.
+
+Use canonical qualified identities for globals. A reference written as `M.insert`, after `use Data.Map as M`, denotes the original `Data.Map.insert`. Re-exporting it through Prelude or another module keeps that owner and identity. Store structured module paths and declaration IDs, not dotted strings to split during later passes. Namespace and declaration role are part of lookup metadata: a record type and its constructor can have the same displayed qualified spelling but different identities. Reserved compiler primitives use stable intrinsic IDs, not invented source-module ownership. Locals, lambda binders, pattern variables, and scoped type variables use fresh IDs, with spelling retained only for diagnostics/pretty printing. Canonicalization does not make an otherwise unimported name accessible.
+
+The inspiration is Agda's distinction between local variables, global definitions, constructors, patterns, clauses, and declaration metadata after scope analysis. See [Agda.Syntax.Abstract](https://hackage-content.haskell.org/package/Agda-2.8.0.2/docs/Agda-Syntax-Abstract.html) and its [source](https://agda.github.io/agda/src/Agda.Syntax.Abstract.html). Ficus keeps terms, types, and kinds separate; it does not adopt Agda's dependent Pi types, reflection forms, or unresolved constructor candidates in successfully resolved term occurrences. Clauses/patterns remain useful until checking even when lexical scope has been settled.
+
+#### R0 — Header scan and module identity
+
+- Derive the canonical module path relative to the configured root; never silently rename an entry file to Main. Resolve imports through a module provider. Source-root precedence and duplicate-file selection are configuration decisions still to specify, not an implicit first-file-wins rule.
+- Scan generic pragma nodes before traversing imports or bodies. Classify supported names by language version, argument shape, target class, and placement. Unknown/unsupported/invalid directives produce semantic N-codes; lexer/parser failures keep their existing P-codes.
+- Extract header-only `NO_IMPLICIT_PRELUDE`. Declaration pragmas elsewhere cannot retroactively alter imports. `BUILTIN` stays declaration metadata and does not change module mode. Future `STANDALONE` is discovered here for importability checks; future ETA remains attached to one definition and is not a module option.
+- Keep the original directive span and each argument span. Duplicate/conflicting BUILTIN associations have their specified validation; do not invent a duplicate-module-flag policy where the spec has not selected one.
+
+Output: `ModuleHeader { moduleId, languageVersion, mode, explicitImports, pendingDeclarationPragmas }`.
+
+#### R1 — Dependency discovery and implicit Prelude
+
+- Install reserved primitive type/kind/constructor identities independently of imports. Their namespace protection does not prohibit primitive-named module bindings.
+- Unless the header disables it, add an implicit import edge to canonical Prelude and its public-member scope. Preserve an `ImplicitPrelude` origin anchored at the module header/source start so a missing Prelude or cycle has an honest primary location. Explicit Prelude imports do not disable this edge under the current spec; equivalent entities/initialization nodes are deduplicated by identity.
+- Discover every dependency's header before resolving the importing body. Include implicit edges in cycle detection. Bootstrap Prelude and its dependencies with explicit `NO_IMPLICIT_PRELUDE`; do not silently exempt the Prelude file or BUILTIN modules.
+- Detect import cycles with a DFS stack or module SCCs. Report the closing explicit import (or implicit edge anchor) and related spans for the cycle path. Module imports are eager dependencies even if every imported name is unused.
+- Load each module once by canonical identity. Preserve written import order as edge metadata; resolution order and map iteration must not become runtime initialization order. Place the proposed implicit Prelude edge before explicit dependencies for internal scheduling, but retain this as an engineering proposal pending any observable implicit-edge ordering contract.
+- Future: reject every edge to a STANDALONE module, including implicit edges, aliases, and re-exports, using header metadata before executing or resolving initialization.
+
+Output: an acyclic module graph with dependency/source-order metadata. Source-root/library distribution and observable ordering of implicit versus explicit imports remain explicit configuration/design questions.
+
+#### R2 — Interfaces, selections, and import candidate sets
+
+Process dependencies before importers. Initially export summaries can be in-memory products of resolved/checked dependencies; serialized `.interface` files and their cache compatibility are separate v1+ work. Maintain the distinction between name visibility and transitive type/trait metadata needed to check imported signatures. Split interfaces into a resolver-facing NameSummary (identities, public categories, ownership, visibility, implementation IDs) and an inference-facing CheckedSignatureSummary (closed schemes/kinds and nominal/trait descriptors). The latter is passed separately to inference, never embedded as Core nodes or solver metavariables in Abstract. When an imported value has an inferred signature, finish checking that dependency before checking its importer; naming can use its collected NameSummary sooner.
+
+- A module-only or aliased import installs a qualifier, not its unqualified values. A selected/all-members import installs selected entities, not a module alias. Do not grant additional qualification syntax just because a module was loaded.
+- Validate selected names against the dependency's public exports. ADT selections check constructor ownership; a bare ADT type imports only that type. A record type also brings its public constructor and nominal field labels; explicit record member selections remain invalid. Fields are never injected as ordinary callable values. Index their descriptors by nominal owner and label; same-spelled fields from different records are typed selectors, not N0002 global-value ambiguities.
+- Keep `Map (Namespace, Spelling) (NonEmpty ImportCandidate)` for opened imports. Each candidate has a canonical target and every import route/span that introduced it. Union by target identity; do not pick the last import or emit an ambiguity just for multiple distinct targets.
+- Ordinary uses demand exactly one candidate after applying lexical scope. A use with none is unresolved; a use with distinct remaining targets is ambiguous and lists all canonical names with related import spans. Do not use inferred types to pick between otherwise ambiguous value/type/constructor imports.
+- Missing modules/exports and malformed semantic selections fail immediately, even if unused. Reserved names remain protected. Distinct local declarations are still checked for duplicates independently of import candidates. Do not misclassify an imported candidate set as repeated source declarations.
+- `pub` is a demand on the public export map. Union selected entities with existing public declarations/re-exports by namespace/spelling; identical canonical identities coalesce. Different identities under one exported name fail at the re-export, with the conflicting export/declaration as a related span. A successful export summary never contains unresolved ambiguity.
+- Collect visible implementation identities separately from opened names, following SPEC's implementation visibility/closure rules for each import edge. Do not make instance visibility depend on whether an ordinary imported spelling is used.
+- Keep duplicate local module qualifier bindings behind open decision A19. Candidate sets for ordinary imported entities do not settle alias reuse; no rejection, overwrite, or merge policy is implied for qualifiers.
+
+Use-site conflict checking and identity deduplication follow the relevant model in [Haskell 2010 §5.5.2](https://www.haskell.org/onlinereport/haskell2010/haskellch5.html#x11-1030005.5.2); Ficus retains its own import forms, acyclic modules, separate field namespace, and selected re-export rule.
+
+#### R3 — Declaration collection and lexical scopes
+
+- Allocate IDs for top-level and mutually visible where declarations before traversing their bodies. Group clauses by their owning value definition, preserving order and all clause spans; attach signatures to the corresponding declaration in that declaration list, not to an imported namesake. A signature-only name can be a provisional declaration fulfilled by a valid BUILTIN association; reject an unfulfilled ordinary signature after all associations are known. Diagnose duplicate signatures and independent duplicate definitions separately from legitimate clause grouping. Before combining clauses, check equal written value arity as specified in SPEC §6: count parameter patterns before `=`, excluding @ binders, RHS lambdas and signature arrows. Report N0012 on the later inconsistent clause head, relating it to the first head. Check during declaration grouping/desugaring before type inference; do not repair a mismatch by eta expansion. Preserve a common arity and every original count/span for validation and where timing. Sequential shadowing bindings are not grouped together; repeated zero-parameter definitions remain duplicate declarations.
+- Predeclare nominal types, aliases, constructors, traits, methods, fields, and implementations in their specified namespaces. Record constructor/field ownership and nominal identity explicitly. Same-spelled entities in permitted separate namespaces remain distinct. Nominal fields carry their owner, so a diagnostic may display Data.People.Person.name without treating that display as a new source-level value path.
+- Resolve function/lambda patterns with a fresh local ID per binder. Check duplicate binders across the complete pattern/parameter list. Guards and clause bodies see that clause's binders; other clauses do not. Bind `_` as a wildcard without allocating a value variable; `_name` is ordinary.
+- For sequential expression/do declarations, resolve the initializer against the previous environment, then extend it for later items. Self-reference is not introduced by a sequential declaration. Shadowing gets a warning and a new ID. For mutually visible where/top-level groups, predeclared bindings are available throughout; SCC safety is checked later.
+- Maintain separate type-variable scopes. Explicit `@a` binders enter later parameter annotations/body/where scopes. A signature's explicit `{a}` and implicit free variables get signature-local IDs; a definition's `@` IDs are aligned positionally by checking, not unified merely because they share text. Named annotation variables without a permitted binder remain invalid. Infer kind/type holes later; no resolver metavariables or solved types belong in Abstract.
+- Resolve implementation member definitions against their trait member identities in the implementation's member scope. Repeated `show` definitions in different implementations are not duplicate global functions; record an implementation ID plus member ID and let elaboration build evidence.
+- Resolve generic BUILTIN targets after declaration collection so adjacency and source order do not affect lookup. Keys remain metadata. Validate key existence and association conflicts here; target type/kind contracts and primitive-body elaboration belong to T-stage checking.
+
+Output: per-group symbol tables, canonical declarations, lexical references, and source-occurrence index entries. Only the conversion pass imports both Concrete and Abstract modules; output nodes never contain a Concrete node or Concrete-specific type.
+
+#### R4 — Occurrence resolution and hygienic desugaring
+
+Resolve names before generating sugar references, then refer directly to selected canonical identities. Generated fresh binders cannot capture source variables or be captured by them.
+
+| Source form | Abstract result / remaining work |
+| --- | --- |
+| Bare/qualified name, operator reference | Local ID or canonical global/constructor/method identity. Operator applications become ordinary binary applications after dynamic grouping; do not regroup based on the resolved operator |
+| Dotted chain | Resolve its module prefix/export once, then represent remaining projections as label selectors. Never retry a missing export as constructor projection |
+| Field projection/update | Keep a source-spanned field-label selector and receiver expression. Inference chooses nominal field identity from the receiver; this is a typed field obligation, not unresolved lexical value lookup |
+| Record `with` | Direct resolved record constructor becomes named construction; any other receiver becomes update and must infer a record type. Preserve supplied field order, even when constructor field order differs |
+| Prefix `with`, annotated/constructor patterns | Resolved match and pattern nodes, with guards/order intact; coverage and refutability are not resolver decisions |
+| Lambda parameter patterns | Unary simple-binder lambdas with nested explicit matches at their application points; preserve annotations and original pattern IDs/spans for checking |
+| `if` | Distinct conditional node, including an explicit final fallback marker for `_`; keep it distinct through Core |
+| `do` `<-` / nonfinal expression | Applications of the registered Bind method and a hygienic simple-binder lambda with an explicit pattern match. Attach a required-total-coverage obligation and original pattern span to that match for `<-`; do not let desugaring lose the semantic rejection |
+| `do` declaration / expression block | Strict sequential-binding/effect nodes; never replace polymorphic sequential declarations with immediately applied lambdas |
+| Interpolated string | Left-associated concatenation/show applications using registered library identities, preserving segment/value evaluation order and origins; plain strings remain literals |
+| `@T`, `{a}`, type/kind annotations | Separate type application, signature quantifiers, and scoped annotation syntax; kind/type checking remains later |
+| List/product/unit and literals | Dedicated semantic aggregate/literal nodes with intrinsic identities where needed; literal decoding/range validation has its own diagnostics |
+
+Check the module mode before expanding do/interpolation: under NO_IMPLICIT_PRELUDE they fail even if the user explicitly imports Bind or Show. When enabled, sugar uses compiler-known library identities through the registry, unaffected by a local `bind`/`show` spelling or ambiguous ordinary imports. The interpolation concatenation entity/contract remains B6; inject that registry entry in tests rather than silently selecting `++` or a source module. Negation likewise uses the existing primitive/numeric contract rather than an invented name lookup.
+
+Lower lambda parameter patterns to explicit matches here as described below. Do not lower named clause groups, field constraints, dictionaries, or ETA here. Lambda/where and source parameter metadata must survive so inference and Core lowering preserve initialization points. Build a resolved reference graph for recursive groups, including type references separately; checking expansiveness, signature conformance, recursion protection, and dictionary-induced initialization edges belongs to inference/elaboration.
+
+#### Lambda parameter normalization
+
+Abstract lambda nodes bind one value ID, never a pattern. Normalize a source lambda after resolving its parameter patterns and body:
+
+```text
+(p1 p2 -> body)
+  => fresh1 -> with fresh1 {
+       p1 -> fresh2 -> with fresh2 { p2 -> body }
+     }
+```
+
+This is schematic resolved syntax: `fresh1`/`fresh2` are hygienic IDs, not generated source spellings requiring another lookup pass. Normalize right-to-left to construct the nested result, but preserve left-to-right application/matching behavior. Match the first argument immediately after its application, before evaluating a following application argument. Do not collect all parameters into one tuple match beneath all lambdas: `((Just x) y -> body) Nothing (effect ())` must fail on Nothing before effect runs.
+
+A bare variable parameter can directly bind its resolved ID without an extra match. A bare wildcard uses a fresh unused binder. All other parameter patterns, including annotated variables, use a fresh argument binder and an explicit match retaining the original resolved pattern and annotation. No irrefutability decision is needed to perform this translation; type/coverage checking can later prove a generated match total. Generated lambdas, binders, receiver references, matches and clauses inherit the corresponding parameter's span and generated-origin metadata; the source body keeps its own origin.
+
+Keep explicit type abstractions separate and outside the value-lambda chain: `@a (x : a) -> x` becomes a TypeLambda followed by a simple-binder Lambda and an annotated-pattern Match. Type abstractions do not delay runtime work. Keep source-based parameter counts and monomorphism metadata; generated matches must not make a source function initializer look expansive. For a future lazy arrow, normalization must preserve the specified parameter-matching demand rather than removing it just because coverage proves the pattern irrefutable.
+
+A do-bind uses the same normalization, but its generated match carries the required-total-coverage obligation from the original `<-` pattern. A refutable do pattern still parses/resolves and then fails typed checking. Ordinary lambda-generated matches retain ordinary match-failure behavior and warning-only coverage obligations. Wildcards/variables can discharge totality structurally without an extra match node, retaining an origin/obligation record for diagnostics and validation.
+
+Attached where groups stay at their source execution point. For `f p = q -> body where ...`, the group's work remains after the first written value parameter and its pattern match, before constructing the returned q lambda. Generated binders/matches do not count as extra written parameters. Named multi-clause definitions remain clause groups until checking/lowering; their eventual compilation must likewise preserve source-clause selection, parameter matching and where timing. Source and expected-shape cases are in `test/fixtures/desugaring/pattern-lambdas/`; these are authored assertions, not hand-edited AST goldens.
+
+### 1.5 Abstract syntax for inference/elaboration (proposal)
+
+Place shared identities in `Ficus.Syntax.Name`, semantic literals in a shared stage-neutral module, Abstract types in `Ficus.Syntax.Abstract`, validation in `Ficus.Syntax.Abstract.Validate`, and translation/loading in `Ficus.Resolve.*`. These are proposed files, not additions in this documentation change. Abstract imports shared source/name/literal types only, never `Ficus.Syntax.Concrete`. Core must not import Abstract types either; the elaborator owns that conversion.
+
+Use an Abstract-owned node wrapper, in the style of the existing Concrete wrapper but with no dependency on it:
+
+```haskell
+newtype LocalId = LocalId Int
+newtype TypeVarId = TypeVarId Int
+newtype ModuleId = ModuleId (NonEmpty Text)
+-- DeclarationKey distinguishes permitted same-spelled declarations/namespaces.
+data GlobalId = GlobalId ModuleId DeclarationKey | IntrinsicId PrimitiveKey
+
+data Node a = Node
+  { nodeId :: NodeId, nodeSpan :: Span, nodeOrigin :: Provenance, nodeValue :: a }
+-- Text is diagnostic/source spelling, not the identity used for lookup.
+data Binder = Binder LocalId Text
+data TypeBinder = TypeBinder TypeVarId Text (Maybe KindSyntax)
+data Reference = LocalRef LocalId | GlobalRef GlobalId
+
+type Expr = Node ExprF
+data ExprF
+  = Ref Reference | Constructor GlobalId | Method GlobalId
+  | Literal SemanticLiteral | Hole HoleId
+  | Apply Expr Expr | TypeApply Expr (NonEmpty TypeSyntax)
+  | Lambda Binder Expr | TypeLambda (NonEmpty TypeBinder) Expr
+  | Match Expr (NonEmpty MatchClause) | Conditional (NonEmpty IfClause)
+  | Sequence (NonEmpty Statement) Expr
+  | Where WherePlan BindingGroup Expr
+  | Project Expr FieldSelector
+  | ConstructRecord GlobalId [FieldAssignment]
+  | UpdateRecord Expr (NonEmpty FieldAssignment)
+  | Product (NonEmpty Expr) | List [Expr] | Unit
+
+type Pattern = Node PatternF
+data PatternF
+  = Bind Binder | Wildcard | ConstructorPattern GlobalId [Pattern]
+  | LiteralPattern SemanticLiteral | ProductPattern (NonEmpty Pattern)
+  | ListPattern [Pattern] | UnitPattern | AnnotatedPattern Pattern TypeSyntax
+-- Future record patterns/type-member openings extend this type in v1+.
+
+type TypeSyntax = Node TypeF
+data TypeF
+  = TypeVariable TypeVarId | TypeConstructor GlobalId
+  | TypeApplication TypeSyntax TypeSyntax
+  | FunctionType ArrowMode TypeSyntax TypeSyntax
+  | QualifiedType [PredicateSyntax] TypeSyntax | TypeHole HoleId
+-- Normalize list/product/function constructor sugar to intrinsic TypeConstructor
+-- applications. ArrowMode is Strict in v0; CallByName is a v2+ extension.
+data SchemeSyntax = SchemeSyntax [QuantifiedBinder] [PredicateSyntax] TypeSyntax
+-- QuantifiedBinder retains Explicit vs Implicit and stable explicit-argument order.
+data PredicateSyntax = PredicateSyntax GlobalId TypeSyntax
+-- KindSyntax is a separate Node tree: TypeKind, KindVariable, KindArrow, KindHole.
+
+data ValueBody
+  = ExpressionBody Expr | ClausesBody FunctionCases | BuiltinBody BuiltinKey
+data FunctionCases = FunctionCases WrittenValueArity (NonEmpty Clause)
+data DeclarationF
+  = ValueDefinition ValueDefinition
+  | PatternDefinition Pattern Expr
+  | AliasDefinition AliasDefinition | DataDefinition DataDefinition
+  | RecordDefinition RecordDefinition | OpaqueBuiltinType GlobalId BuiltinKey KindSyntax
+  | TraitDefinition TraitDefinition
+  | ImplementationDefinition ImplementationDefinition
+-- Every nested clause, binder, statement, assignment, predicate, quantifier,
+-- kind, signature, and declaration is also wrapped in Node in the actual API.
+```
+
+This is a representation sketch, not compilable Haskell: supporting records and their located fields are defined by the following contracts. Avoid a fully unified term/type universe or a generic extensible AST framework until a concrete need appears.
+
+| Record / supporting type | Required contents |
+| --- | --- |
+| `AbstractModule` | Module ID/mode, ordered dependency edges, unique public export table, visible implementation IDs, declaration groups, source-occurrence index, registry associations, coverage obligations |
+| `ValueDefinition` | Owner global/local binder, optional resolved SchemeSyntax, declaration pragmas, ValueBody (including signature-backed builtin values), all source clause origins, source-based parameter/monomorphism metadata, including original lambda parameters independently of generated matches |
+| `FunctionCases` | One binding identity and ordered clause matrix, with common written value arity checked during desugaring. This is the single function case group, not independent definitions; later Core lowering preserves curried application/matching order |
+| `Clause` / `MatchClause` | Fresh clause binders, ordered type/value parameters or pattern, optional guard, RHS, per-clause where group, written value-parameter count; no inferred refutability flag |
+| `WherePlan` | `AtInitialization` or `AfterValueParameters n`, attached to the source declaration/clause rather than inferred from a resulting lambda chain |
+| `Statement` | Strict effect or sequential named/pattern binding. Binding IDs become visible only in later statements; binding boundary retained for generalization |
+| `BindingGroup` | Nonempty resolved declarations, recursive/sequential scope classification, source order and resolved dependency edges; SCC classification is structural, not proof of safe initialization |
+| `FieldSelector` / `FieldAssignment` | Label and label span, optional already-known nominal owner/member identity, RHS and field-where metadata; preserve order. Unknown receiver/member association is for inference, not a speculative global lookup |
+| `DataDefinition` / `RecordDefinition` | Nominal type ID, optional kind signature, kind-annotated parameters, constructor IDs, constructor field types or ordered nominal field descriptors |
+| `TraitDefinition` | Trait ID/parameter, resolved supertrait predicates, method IDs and SchemeSyntax; no dictionaries yet |
+| `ImplementationDefinition` | Implementation ID, resolved trait/head/context, method-to-body mapping and declaration metadata; overlap, orphan, superclass and evidence checks remain T-stage work |
+| `CoverageObligation` | Live match/pattern/clause IDs, original spans, required-total versus warning-only reason, or a discharged-simple-binder record attached to its lambda ID. Do-bind obligations survive generated lambda/match conversion |
+| `Occurrence` | Source spelling/span, selected canonical reference or binder definition, and import-route metadata for navigation; no retained Concrete AST |
+
+An expression hole has an identity/origin but no inference metavariable yet. Abstract validation accepts it; inference reports its zonked type and forbids it in Core. Similarly a type hole is syntax consumed by kind/type inference. Resolve implicit signature variables once per signature in a stable traversal; binder order exposed to explicit application comes only from written explicit quantifiers, never incidental traversal order.
+
+The source `id : {a} -> a -> a; id @b (x : b) = x` has distinct signature and definition TypeVarIds, an ordered explicit quantifier, and a clause-local value ID for x. Elaboration aligns/checks the type binders. A term reference to an imported id uses its defining module's GlobalId; applying `@Int` adds a TypeApply node, without introducing a runtime lambda or delay.
+
+### 1.6 Validation, elaboration ownership, and failure recovery
+
+Abstract validation checks referential integrity of every global/local/type-variable ID, permitted namespace/role, lexical dominance, distinct pattern binders, closed signature-variable scopes, uniform written value arity within each FunctionCases group and valid where/value-parameter metadata, unique export targets, source locations/provenance, and presence of required coverage obligations. Imported metadata may include non-visible types/traits needed to check signatures, but these do not become names source code can refer to. Symbolic field selectors are an explicit allowed obligation. There are no pattern-bearing Lambda nodes, raw dotted chains, operator trees, unresolved pragma targets, do nodes, interpolation segments, or Concrete nodes in a successful Abstract module.
+
+Inference/elaboration owns kind solving/defaulting; signature checking and explicit binder alignment; @ instantiation and holes; nominal record field selection; type-directed coverage and do-bind totality; type/value/monomorphism restrictions; alias regularity; trait constraints and dictionaries; initialization safety including generated evidence; and typed match/clause lowering to Core (lambda parameter patterns have already become Abstract matches). Preserve distinct if nodes. Lower supplied record fields through source-ordered temporaries if constructor order differs; updates evaluate their receiver once. Generated temporaries, lambdas, matches, and evidence inherit their actual origin's span/provenance. Extend the current SourceOrigin-only representation with generated-origin tags and parent spans in the shared source module, not by embedding earlier AST nodes.
+
+A failed name use produces a diagnostic and, only in a recovery-only tree, a poison reference linked to that diagnostic ID. Skip dependent checks that would merely repeat the same unresolved name; continue independent declarations/modules when possible. Poison/recovery trees cannot pass validateAbstract or enter inference. A valid but unused import candidate set is not poison and does not occur as an unresolved Expr reference. Sort diagnostics deterministically by module traversal/source span/code and list alternative import routes in stable order. Do not suppress independent missing-export, pragma, or cycle errors just because a body failed.
+
+Diagnostics, explicit draft N/T code mappings, primary/related-span conventions, and warning severity are in [ERRORS.md](ERRORS.md#proposed-resolution-and-elaboration-diagnostics). Each pass's acceptance fixtures and validator checks are tracked in PLAN M2a–M2g. No canonical ID allocation order or map iteration order is allowed to alter runtime effects.
 
 ## 2. Type checker
 

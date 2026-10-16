@@ -49,6 +49,7 @@ tests = do
           "negative fixtures"
           [rejectFixture (root </> path) e | (path, e) <- Map.toList expectations],
         testGroup "semantic errors remain parseable" (map acceptFixture semanticSources),
+        acceptFixture "test/fixtures/support/Prelude.ficus",
         structuralTests,
         Pretty.tests,
         testGroup

@@ -5,9 +5,19 @@
   "negative/BuiltinUnresolvedTarget.ficus": {"kind": "UnresolvedName", "span": [1, 21, 1, 27]},
   "negative/NoPreludeDo.ficus": {"kind": "PreludeRequired", "span": [2, 7, 2, 8]},
   "negative/NoPreludeInterpolation.ficus": {"kind": "PreludeRequired", "span": [2, 10, 2, 17]},
-  "negative/RecordAllMemberSelection.ficus": {"kind": "InvalidImportSelection", "span": [1, 27, 1, 28], "sourceRoots": ["negative", "support"]},
-  "negative/RecordMemberSelection.ficus": {"kind": "InvalidImportSelection", "span": [1, 27, 1, 30], "sourceRoots": ["negative", "support"]},
+  "negative/RecordAllMemberSelection.ficus": {"kind": "InvalidImportSelection", "span": [1, 27, 1, 28], "sourceRoots": ["negative", "support", "../../support"]},
+  "negative/RecordMemberSelection.ficus": {"kind": "InvalidImportSelection", "span": [1, 27, 1, 30], "sourceRoots": ["negative", "support", "../../support"]},
   "negative/ReservedConstructorBinding.ficus": {"kind": "ReservedName", "span": [1, 15, 1, 18]},
   "negative/ReservedListConstructorBinding.ficus": {"kind": "ReservedName", "span": [1, 18, 1, 21]},
-  "negative/UnknownPragma.ficus": {"kind": "UnknownPragma", "span": [1, 5, 1, 10]}
+  "negative/UnknownPragma.ficus": {"kind": "UnknownPragma", "span": [1, 5, 1, 10]},
+  "negative/AmbiguousImports.ficus": {"kind": "AmbiguousName", "span": [4, 10, 4, 10], "code": "N0002", "sourceRoots": ["negative", "support", "../../support"]},
+  "negative/AmbiguousPrelude.ficus": {"kind": "AmbiguousName", "span": [2, 10, 2, 12], "code": "N0002", "sourceRoots": ["negative", "support", "../../support"]},
+  "negative/AmbiguousReexport.ficus": {"kind": "AmbiguousReexport", "span": [3, 23, 3, 25], "code": "N0206", "sourceRoots": ["negative", "support", "../../support"]},
+  "negative/MissingUnusedExport.ficus": {"kind": "MissingExport", "span": [2, 19, 2, 25], "code": "N0204", "sourceRoots": ["negative", "support", "../../support"]},
+  "negative/ModuleMissing.ficus": {"kind": "ModuleNotFound", "span": [2, 5, 2, 18], "code": "N0201", "sourceRoots": ["negative", "support", "../../support"]},
+  "negative/ClauseArityMismatch.ficus": {"kind": "ClauseArityMismatch", "span": [3, 1, 3, 5], "code": "N0012", "related": [{"span": [2, 1, 2, 7], "label": "first clause head"}]},
+  "negative/ClauseArityMismatchWhere.ficus": {"kind": "ClauseArityMismatch", "span": [4, 5, 4, 9], "code": "N0012", "related": [{"span": [3, 5, 3, 11], "label": "first clause head"}]},
+  "negative/ClauseArityMismatchTypeBinder.ficus": {"kind": "ClauseArityMismatch", "span": [3, 1, 3, 14], "code": "N0012", "related": [{"span": [2, 1, 2, 16], "label": "first clause head"}]},
+  "negative/ClauseArityMismatchImpl.ficus": {"kind": "ClauseArityMismatch", "span": [5, 5, 5, 10], "code": "N0012", "related": [{"span": [4, 5, 4, 12], "label": "first clause head"}]},
+  "negative/ClauseArityMismatchSigned.ficus": {"kind": "ClauseArityMismatch", "span": [4, 1, 4, 5], "code": "N0012", "related": [{"span": [3, 1, 3, 7], "label": "first clause head"}]}
 }

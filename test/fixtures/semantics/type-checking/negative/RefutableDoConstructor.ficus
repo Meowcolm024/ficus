@@ -1,2 +1,2 @@
-type Maybe a = { Nothing; Just a }
-f action = do { Just x <- action; x }
+-- Maybe comes from the shared fixture Prelude.
+f action = do { Just x <- action; Just x }

@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Resolve.Left (x)
+use Resolve.Bridge (x)
+answer = x

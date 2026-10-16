@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+x = 1
+y = 2
+not value = value

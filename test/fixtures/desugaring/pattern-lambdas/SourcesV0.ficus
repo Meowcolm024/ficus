@@ -1,0 +1,13 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+type Maybe a = { Nothing; Just a }
+pairLambda = (x, y) -> x
+nestedLambda = (Just x) (y, z) -> (x, y, z)
+variableLambda = x -> x
+wildcardLambda = _ x -> x
+typedLambda : {a} -> a -> a
+typedLambda = @a (x : a) -> x
+-- Deliberately collide with a plausible generated name; identity must stay fresh.
+hygiene fresh1 = (Just x) -> (fresh1, x)
+-- touch/next are fixture-harness operations for future effect-order assertions.
+whereTiming (Just x) = y -> initialized where { initialized = touch x }
+failBeforeNextArg () = nestedLambda Nothing (next ())

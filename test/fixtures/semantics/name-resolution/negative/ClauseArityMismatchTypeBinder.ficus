@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+foo @a (x : a) y = x
+foo @a (x : a) = y -> x

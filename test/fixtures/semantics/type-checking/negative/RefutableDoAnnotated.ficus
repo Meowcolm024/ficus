@@ -1,1 +1,1 @@
-f action = do { ([x] : [Int]) <- action; x }
+f action = do { ([x] : [Int]) <- action; Just x }

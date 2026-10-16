@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Resolve.Bridge as B
+answer = B.x

@@ -36,7 +36,7 @@ use Data.Int as I   -- valid: binds the module name I
 use Data.Int as Type -- valid: binds a module alias, not the kind Type
 ```
 
-Whether two module imports may bind the same local module name remains open, including repeated imports of the same module and aliases shared by distinct modules. No shadowing, merging, ambiguity, or rejection policy is selected yet. This does not affect collisions among imported values, types, or constructors.
+Whether two module imports may bind the same local module name remains open, including repeated imports of the same module and aliases shared by distinct modules. No shadowing, merging, ambiguity, or rejection policy is selected yet. Import-name conflicts among values, types, and constructors follow the use-site rule below, independently of this open module-name policy.
 
 A type import may explicitly select ADT constructors:
 
@@ -56,6 +56,10 @@ use Data.Map (..) pub   -- valid
 use Data.Map pub        -- invalid
 use Data.Map as M pub   -- invalid
 ```
+
+Import conflicts are checked at use sites. Distinct imported entities with the same spelling in one namespace may coexist when unused; an occurrence requiring that name is an ambiguity error unless qualification or lexical scope selects one entity. This includes names brought in by implicit Prelude. Multiple import/re-export routes to the same defining entity do not create ambiguity. Import order does not select a winner. Missing modules, nonexistent exports, and invalid member selections remain errors even when the imported name is unused.
+
+Publishing an ambiguous name is also a use: `pub` re-exports must provide a unique defining entity for each exported spelling and namespace. Distinct entities exported under the same name are rejected at the re-export, even without an expression using them. Re-exporting the same entity through multiple routes is valid. Duplicate local module-name bindings remain the separate open decision above.
 
 Imports are initialized once, in source order, before the importing module. Import cycles are static errors.
 
@@ -287,9 +291,21 @@ Delimiters inside nested blocks do not classify an outer item: `Person with` fol
 
 ## 6. Names and scope
 
-Values, constructors, fields, and modules have their respective namespaces; types and traits share one namespace. A type and a trait with the same name cannot coexist in one scope. Multiple pattern clauses defining one value form a single binding and are matched in source order. Duplicate declarations in one namespace and scope, other than clauses of that binding, are errors, except that duplicate local module-name bindings remain an open decision (Section 2).
+Values, constructors, fields, and modules have their respective namespaces; types and traits share one namespace. A type and a trait with the same name cannot coexist in one scope. Multiple pattern clauses defining one value form a single binding and are matched in source order. Duplicate local declarations in one namespace and scope, other than clauses of that binding, are errors, except that duplicate local module-name bindings remain an open decision (Section 2).
 
-Scope is lexical and innermost-first. Sequential bindings in an expression or `do` block may shadow earlier local bindings, including bindings in the same block; each later right-hand side still sees the previous binding until its own initializer finishes. Shadowing emits a warning. Names within one mutually visible `where` or top-level group, and duplicate names within one pattern, remain duplicate-declaration errors. Import collisions among values, types, and constructors require qualification or selective imports; the policy for colliding local module names remains open.
+All clauses of one named function binding must have the same **written value arity**: the number of value parameter patterns before `=`. Each pattern counts as one parameter, including a product or parenthesized constructor pattern. Explicit `@` type binders do not count. A signature's arrow count, a lambda returned by the right-hand side, and later eta expansion do not change this arity. A mismatch is a static error before the clauses can be combined:
+
+```text
+foo x 1 = 0
+foo x = y -> y  -- invalid: one written value parameter instead of two
+
+bar x 1 = 0
+bar x y = y    -- valid: both clauses have two parameters
+```
+
+This applies wherever clauses belong to one binding, including top-level, mutually visible `where` groups, and implementation members. Separate sequential bindings that shadow the same spelling remain separate bindings; their arities need not agree. Repeated zero-parameter definitions remain duplicate declarations, not alternative pattern clauses.
+
+Scope is lexical and innermost-first. Sequential bindings in an expression or `do` block may shadow earlier local bindings, including bindings in the same block; each later right-hand side still sees the previous binding until its own initializer finishes. Shadowing emits a warning. Names within one mutually visible `where` or top-level group, and duplicate names within one pattern, remain duplicate-declaration errors. Import collisions among values, types, and constructors are errors only when a name is used or ambiguously re-exported; resolve such uses by qualification, selective imports, or ordinary lexical scope; the policy for colliding local module names remains open.
 
 Lambda parameters scope over their body. Pattern variables scope over the corresponding guard and branch. A sequential binding scopes over later block items only. A `where` name scopes over its whole group and the expression preceding `where`.
 

@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+trait Pick a = { pick : a -> Int -> a }
+impl Pick Int =
+    pick x 0 = x
+    pick x = y -> x

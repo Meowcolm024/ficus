@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Absent
+answer = 1

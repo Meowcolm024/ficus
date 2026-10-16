@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+f x = foo x where
+    foo y 1 = 0
+    foo y = z -> z

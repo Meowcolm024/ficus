@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Resolve.Absent
+answer = 0

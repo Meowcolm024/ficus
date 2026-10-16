@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Resolve.Left as L
+answer = L.x

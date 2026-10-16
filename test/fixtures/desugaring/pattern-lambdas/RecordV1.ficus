@@ -1,0 +1,3 @@
+type Package = { Err : Type; value : Err }
+unpack = (Package with { Err = e; value = x }) -> ()
+omitted = (Package with {}) -> ()

@@ -1,1 +1,1 @@
-f action = do { 1 <- action; 0 }
+f action = do { 1 <- action; Just 0 }

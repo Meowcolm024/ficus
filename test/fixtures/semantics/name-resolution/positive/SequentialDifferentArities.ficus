@@ -1,0 +1,2 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+f () = { foo x = x; foo x y = y; foo 1 2 }

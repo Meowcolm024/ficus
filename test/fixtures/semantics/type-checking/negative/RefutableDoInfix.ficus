@@ -1,1 +1,1 @@
-f action = do { (x :: xs) <- action; x }
+f action = do { (x :: xs) <- action; Just x }

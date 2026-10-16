@@ -1,0 +1,3 @@
+-- Maybe and Bind come from the shared fixture Prelude.
+doBinding action = do { (x, y) <- action; x }
+doRefutable action = do { Just x <- action; x }

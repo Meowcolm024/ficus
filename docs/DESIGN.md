@@ -79,6 +79,8 @@ use Data.Map as M pub  -- invalid
 
 All top-level declarations are public in v0. `PRIVATE` and `PRIVATE member` pragmas are deferred. The latter hides ADT constructors or a record constructor and its fields while keeping the type public. Type import lists may select ADT constructors, for example `Maybe(..)` and `Either(Left)`. Importing a record type brings its public constructor and fields into scope; record member selections are invalid.
 
+Imported names may retain multiple candidate entities until an occurrence uses them. Unused import conflicts are valid, including implicit Prelude conflicts; different routes to the same defining entity are not ambiguous. `pub` publication requires unique exported names and reports conflicting entities at the re-export. Missing modules and invalid selections are still checked immediately. This does not settle the separate local module-alias collision policy.
+
 ## 4. Pragmas and Prelude
 
 Pragmas are global-only in v0. v1+ admits definition pragmas inside impl bodies, where groups, and local declaration sequences; arbitrary expression pragmas remain unsupported. ETA applies only to the following definition, with no module-wide or scope-wide setting or inheritance into sibling or nested definitions. It explicitly expands a function-valued initializer into one outer lambda before non-expansiveness checks, delaying and potentially repeating its original work. Module pragmas remain module-header-only. Module pragmas appear before imports:

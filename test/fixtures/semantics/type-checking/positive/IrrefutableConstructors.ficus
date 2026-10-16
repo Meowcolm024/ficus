@@ -1,8 +1,8 @@
 type Box a = Box a
 type Pair a b = (:+) a b
 type Point = { x : Int; y : Int }
-boxed action = do { Box x <- action; x }
-nested action = do { Box (x, y) <- action; x }
-infixConstructor action = do { (x :+ y) <- action; x }
-recordConstructor action = do { Point x y <- action; x }
-annotated action = do { ((Box x) : Box Int) <- action; x }
+boxed action = do { Box x <- action; Just x }
+nested action = do { Box (x, y) <- action; Just x }
+infixConstructor action = do { (x :+ y) <- action; Just x }
+recordConstructor action = do { Point x y <- action; Just x }
+annotated action = do { ((Box x) : Box Int) <- action; Just x }

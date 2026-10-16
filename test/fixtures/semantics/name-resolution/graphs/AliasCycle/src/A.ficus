@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use B as Other
+a = 1

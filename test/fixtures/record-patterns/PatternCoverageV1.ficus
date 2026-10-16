@@ -1,5 +1,4 @@
 type Box = { item : Maybe Int }
 -- Parse both; only the first is irrefutable for <-.
-total action = do { Box with {} <- action; () }
-partial action = do { Box with { item = Just x } <- action; x }
-type Maybe a = { Nothing; Just a }
+total action = do { Box with {} <- action; Just () }
+partial action = do { Box with { item = Just x } <- action; Just x }

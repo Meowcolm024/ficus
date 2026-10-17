@@ -1,0 +1,1 @@
+let bad () = let same = Fun.id (fun x -> x) in (same 1, same true)

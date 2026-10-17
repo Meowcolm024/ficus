@@ -1,0 +1,1 @@
+check () = { same x = x; (same 1, same True) }

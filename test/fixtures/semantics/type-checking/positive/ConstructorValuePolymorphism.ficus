@@ -1,0 +1,4 @@
+type Box a = Box a
+boxed = Box (x -> x)
+integer () = with boxed { Box f -> f 1 }
+boolean () = with boxed { Box f -> f True }

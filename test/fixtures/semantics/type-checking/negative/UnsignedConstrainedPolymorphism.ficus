@@ -1,0 +1,2 @@
+display = show
+bad () = (display 1, display True)

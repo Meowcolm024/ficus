@@ -1,0 +1,6 @@
+module Reference where
+
+missing :: Int -> Int
+missing x = _
+
+bad () = not (1 :: Int)

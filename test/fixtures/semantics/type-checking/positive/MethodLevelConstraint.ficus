@@ -1,0 +1,3 @@
+trait Visit t = { visit : Show a => (a -> String) -> t a -> String }
+impl Visit Maybe = { visit render value = with value { Nothing -> ""; Just item -> render item } }
+check () = visit show (Just 1)

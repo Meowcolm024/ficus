@@ -12,6 +12,9 @@ extra-source-files:
   - docs/ERRORS.md
   - test/fixtures/**/*.ficus
   - test/fixtures/**/expectations.json
+  - test/fixtures/semantics/type-checking/positive-expectations.json
+  - test/fixtures/semantics/type-checking/reference/*.txt
+  - test/fixtures/semantics/type-checking/verify-references.py
   - test/fixtures/**/README.md
 
 data-files:

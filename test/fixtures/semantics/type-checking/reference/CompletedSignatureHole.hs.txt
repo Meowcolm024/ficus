@@ -1,0 +1,7 @@
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
+
+module Reference where
+
+keep :: _ -> Int
+keep x = x

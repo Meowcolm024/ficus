@@ -1,0 +1,1 @@
+let bad () = let values = Fun.id [] in (1 :: values, true :: values)

@@ -1,0 +1,9 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+
+module Reference where
+
+choose :: forall a b. a -> b -> a
+choose (x :: a) (y :: b) = x
+
+check () = choose @Int @Bool 1 True

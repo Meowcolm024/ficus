@@ -1,0 +1,3 @@
+module Reference where
+
+bad value = case value of True -> (1 :: Int); False -> "wrong"

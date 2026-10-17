@@ -1,0 +1,5 @@
+module Reference where
+
+identity x = x
+
+check () = (identity (1 :: Int), identity True)

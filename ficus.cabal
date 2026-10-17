@@ -246,10 +246,30 @@ extra-source-files:
     test/fixtures/semantics/name-resolution/support/Resolve/Left.ficus
     test/fixtures/semantics/name-resolution/support/Resolve/Right.ficus
     test/fixtures/semantics/type-checking/negative/AliasHole.ficus
+    test/fixtures/semantics/type-checking/negative/AmbiguousQualifiedSignature.ficus
+    test/fixtures/semantics/type-checking/negative/AnnotationMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/ApplicationMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/ConstructorArgumentMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/CovariantExpansivePolymorphism.ficus
+    test/fixtures/semantics/type-checking/negative/DeferredProjectionUnresolved.ficus
+    test/fixtures/semantics/type-checking/negative/EnvironmentNotGeneralized.ficus
+    test/fixtures/semantics/type-checking/negative/ExcessTypeArguments.ficus
     test/fixtures/semantics/type-checking/negative/ExpansiveImpl.ficus
+    test/fixtures/semantics/type-checking/negative/ExpansiveTopLevel.ficus
     test/fixtures/semantics/type-checking/negative/ExpressionHole.ficus
+    test/fixtures/semantics/type-checking/negative/GuardNotBool.ficus
+    test/fixtures/semantics/type-checking/negative/HoleAndIndependentError.ficus
+    test/fixtures/semantics/type-checking/negative/IfBranchesMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/IfConditionNotBool.ficus
+    test/fixtures/semantics/type-checking/negative/ImmediateWhereExpansive.ficus
     test/fixtures/semantics/type-checking/negative/ImplHeadHole.ficus
+    test/fixtures/semantics/type-checking/negative/InfiniteType.ficus
     test/fixtures/semantics/type-checking/negative/IntegerProjection.ficus
+    test/fixtures/semantics/type-checking/negative/LambdaParameterMonomorphic.ficus
+    test/fixtures/semantics/type-checking/negative/ListElementMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/LocalExpansivePolymorphism.ficus
+    test/fixtures/semantics/type-checking/negative/MatchBranchesMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/MultipleExpressionHoles.ficus
     test/fixtures/semantics/type-checking/negative/NamedPatternAnnotation.ficus
     test/fixtures/semantics/type-checking/negative/RecordWithDuplicateLabel.ficus
     test/fixtures/semantics/type-checking/negative/RecordWithExpansiveTopLevel.ficus
@@ -263,11 +283,41 @@ extra-source-files:
     test/fixtures/semantics/type-checking/negative/RefutableDoList.ficus
     test/fixtures/semantics/type-checking/negative/RefutableDoLiteral.ficus
     test/fixtures/semantics/type-checking/negative/RefutableNestedSingleConstructor.ficus
+    test/fixtures/semantics/type-checking/negative/SignatureTooGeneral.ficus
+    test/fixtures/semantics/type-checking/negative/SignedExpansiveLocal.ficus
     test/fixtures/semantics/type-checking/negative/SignedExpansiveTopLevel.ficus
     test/fixtures/semantics/type-checking/negative/SpacedIntegerProjection.ficus
     test/fixtures/semantics/type-checking/negative/TraitSignatureHole.ficus
+    test/fixtures/semantics/type-checking/negative/TypeArgumentKindMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/TypedExpressionHole.ficus
+    test/fixtures/semantics/type-checking/negative/UnprotectedRecursion.ficus
+    test/fixtures/semantics/type-checking/negative/UnresolvedMonomorphicConstraint.ficus
+    test/fixtures/semantics/type-checking/negative/UnresolvedWeakLocal.ficus
+    test/fixtures/semantics/type-checking/negative/UnsatisfiedTrait.ficus
+    test/fixtures/semantics/type-checking/negative/UnsignedConstrainedPolymorphism.ficus
+    test/fixtures/semantics/type-checking/negative/UnsignedPolymorphicRecursion.ficus
+    test/fixtures/semantics/type-checking/negative/WeakAliasPolymorphism.ficus
+    test/fixtures/semantics/type-checking/positive/CompletedSignatureHole.ficus
+    test/fixtures/semantics/type-checking/positive/ConstrainedFunction.ficus
+    test/fixtures/semantics/type-checking/positive/ConstructorValuePolymorphism.ficus
+    test/fixtures/semantics/type-checking/positive/ExplicitBinderOrder.ficus
+    test/fixtures/semantics/type-checking/positive/HigherKindedContainer.ficus
+    test/fixtures/semantics/type-checking/positive/IdentityUses.ficus
     test/fixtures/semantics/type-checking/positive/IrrefutableConstructors.ficus
+    test/fixtures/semantics/type-checking/positive/LocalExpansiveSolved.ficus
+    test/fixtures/semantics/type-checking/positive/LocalLetPolymorphism.ficus
+    test/fixtures/semantics/type-checking/positive/MethodLevelConstraint.ficus
     test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus
+    test/fixtures/semantics/type-checking/positive/MonomorphicConstraintSolved.ficus
+    test/fixtures/semantics/type-checking/positive/RecordConstructionUpdate.ficus
+    test/fixtures/semantics/type-checking/positive/SafeMutualRecursion.ficus
+    test/fixtures/semantics/type-checking/positive/ScopedPatternAnnotation.ficus
+    test/fixtures/semantics/type-checking/positive/SignatureSpecialization.ficus
+    test/fixtures/semantics/type-checking/positive/SignedConstrainedAlias.ficus
+    test/fixtures/semantics/type-checking/positive/SignedPolymorphicRecursion.ficus
+    test/fixtures/semantics/type-checking/positive/SuperclassEvidence.ficus
+    test/fixtures/semantics/type-checking/positive/TypeApplicationHole.ficus
+    test/fixtures/semantics/type-checking/positive/WeakAliasSolved.ficus
     test/fixtures/support/Prelude.ficus
     test/fixtures/type-application/ConcreteBinder.ficus
     test/fixtures/type-application/ExcessArgument.ficus
@@ -282,6 +332,66 @@ extra-source-files:
     test/fixtures/semantics/name-resolution/expectations.json
     test/fixtures/semantics/name-resolution/graphs/expectations.json
     test/fixtures/semantics/type-checking/expectations.json
+    test/fixtures/semantics/type-checking/reference/expectations.json
+    test/fixtures/semantics/type-checking/positive-expectations.json
+    test/fixtures/semantics/type-checking/reference/AmbiguousQualifiedSignature.hs.txt
+    test/fixtures/semantics/type-checking/reference/AnnotationMismatch.hs.txt
+    test/fixtures/semantics/type-checking/reference/ApplicationMismatch.hs.txt
+    test/fixtures/semantics/type-checking/reference/CompletedSignatureHole.hs.txt
+    test/fixtures/semantics/type-checking/reference/ConstrainedFunction.hs.txt
+    test/fixtures/semantics/type-checking/reference/ConstructorArgumentMismatch.hs.txt
+    test/fixtures/semantics/type-checking/reference/ConstructorValuePolymorphism.hs.txt
+    test/fixtures/semantics/type-checking/reference/CovariantExpansivePolymorphism.hs.txt
+    test/fixtures/semantics/type-checking/reference/CovariantExpansivePolymorphism.ml.txt
+    test/fixtures/semantics/type-checking/reference/EnvironmentNotGeneralized.hs.txt
+    test/fixtures/semantics/type-checking/reference/ExcessTypeArguments.hs.txt
+    test/fixtures/semantics/type-checking/reference/ExpansiveTopLevel.hs.txt
+    test/fixtures/semantics/type-checking/reference/ExpansiveTopLevel.ml.txt
+    test/fixtures/semantics/type-checking/reference/ExplicitBinderOrder.hs.txt
+    test/fixtures/semantics/type-checking/reference/GuardNotBool.hs.txt
+    test/fixtures/semantics/type-checking/reference/HigherKindedContainer.hs.txt
+    test/fixtures/semantics/type-checking/reference/HoleAndIndependentError.hs.txt
+    test/fixtures/semantics/type-checking/reference/IdentityUses.hs.txt
+    test/fixtures/semantics/type-checking/reference/IfBranchesMismatch.hs.txt
+    test/fixtures/semantics/type-checking/reference/IfConditionNotBool.hs.txt
+    test/fixtures/semantics/type-checking/reference/ImmediateWhereExpansive.hs.txt
+    test/fixtures/semantics/type-checking/reference/ImmediateWhereExpansive.ml.txt
+    test/fixtures/semantics/type-checking/reference/InfiniteType.hs.txt
+    test/fixtures/semantics/type-checking/reference/LambdaParameterMonomorphic.hs.txt
+    test/fixtures/semantics/type-checking/reference/ListElementMismatch.hs.txt
+    test/fixtures/semantics/type-checking/reference/LocalExpansivePolymorphism.hs.txt
+    test/fixtures/semantics/type-checking/reference/LocalExpansivePolymorphism.ml.txt
+    test/fixtures/semantics/type-checking/reference/LocalExpansiveSolved.hs.txt
+    test/fixtures/semantics/type-checking/reference/LocalExpansiveSolved.ml.txt
+    test/fixtures/semantics/type-checking/reference/LocalLetPolymorphism.hs.txt
+    test/fixtures/semantics/type-checking/reference/LocalLetPolymorphism.ml.txt
+    test/fixtures/semantics/type-checking/reference/MatchBranchesMismatch.hs.txt
+    test/fixtures/semantics/type-checking/reference/MethodLevelConstraint.hs.txt
+    test/fixtures/semantics/type-checking/reference/MonomorphicConstraintSolved.hs.txt
+    test/fixtures/semantics/type-checking/reference/MultipleExpressionHoles.hs.txt
+    test/fixtures/semantics/type-checking/reference/RecordConstructionUpdate.hs.txt
+    test/fixtures/semantics/type-checking/reference/SafeMutualRecursion.hs.txt
+    test/fixtures/semantics/type-checking/reference/ScopedPatternAnnotation.hs.txt
+    test/fixtures/semantics/type-checking/reference/SignatureSpecialization.hs.txt
+    test/fixtures/semantics/type-checking/reference/SignatureTooGeneral.hs.txt
+    test/fixtures/semantics/type-checking/reference/SignedConstrainedAlias.hs.txt
+    test/fixtures/semantics/type-checking/reference/SignedExpansiveLocal.hs.txt
+    test/fixtures/semantics/type-checking/reference/SignedExpansiveLocal.ml.txt
+    test/fixtures/semantics/type-checking/reference/SignedPolymorphicRecursion.hs.txt
+    test/fixtures/semantics/type-checking/reference/SuperclassEvidence.hs.txt
+    test/fixtures/semantics/type-checking/reference/TypeApplicationHole.hs.txt
+    test/fixtures/semantics/type-checking/reference/TypeArgumentKindMismatch.hs.txt
+    test/fixtures/semantics/type-checking/reference/TypedExpressionHole.hs.txt
+    test/fixtures/semantics/type-checking/reference/UnprotectedRecursion.hs.txt
+    test/fixtures/semantics/type-checking/reference/UnprotectedRecursion.ml.txt
+    test/fixtures/semantics/type-checking/reference/UnresolvedMonomorphicConstraint.hs.txt
+    test/fixtures/semantics/type-checking/reference/UnresolvedWeakLocal.ml.txt
+    test/fixtures/semantics/type-checking/reference/UnsatisfiedTrait.hs.txt
+    test/fixtures/semantics/type-checking/reference/UnsignedConstrainedPolymorphism.hs.txt
+    test/fixtures/semantics/type-checking/reference/UnsignedPolymorphicRecursion.hs.txt
+    test/fixtures/semantics/type-checking/reference/WeakAliasPolymorphism.ml.txt
+    test/fixtures/semantics/type-checking/reference/WeakAliasSolved.ml.txt
+    test/fixtures/semantics/type-checking/verify-references.py
     test/fixtures/desugaring/pattern-lambdas/README.md
     test/fixtures/eta/README.md
     test/fixtures/lazy-arrows/README.md
@@ -290,6 +400,7 @@ extra-source-files:
     test/fixtures/semantics/name-resolution/graphs/README.md
     test/fixtures/semantics/name-resolution/README.md
     test/fixtures/semantics/README.md
+    test/fixtures/semantics/type-checking/README.md
     test/fixtures/support/README.md
     test/fixtures/type-application/README.md
 data-files:

@@ -1,0 +1,1 @@
+bad () = id @Int @Bool 1

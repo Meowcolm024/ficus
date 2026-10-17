@@ -1,0 +1,9 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+
+module Reference where
+
+identity :: forall a. a -> a
+identity (x :: a) = x
+
+check () = identity @Int 1

@@ -1,0 +1,7 @@
+module Reference where
+
+ping :: Int -> Int
+ping x = pong x
+
+pong :: Int -> Int
+pong x = ping x

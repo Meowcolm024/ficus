@@ -1,0 +1,2 @@
+type Token = Token
+bad () = show Token

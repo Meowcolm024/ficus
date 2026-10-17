@@ -1,0 +1,7 @@
+module Reference where
+
+data Point = Point {x :: Int, y :: Int}
+
+original = Point {y = 2, x = 1}
+
+change () = original {x = 3}

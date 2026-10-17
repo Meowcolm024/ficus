@@ -1,0 +1,5 @@
+module Reference where
+
+display = show
+
+bad () = (display (1 :: Int), display True)

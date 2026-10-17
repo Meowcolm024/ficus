@@ -1,0 +1,1 @@
+bad () = { same : a -> a; same = id (x -> x); (same 1, same True) }

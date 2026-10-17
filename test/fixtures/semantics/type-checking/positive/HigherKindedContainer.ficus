@@ -1,0 +1,3 @@
+type Container (f : Type -> Type) a = Container (f a)
+unwrap (Container value) = value
+check () = unwrap (Container (Just 1))

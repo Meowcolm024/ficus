@@ -1,0 +1,3 @@
+module Reference where
+
+bad = \x -> (x :: Int) where work = id (1 :: Int)

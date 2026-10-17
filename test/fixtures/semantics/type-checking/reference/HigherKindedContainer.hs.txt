@@ -1,0 +1,11 @@
+{-# LANGUAGE KindSignatures #-}
+
+module Reference where
+
+import Data.Kind (Type)
+
+data Container (f :: Type -> Type) a = Container (f a)
+
+unwrap (Container value) = value
+
+check () = unwrap (Container (Just (1 :: Int)))

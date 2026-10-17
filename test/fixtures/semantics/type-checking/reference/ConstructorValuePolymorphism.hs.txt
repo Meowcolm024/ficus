@@ -1,0 +1,9 @@
+module Reference where
+
+data Box a = Box a
+
+boxed = Box (\x -> x)
+
+integer () = case boxed of Box f -> f (1 :: Int)
+
+boolean () = case boxed of Box f -> f True

@@ -1,0 +1,128 @@
+{
+  "positive/IdentityUses.ficus": {
+    "types": {
+      "identity": "a -> a",
+      "check": "Unit -> (Int * Bool)"
+    },
+    "rule": "SPEC \u00a715"
+  },
+  "positive/LocalLetPolymorphism.ficus": {
+    "types": {
+      "check": "Unit -> (Int * Bool)"
+    },
+    "rule": "SPEC \u00a715"
+  },
+  "positive/SignatureSpecialization.ficus": {
+    "types": {
+      "identity": "Int -> Int"
+    },
+    "rule": "SPEC \u00a715"
+  },
+  "positive/LocalExpansiveSolved.ficus": {
+    "types": {
+      "check": "Unit -> Int"
+    },
+    "rule": "SPEC \u00a715 value restriction"
+  },
+  "positive/WeakAliasSolved.ficus": {
+    "types": {
+      "check": "Unit -> (Int * Int)"
+    },
+    "rule": "SPEC \u00a715 weak-variable sharing"
+  },
+  "positive/SafeMutualRecursion.ficus": {
+    "types": {
+      "ping": "Int -> Int",
+      "pong": "Int -> Int"
+    },
+    "rule": "SPEC \u00a7\u00a712, 15"
+  },
+  "positive/SignedPolymorphicRecursion.ficus": {
+    "types": {
+      "loop": "[a] -> Int"
+    },
+    "rule": "SPEC \u00a7\u00a712, 15 signed recursion"
+  },
+  "positive/ConstructorValuePolymorphism.ficus": {
+    "types": {
+      "boxed": "Box (a -> a)",
+      "integer": "Unit -> Int",
+      "boolean": "Unit -> Bool"
+    },
+    "rule": "SPEC \u00a7\u00a715, 16 non-expansive constructors"
+  },
+  "positive/ScopedPatternAnnotation.ficus": {
+    "types": {
+      "identity": "{a} -> a -> a",
+      "check": "Unit -> Int"
+    },
+    "rule": "SPEC \u00a77.3 scoped @ binders"
+  },
+  "positive/ExplicitBinderOrder.ficus": {
+    "types": {
+      "choose": "{a} -> {b} -> a -> b -> a",
+      "check": "Unit -> Int"
+    },
+    "rule": "SPEC \u00a77.3 explicit binder order"
+  },
+  "positive/TypeApplicationHole.ficus": {
+    "types": {
+      "check": "Unit -> Int"
+    },
+    "rule": "SPEC \u00a7\u00a77.3, 7.4"
+  },
+  "positive/CompletedSignatureHole.ficus": {
+    "types": {
+      "keep": "Int -> Int"
+    },
+    "rule": "SPEC \u00a77.4 signature holes"
+  },
+  "positive/HigherKindedContainer.ficus": {
+    "types": {
+      "unwrap": "Container f a -> f a",
+      "check": "Unit -> Maybe Int"
+    },
+    "rule": "SPEC \u00a7\u00a77.1, 7.3 kinds"
+  },
+  "positive/RecordConstructionUpdate.ficus": {
+    "types": {
+      "original": "Point",
+      "change": "Unit -> Point"
+    },
+    "rule": "SPEC \u00a77.2 nominal records"
+  },
+  "positive/SignedConstrainedAlias.ficus": {
+    "types": {
+      "display": "Show a => a -> String",
+      "check": "Unit -> (String * String)"
+    },
+    "rule": "SPEC \u00a715 complete signature overrides monomorphism restriction"
+  },
+  "positive/ConstrainedFunction.ficus": {
+    "types": {
+      "display": "Show a => a -> String",
+      "check": "Unit -> (String * String)"
+    },
+    "rule": "SPEC \u00a7\u00a715, 16 constrained generalization"
+  },
+  "positive/MonomorphicConstraintSolved.ficus": {
+    "types": {
+      "display": "Int -> String",
+      "check": "Unit -> String"
+    },
+    "rule": "SPEC \u00a715 later uses fix constrained monotype"
+  },
+  "positive/SuperclassEvidence.ficus": {
+    "types": {
+      "same": "Ord a => a -> a -> Bool",
+      "check": "Unit -> Bool"
+    },
+    "rule": "SPEC \u00a716 superclass evidence"
+  },
+  "positive/MethodLevelConstraint.ficus": {
+    "types": {
+      "check": "Unit -> String"
+    },
+    "rule": "SPEC \u00a716 method-level predicates"
+  }
+}

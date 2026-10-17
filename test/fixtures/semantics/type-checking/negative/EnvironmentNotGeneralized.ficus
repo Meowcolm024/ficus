@@ -1,0 +1,1 @@
+bad f = { same x = f x; (same 1, same True) }

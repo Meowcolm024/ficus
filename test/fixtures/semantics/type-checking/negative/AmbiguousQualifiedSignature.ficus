@@ -1,0 +1,2 @@
+bad : Show a => Int
+bad = 1

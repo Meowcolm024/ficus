@@ -1,0 +1,5 @@
+module Reference where
+
+data Box = Box Int
+
+bad () = Box True

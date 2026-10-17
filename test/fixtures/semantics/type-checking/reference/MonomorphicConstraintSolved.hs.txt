@@ -1,0 +1,5 @@
+module Reference where
+
+display = show
+
+check () = display (1 :: Int)

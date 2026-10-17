@@ -1,0 +1,4 @@
+module Reference where
+
+identity :: Int -> Int
+identity x = x

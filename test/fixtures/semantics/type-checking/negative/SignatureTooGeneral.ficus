@@ -1,0 +1,2 @@
+bad : a -> a
+bad x = 1

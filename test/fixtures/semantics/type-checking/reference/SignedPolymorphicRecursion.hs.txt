@@ -1,0 +1,4 @@
+module Reference where
+
+loop :: [a] -> Int
+loop xs = loop [xs]

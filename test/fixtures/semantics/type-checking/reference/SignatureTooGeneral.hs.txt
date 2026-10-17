@@ -1,0 +1,4 @@
+module Reference where
+
+bad :: a -> a
+bad x = (1 :: Int)

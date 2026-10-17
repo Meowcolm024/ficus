@@ -1,0 +1,3 @@
+missing : Int -> Int
+missing x = _
+bad () = not 1

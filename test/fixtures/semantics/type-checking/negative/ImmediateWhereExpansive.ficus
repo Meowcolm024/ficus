@@ -1,0 +1,1 @@
+bad = (x : Int) -> x where { work = id 1 }

@@ -1,0 +1,3 @@
+module Reference where
+
+check () = let same = id (\x -> x) in same (1 :: Int)

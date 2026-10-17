@@ -1,0 +1,5 @@
+module Reference where
+
+left = right
+
+right = left

@@ -1,0 +1,1 @@
+loop xs = loop [xs]

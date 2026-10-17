@@ -1,0 +1,9 @@
+module Reference where
+
+class Visit t where
+  visit :: (Show a) => (a -> String) -> t a -> String
+
+instance Visit Maybe where
+  visit render value = case value of Nothing -> ""; Just item -> render item
+
+check () = visit show (Just (1 :: Int))

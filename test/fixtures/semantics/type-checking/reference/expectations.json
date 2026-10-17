@@ -1,0 +1,612 @@
+{
+  "positive/IdentityUses.ficus": {
+    "rule": "SPEC \u00a715",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/IdentityUses.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/LocalLetPolymorphism.ficus": {
+    "rule": "SPEC \u00a715",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/LocalLetPolymorphism.hs.txt",
+        "result": "accept"
+      },
+      {
+        "compiler": "ocaml",
+        "source": "reference/LocalLetPolymorphism.ml.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/SignatureSpecialization.ficus": {
+    "rule": "SPEC \u00a715",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/SignatureSpecialization.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/LocalExpansiveSolved.ficus": {
+    "rule": "SPEC \u00a715 value restriction",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/LocalExpansiveSolved.hs.txt",
+        "result": "accept"
+      },
+      {
+        "compiler": "ocaml",
+        "source": "reference/LocalExpansiveSolved.ml.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/WeakAliasSolved.ficus": {
+    "rule": "SPEC \u00a715 weak-variable sharing",
+    "references": [
+      {
+        "compiler": "ocaml",
+        "source": "reference/WeakAliasSolved.ml.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/SafeMutualRecursion.ficus": {
+    "rule": "SPEC \u00a7\u00a712, 15",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/SafeMutualRecursion.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/SignedPolymorphicRecursion.ficus": {
+    "rule": "SPEC \u00a7\u00a712, 15 signed recursion",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/SignedPolymorphicRecursion.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/ConstructorValuePolymorphism.ficus": {
+    "rule": "SPEC \u00a7\u00a715, 16 non-expansive constructors",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ConstructorValuePolymorphism.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/ScopedPatternAnnotation.ficus": {
+    "rule": "SPEC \u00a77.3 scoped @ binders",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ScopedPatternAnnotation.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/ExplicitBinderOrder.ficus": {
+    "rule": "SPEC \u00a77.3 explicit binder order",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ExplicitBinderOrder.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/TypeApplicationHole.ficus": {
+    "rule": "SPEC \u00a7\u00a77.3, 7.4",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/TypeApplicationHole.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/CompletedSignatureHole.ficus": {
+    "rule": "SPEC \u00a77.4 signature holes",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/CompletedSignatureHole.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/HigherKindedContainer.ficus": {
+    "rule": "SPEC \u00a7\u00a77.1, 7.3 kinds",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/HigherKindedContainer.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/RecordConstructionUpdate.ficus": {
+    "rule": "SPEC \u00a77.2 nominal records",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/RecordConstructionUpdate.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/SignedConstrainedAlias.ficus": {
+    "rule": "SPEC \u00a715 complete signature overrides monomorphism restriction",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/SignedConstrainedAlias.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/ConstrainedFunction.ficus": {
+    "rule": "SPEC \u00a7\u00a715, 16 constrained generalization",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ConstrainedFunction.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/MonomorphicConstraintSolved.ficus": {
+    "rule": "SPEC \u00a715 later uses fix constrained monotype",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/MonomorphicConstraintSolved.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/SuperclassEvidence.ficus": {
+    "rule": "SPEC \u00a716 superclass evidence",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/SuperclassEvidence.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "positive/MethodLevelConstraint.ficus": {
+    "rule": "SPEC \u00a716 method-level predicates",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/MethodLevelConstraint.hs.txt",
+        "result": "accept"
+      }
+    ]
+  },
+  "negative/ApplicationMismatch.ficus": {
+    "rule": "SPEC \u00a715 equality constraints",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ApplicationMismatch.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/InfiniteType.ficus": {
+    "rule": "SPEC \u00a715 occurs check",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/InfiniteType.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-25897"
+        ]
+      }
+    ]
+  },
+  "negative/LambdaParameterMonomorphic.ficus": {
+    "rule": "SPEC \u00a715 environment variables are monomorphic",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/LambdaParameterMonomorphic.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/EnvironmentNotGeneralized.ficus": {
+    "rule": "SPEC \u00a715 environment free variables",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/EnvironmentNotGeneralized.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/SignatureTooGeneral.ficus": {
+    "rule": "SPEC \u00a715 signature may not be more general",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/SignatureTooGeneral.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-25897"
+        ]
+      }
+    ]
+  },
+  "negative/AnnotationMismatch.ficus": {
+    "rule": "SPEC \u00a7\u00a77.3, 15 annotations",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/AnnotationMismatch.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/IfConditionNotBool.ficus": {
+    "rule": "SPEC \u00a711 Boolean conditions",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/IfConditionNotBool.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/IfBranchesMismatch.ficus": {
+    "rule": "SPEC \u00a7\u00a711, 15 branch unification",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/IfBranchesMismatch.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/MatchBranchesMismatch.ficus": {
+    "rule": "SPEC \u00a7\u00a710, 15 branch unification",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/MatchBranchesMismatch.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/GuardNotBool.ficus": {
+    "rule": "SPEC \u00a7\u00a710, 11 Boolean guards",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/GuardNotBool.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/ConstructorArgumentMismatch.ficus": {
+    "rule": "SPEC \u00a7\u00a77.1, 15 constructor arguments",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ConstructorArgumentMismatch.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/ListElementMismatch.ficus": {
+    "rule": "SPEC \u00a7\u00a78, 15 list element unification",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ListElementMismatch.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/TypeArgumentKindMismatch.ficus": {
+    "rule": "SPEC \u00a77.3 type-argument kinds",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/TypeArgumentKindMismatch.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/ExcessTypeArguments.ficus": {
+    "rule": "SPEC \u00a77.3 excess explicit arguments",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ExcessTypeArguments.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-95781"
+        ]
+      }
+    ]
+  },
+  "negative/UnsignedPolymorphicRecursion.ficus": {
+    "rule": "SPEC \u00a7\u00a712, 15 unsigned recursive monotypes",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/UnsignedPolymorphicRecursion.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-25897"
+        ]
+      }
+    ]
+  },
+  "negative/LocalExpansivePolymorphism.ficus": {
+    "rule": "SPEC \u00a715 value restriction",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/LocalExpansivePolymorphism.hs.txt",
+        "result": "accept"
+      },
+      {
+        "compiler": "ocaml",
+        "source": "reference/LocalExpansivePolymorphism.ml.txt",
+        "result": "reject"
+      }
+    ],
+    "difference": "GHC generalizes the application result; OCaml and Ficus keep the invariant function type monomorphic."
+  },
+  "negative/SignedExpansiveLocal.ficus": {
+    "rule": "SPEC \u00a715 signatures cannot bypass value restriction",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/SignedExpansiveLocal.hs.txt",
+        "result": "accept"
+      },
+      {
+        "compiler": "ocaml",
+        "source": "reference/SignedExpansiveLocal.ml.txt",
+        "result": "reject"
+      }
+    ],
+    "difference": "Haskell has no value restriction; explicit universal quantification cannot generalize this expansive initializer in OCaml or Ficus."
+  },
+  "negative/WeakAliasPolymorphism.ficus": {
+    "rule": "SPEC \u00a715 weak-variable sharing through aliases",
+    "references": [
+      {
+        "compiler": "ocaml",
+        "source": "reference/WeakAliasPolymorphism.ml.txt",
+        "result": "reject"
+      }
+    ]
+  },
+  "negative/UnresolvedWeakLocal.ficus": {
+    "rule": "SPEC \u00a715 unresolved weak variables, including unused local bindings",
+    "references": [
+      {
+        "compiler": "ocaml",
+        "source": "reference/UnresolvedWeakLocal.ml.txt",
+        "result": "accept"
+      }
+    ],
+    "difference": "OCaml permits an unused local weak variable that does not escape; Ficus requires all remaining weak variables to be solved at module completion."
+  },
+  "negative/UnsignedConstrainedPolymorphism.ficus": {
+    "rule": "SPEC \u00a715 monomorphism restriction",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/UnsignedConstrainedPolymorphism.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/UnresolvedMonomorphicConstraint.ficus": {
+    "rule": "SPEC \u00a715 unresolved constrained monotype",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/UnresolvedMonomorphicConstraint.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-39999"
+        ]
+      }
+    ]
+  },
+  "negative/UnsatisfiedTrait.ficus": {
+    "rule": "SPEC \u00a716 missing visible implementation",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/UnsatisfiedTrait.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-39999"
+        ]
+      }
+    ]
+  },
+  "negative/AmbiguousQualifiedSignature.ficus": {
+    "rule": "SPEC \u00a715 ambiguity in written schemes",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/AmbiguousQualifiedSignature.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-39999"
+        ]
+      }
+    ]
+  },
+  "negative/ExpansiveTopLevel.ficus": {
+    "rule": "SPEC \u00a7\u00a712, 16 top-level initialization",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ExpansiveTopLevel.hs.txt",
+        "result": "accept"
+      },
+      {
+        "compiler": "ocaml",
+        "source": "reference/ExpansiveTopLevel.ml.txt",
+        "result": "accept"
+      }
+    ],
+    "difference": "Ficus forbids every expansive v0 top-level initializer, even when its type is already concrete; Haskell and OCaml allow this acyclic call."
+  },
+  "negative/ImmediateWhereExpansive.ficus": {
+    "rule": "SPEC \u00a712 immediate where before RHS lambda",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/ImmediateWhereExpansive.hs.txt",
+        "result": "accept"
+      },
+      {
+        "compiler": "ocaml",
+        "source": "reference/ImmediateWhereExpansive.ml.txt",
+        "result": "accept"
+      }
+    ],
+    "difference": "Haskell where is lazy; OCaml permits the acyclic work. Ficus initializes the zero-written-parameter where group immediately and rejects its call."
+  },
+  "negative/UnprotectedRecursion.ficus": {
+    "rule": "SPEC \u00a712 recursive references need value-lambda protection",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/UnprotectedRecursion.hs.txt",
+        "result": "accept"
+      },
+      {
+        "compiler": "ocaml",
+        "source": "reference/UnprotectedRecursion.ml.txt",
+        "result": "reject"
+      }
+    ],
+    "difference": "Haskell permits a lazy recursive value cycle; OCaml and Ficus reject these unprotected recursive initializers."
+  },
+  "negative/TypedExpressionHole.ficus": {
+    "rule": "SPEC \u00a77.4 contextual expression-hole goal",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/TypedExpressionHole.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-88464"
+        ]
+      }
+    ]
+  },
+  "negative/MultipleExpressionHoles.ficus": {
+    "rule": "SPEC \u00a77.4 report every source hole after continuing elaboration",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/MultipleExpressionHoles.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-88464",
+          "GHC-88464"
+        ]
+      }
+    ]
+  },
+  "negative/HoleAndIndependentError.ficus": {
+    "rule": "SPEC \u00a77.4 continue checking independent declarations",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/HoleAndIndependentError.hs.txt",
+        "result": "reject",
+        "diagnosticCodes": [
+          "GHC-88464",
+          "GHC-83865"
+        ]
+      }
+    ]
+  },
+  "negative/DeferredProjectionUnresolved.ficus": {
+    "rule": "SPEC \u00a77.2 unresolved nominal receiver at module completion",
+    "references": [],
+    "difference": "Ficus cannot select a nominal record from the label alone. Haskell selectors and OCaml record-label disambiguation do not model this deferred constraint."
+  },
+  "negative/CovariantExpansivePolymorphism.ficus": {
+    "rule": "SPEC \u00a715 no relaxed value restriction",
+    "references": [
+      {
+        "compiler": "ghc",
+        "source": "reference/CovariantExpansivePolymorphism.hs.txt",
+        "result": "accept"
+      },
+      {
+        "compiler": "ocaml",
+        "source": "reference/CovariantExpansivePolymorphism.ml.txt",
+        "result": "accept"
+      }
+    ],
+    "difference": "OCaml relaxed value restriction generalizes the covariant list element; Ficus syntactic value restriction keeps it monomorphic. Haskell also generalizes."
+  }
+}

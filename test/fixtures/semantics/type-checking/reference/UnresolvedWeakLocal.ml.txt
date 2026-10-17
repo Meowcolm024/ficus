@@ -1,0 +1,1 @@
+let bad () = let unused = Fun.id (fun x -> x) in 0

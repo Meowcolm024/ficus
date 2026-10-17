@@ -1,0 +1,1 @@
+bad value = with value { True -> 1; False -> "wrong" }

@@ -1,0 +1,2 @@
+display x = show x
+check () = (display 1, display True)

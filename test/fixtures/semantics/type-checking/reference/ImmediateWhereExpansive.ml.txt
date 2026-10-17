@@ -1,0 +1,1 @@
+let bad = let work = Fun.id 1 in fun (x : int) -> x

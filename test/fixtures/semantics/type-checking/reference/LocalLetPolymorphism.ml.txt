@@ -1,0 +1,1 @@
+let check () = let same x = x in (same 1, same true)

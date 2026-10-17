@@ -11,8 +11,12 @@ actually defines the imported record. Support files are dependencies, not tests.
 Use the single shared ../support/Prelude.ficus (relative to semantics/) in the
 default provider roots; see ../support/README.md for contracts. Per-case graph
 source roots override this and never inherit a fallback library.
-The parser suite checks semantic negatives for syntax acceptance. Resolver and
-type-checker fixture execution remains future work; no execution is claimed here.
+The parser suite checks semantic negatives for syntax acceptance. The dedicated
+name-resolution suite executes its own fixtures. Type-checker fixture execution
+remains future work; the new type-checking sources have additionally been checked
+for successful resolution and Abstract validation. Their
+[type-checking inventory](type-checking/README.md) includes reproducible GHC and
+OCaml translations and records the language differences explicitly.
 
 The positive type-checking MiniPrelude.ficus smoke case exercises arithmetic,
 booleans, String operations, interpolation, Maybe/Bind do notation, product

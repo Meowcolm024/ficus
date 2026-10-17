@@ -1,0 +1,5 @@
+module Reference where
+
+display x = show x
+
+check () = (display (1 :: Int), display True)

@@ -1,0 +1,4 @@
+module Reference where
+
+bad :: Int -> (Int, Bool)
+bad x = (_, _)

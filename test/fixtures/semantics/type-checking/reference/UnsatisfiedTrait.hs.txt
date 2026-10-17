@@ -1,0 +1,5 @@
+module Reference where
+
+data Token = Token
+
+bad () = show Token

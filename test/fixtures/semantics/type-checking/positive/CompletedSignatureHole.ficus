@@ -1,0 +1,2 @@
+keep : _ -> Int
+keep x = x

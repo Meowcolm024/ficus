@@ -1,0 +1,6 @@
+module Reference where
+
+display :: (Show a) => a -> String
+display = show
+
+check () = (display (1 :: Int), display True)

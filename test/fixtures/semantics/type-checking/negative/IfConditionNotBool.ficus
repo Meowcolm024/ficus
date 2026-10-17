@@ -1,0 +1,1 @@
+bad () = if { 1 -> True; _ -> False }

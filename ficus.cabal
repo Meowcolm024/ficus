@@ -20,6 +20,7 @@ extra-source-files:
     CHANGELOG.md
     docs/SPEC.md
     docs/ERRORS.md
+    test/fixtures/compile/invalid/main.ficus
     test/fixtures/desugaring/pattern-lambdas/DoBindingsV0.ficus
     test/fixtures/desugaring/pattern-lambdas/RecordV1.ficus
     test/fixtures/desugaring/pattern-lambdas/SourcesV0.ficus

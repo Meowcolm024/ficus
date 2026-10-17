@@ -6,6 +6,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Ficus.Compile
 import Ficus.Error.Diagnostic qualified as D
+import Ficus.Error.Pretty (prettyDiagnosticWithOptionalSourceRelativeTo)
 import Ficus.Error.Resolve qualified as R
 import Ficus.Library.Contracts
 import Ficus.Resolve
@@ -59,12 +60,15 @@ tests =
             assertBool "source retained" (maybe False (T.isInfixOf "foo x = y -> y") (Map.lookup path (compileSources result)))
           [] -> assertFailure "expected a diagnostic",
       testCase "invalid entry names produce a located diagnostic" $ do
-        result <- check (baseOptions "examples/main.ficus")
+        result <- check (baseOptions "test/fixtures/compile/invalid/main.ficus")
         compileSucceeded result @?= False
         case frontendDiagnostics (compileFrontend result) of
           d : _ -> do
             D.diagnosticCode (D.toDiagnostic d) @?= R.renderResolveCode R.InvalidModuleIdentity
             line (start (D.diagnosticSpan (D.toDiagnostic d))) @?= 1
+            let path = sourceFile (D.diagnosticSpan (D.toDiagnostic d))
+                output = prettyDiagnosticWithOptionalSourceRelativeTo "." (Map.lookup path (compileSources result)) d
+            assertBool "no source excerpt for a filename error" (not (" |" `T.isInfixOf` output))
           [] -> assertFailure "expected an invalid module identity",
       testCase "overlapping project roots do not choose a module identity" $ do
         result <- check ((baseOptions "test/fixtures/semantics/name-resolution/support/Resolve/Left.ficus") {projectRoots = ["test/fixtures/semantics/name-resolution/support", "test/fixtures/semantics/name-resolution/support/Resolve"]})
@@ -75,6 +79,15 @@ tests =
         let ds = frontendDiagnostics (compileFrontend result)
         sort (map (takeFileName . sourceFile . D.diagnosticSpan . D.toDiagnostic) ds) @?= ["AlsoAbsent.ficus", "DoesNotExist.ficus"]
         map (D.diagnosticCode . D.toDiagnostic) ds @?= ["N0201", "N0201"],
+      testCase "missing entry files are reported before invalid module names" $ do
+        let files = "examples/ain.ficus" :| ["examples/absent.txt"]
+        result <- check ((baseOptions "examples/ain.ficus") {inputFiles = files})
+        compileSucceeded result @?= False
+        let ds = map D.toDiagnostic (frontendDiagnostics (compileFrontend result))
+        map D.diagnosticCode ds @?= ["N0201", "N0201"]
+        map (takeFileName . sourceFile . D.diagnosticSpan) ds @?= ["ain.ficus", "absent.txt"]
+        map (start . D.diagnosticSpan) ds @?= replicate 2 (Position 1 1 0)
+        assertBool "missing files have no source excerpts" (Map.null (compileSources result)),
       testCase "warnings do not fail compilation" $ do
         result <- check (baseOptions "test/fixtures/semantics/name-resolution/positive/SequentialDifferentArities.ficus")
         compileSucceeded result @?= True

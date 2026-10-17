@@ -1,5 +1,5 @@
 -- | Render a diagnostic against the source text that its span references.
-module Ficus.Error.Pretty (prettyDiagnostic, prettyDiagnosticRelativeTo) where
+module Ficus.Error.Pretty (prettyDiagnostic, prettyDiagnosticRelativeTo, prettyDiagnosticWithOptionalSourceRelativeTo) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -11,15 +11,20 @@ import Text.PrettyPrint qualified as P
 -- | Render source locations relative to an absolute working directory. Paths
 -- embedded in diagnostic messages are deliberately left unchanged.
 prettyDiagnosticRelativeTo :: (ToDiagnostic d) => FilePath -> Text -> d -> Text
-prettyDiagnosticRelativeTo directory = prettyDiagnosticWithPath (relativeSourcePath directory)
+prettyDiagnosticRelativeTo directory source = prettyDiagnosticWithOptionalSourceRelativeTo directory (Just source)
+
+-- | Omit the excerpt when no source was loaded. An available empty source still
+-- has an EOF position and receives a caret.
+prettyDiagnosticWithOptionalSourceRelativeTo :: (ToDiagnostic d) => FilePath -> Maybe Text -> d -> Text
+prettyDiagnosticWithOptionalSourceRelativeTo directory = prettyDiagnosticWithPath (relativeSourcePath directory)
 
 -- | No source is read from disk. Callers supply the exact text they parsed,
 -- which also permits diagnostics for stdin and unsaved editor buffers.
 -- Columns count Unicode characters, with four-column tab stops, as in parsing.
 prettyDiagnostic :: (ToDiagnostic d) => Text -> d -> Text
-prettyDiagnostic = prettyDiagnosticWithPath id
+prettyDiagnostic source = prettyDiagnosticWithPath id (Just source)
 
-prettyDiagnosticWithPath :: (ToDiagnostic d) => (FilePath -> FilePath) -> Text -> d -> Text
+prettyDiagnosticWithPath :: (ToDiagnostic d) => (FilePath -> FilePath) -> Maybe Text -> d -> Text
 prettyDiagnosticWithPath displayPath source input = T.pack (P.render (P.vcat (map (P.text . T.unpack) output)))
   where
     diagnostic = toDiagnostic input
@@ -40,7 +45,8 @@ prettyDiagnosticWithPath displayPath source input = T.pack (P.render (P.vcat (ma
         <> diagnosticMessage diagnostic
     referenced =
       [ (n, expandTabs (T.dropWhileEnd (== '\r') t))
-      | (n, t) <- zip [1 ..] (T.splitOn "\n" source),
+      | text <- maybe [] pure source,
+        (n, t) <- zip [1 ..] (T.splitOn "\n" text),
         n >= firstLine,
         n <= lastLine
       ]

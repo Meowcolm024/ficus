@@ -10,6 +10,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Text qualified as T
 import Ficus.Desugar.Registry (SugarRegistry)
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Resolve qualified as R
@@ -19,7 +20,7 @@ import Ficus.Resolve.Discovery
 import Ficus.Resolve.Provider qualified as Provider
 import Ficus.Syntax.Name (ModuleId)
 import Ficus.Util.Source
-import System.Directory (makeAbsolute)
+import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath (normalise, takeDirectory, takeExtension)
 
 data CompileOptions = CompileOptions
@@ -45,8 +46,8 @@ compileFiles resolver sugar options = do
   roots <- nub <$> mapM absolute (if null (projectRoots options) then map takeDirectory (NE.toList files) else projectRoots options)
   libraries <- mapM absolute (libraryRoots options)
   prelude <- traverse absolute (preludeFile options)
-  let identities = map (entryIdentity roots) (NE.toList files)
-      entries = [(owner, Span file (Position 1 1 0) (Position 1 1 0)) | (file, Right owner) <- zip (NE.toList files) identities]
+  identities <- mapM (entryIdentity roots) (NE.toList files)
+  let entries = [(owner, Span file (Position 1 1 0) (Position 1 1 0)) | (file, Right owner) <- zip (NE.toList files) identities]
       entryErrors = [ResolutionDiagnostic d | Left d <- identities]
       config = Provider.ProviderConfig (nub (roots ++ libraries)) (maybe Provider.PreludeFromRoots Provider.PreludeFile prelude)
       provider owner = do
@@ -61,12 +62,19 @@ compileFiles resolver sugar options = do
   where
     absolute path = normalise <$> makeAbsolute path
 
-entryIdentity :: [FilePath] -> FilePath -> Either R.Diagnostic ModuleId
-entryIdentity roots file
-  | takeExtension file /= ".ficus" = invalid "input files must have the .ficus extension"
-  | otherwise = case nub [owner | root <- roots, Right owner <- [Provider.moduleIdentity root file]] of
-      [owner] -> Right owner
-      [] -> invalid "input must have an uppercase module path relative to a project source root"
-      _ -> invalid "input has multiple module identities; choose an unambiguous --source-root"
+entryIdentity :: [FilePath] -> FilePath -> IO (Either R.Diagnostic ModuleId)
+entryIdentity roots file = do
+  exists <- doesFileExist file
+  pure $
+    if exists
+      then identity
+      else Left (R.diagnostic R.ModuleNotFound anchor ("input file not found: " <> T.pack file))
   where
-    invalid message = Left (R.diagnostic R.InvalidModuleIdentity (Span file (Position 1 1 0) (Position 1 1 0)) message)
+    anchor = Span file (Position 1 1 0) (Position 1 1 0)
+    identity
+      | takeExtension file /= ".ficus" = invalid "input files must have the .ficus extension"
+      | otherwise = case nub [owner | root <- roots, Right owner <- [Provider.moduleIdentity root file]] of
+          [owner] -> Right owner
+          [] -> invalid "input must have an uppercase module path relative to a project source root"
+          _ -> invalid "input has multiple module identities; choose an unambiguous --source-root"
+    invalid message = Left (R.diagnostic R.InvalidModuleIdentity anchor message)

@@ -4,7 +4,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Parser
-import Ficus.Error.Pretty (prettyDiagnostic, prettyDiagnosticRelativeTo)
+import Ficus.Error.Pretty (prettyDiagnostic, prettyDiagnosticRelativeTo, prettyDiagnosticWithOptionalSourceRelativeTo)
 import Ficus.Syntax.Parser (parseModule)
 import Ficus.Util.Source
 import Test.Tasty
@@ -53,6 +53,14 @@ tests =
       testCase "EOF after final newline has a visible caret" $ do
         let output = prettyDiagnostic "f =\n" (diagnostic UnexpectedToken 2 1 2 1)
         contains "2 | \n  | ^" output,
+      testCase "unavailable source omits excerpts and preserves related notes" $ do
+        let s = Span "/project/main.ficus" (Position 1 1 0) (Position 1 1 0)
+            d = D.Diagnostic "N0202" D.Error s "invalid module identity" Nothing [(s, "input file")]
+        prettyDiagnosticWithOptionalSourceRelativeTo "/project" Nothing d
+          @?= "main.ficus:1:1: error[N0202]: invalid module identity\nnote: main.ficus:1:1: input file",
+      testCase "available empty source retains an EOF caret" $
+        prettyDiagnosticWithOptionalSourceRelativeTo "." (Just "") (diagnostic UnexpectedToken 1 1 1 1)
+          @?= "Demo.ficus:1:1: error[P0001]: problem\n  |\n1 | \n  | ^",
       testCase "unavailable source line leaves a useful header" $
         prettyDiagnostic "" (diagnostic UnexpectedToken 4 1 4 1)
           @?= "Demo.ficus:4:1: error[P0001]: problem",

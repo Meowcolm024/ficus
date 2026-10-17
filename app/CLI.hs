@@ -7,7 +7,7 @@ import Data.Text.IO qualified as T
 import Data.Version (showVersion)
 import Ficus.Compile qualified as Compile
 import Ficus.Error.Diagnostic qualified as Diagnostic
-import Ficus.Error.Pretty (prettyDiagnosticRelativeTo)
+import Ficus.Error.Pretty (prettyDiagnosticRelativeTo, prettyDiagnosticWithOptionalSourceRelativeTo)
 import Ficus.Library.Contracts
 import Ficus.Resolve (frontendDiagnostics)
 import Ficus.Syntax.Concrete.Pretty (prettyModule)
@@ -20,13 +20,12 @@ import System.Exit (exitFailure)
 import System.IO (stderr)
 import System.IO.Error (tryIOError)
 
-data Command = Version | Format (Maybe FilePath) | Compile Compile.CompileOptions
+data Command = Format (Maybe FilePath) | Compile Compile.CompileOptions
 
 main :: IO ()
 main = do
   commandToRun <- execParser commandInfo
   case commandToRun of
-    Version -> putStrLn versionText
     Compile options -> do
       libraries <- if null (Compile.libraryRoots options) then pure <$> Paths.getDataFileName "library" else pure (Compile.libraryRoots options)
       result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry (options {Compile.libraryRoots = libraries})
@@ -48,7 +47,7 @@ main = do
 printDiagnostic :: (Diagnostic.ToDiagnostic d) => FilePath -> Map.Map FilePath T.Text -> d -> IO ()
 printDiagnostic directory sources diagnostic = do
   let file = sourceFile (Diagnostic.diagnosticSpan (Diagnostic.toDiagnostic diagnostic))
-  T.hPutStrLn stderr (prettyDiagnosticRelativeTo directory (Map.findWithDefault "" file sources) diagnostic)
+  T.hPutStrLn stderr (prettyDiagnosticWithOptionalSourceRelativeTo directory (Map.lookup file sources) diagnostic)
 
 versionText :: String
 versionText = showVersion Paths.version
@@ -61,8 +60,7 @@ commandInfo =
   where
     commands =
       hsubparser
-        ( command "version" (info (pure Version <**> helper) (progDesc "Print the Ficus version"))
-            <> command "format" (info formatCommand (progDesc "Pretty-print a source file or stdin to stdout"))
+        ( command "format" (info formatCommand (progDesc "Pretty-print a source file or stdin to stdout"))
             <> command "compile" (info compileCommand (progDesc "Check parsing and name resolution; emit no artifacts" <> footer "Library discovery options are for early development and are subject to change."))
         )
     formatCommand = Format <$> optional (strArgument (metavar "FILE" <> help "Source file; omit or use - for stdin")) <**> helper

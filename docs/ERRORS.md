@@ -49,6 +49,11 @@ Megaparsec; source columns count Unicode characters. Inclusive spans are
 underlined, EOF gets a visible caret, and long multiline spans elide middle lines.
 If the referenced line is unavailable, the header still includes the filename,
 position, code, and message.
+The CLI omits source excerpts when no source was loaded, including invalid
+input filenames and missing files. An available empty file still gets an EOF caret.
+Explicit compile inputs are checked for file existence before validating their
+extension or module identity, so a missing input reports `N0201` even when its
+name is lowercase or its extension is invalid.
 
 ## Shared semantic diagnostic conventions
 

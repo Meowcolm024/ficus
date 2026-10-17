@@ -14,7 +14,6 @@ Build and run the fixture suite with `stack build` and `stack test`.
 The CLI supports:
 
 ```sh
-stack exec ficus -- version
 stack exec ficus -- --version
 stack exec ficus -- compile path/to/Main.ficus
 stack exec ficus -- compile --source-root src --library library --prelude library/Prelude.ficus src/Main.ficus

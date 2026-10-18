@@ -472,17 +472,17 @@ Elaboration must preserve the specification's evaluation order. The Core AST val
 
 ## 4. Runtime AST
 
-The proposed module layout, AST, lowering steps, evaluator, and delivery sequence
-are recorded in [the Runtime implementation plan](RUNTIME.md).
+The implemented module layout, AST, lowering steps, evaluator, and embedding API
+are recorded in [the Runtime design](RUNTIME.md).
 
 Runtime lowering must check the entire input Core module for expression holes before erasure or optimization, including unused bindings, lambda bodies, dictionary methods, and unselected branches. Encountering a hole returns a structured error at its original span and prevents Runtime output, even if elaboration or completeness validation was bypassed. The lowering traversal also explicitly rejects the hole constructor; no runtime stub or delayed failure is generated.
 
-Runtime AST has no expression-hole constructor. It erases static types, type arguments, schemes, trait predicates, and source names not needed for diagnostics. Dictionaries remain only when their fields are used at runtime.
+Runtime AST has no expression-hole constructor. It erases static types, type arguments, schemes, trait predicates, and source names not needed for diagnostics. Dictionaries with operational fields remain; uncertain evidence is retained conservatively.
 
 A compact form is:
 
 ```ebnf
-program = globals, functions, entry ;
+program = globals, functions, layouts, initialization_schedule ;
 fun     = arity, frame_size, expr ;
 expr    = local lexical_address
         | global global_id
@@ -493,8 +493,10 @@ expr    = local lexical_address
         | letrec recursive_slots expr
         | con tag args
         | case expr alternatives
-        | select expr field_index
-        | prim primitive_id args ;
+        | if arms fallback
+        | select expr constructor_id field_index
+        | prim primitive_id args
+        | match_failure ;
 ```
 
 Runtime lowering erases constructor wrapping for every nominal ADT with exactly one constructor and one field, including single-field records. Construction evaluates the field with ordinary strict semantics and returns its representation directly, without allocating a tag or box. Matching unwraps that representation without tag dispatch, and a field projection returns the underlying representation. Keep the nominal type and constructor identities in typed Core AST and source metadata; only their runtime wrapper is erased.
@@ -540,26 +542,61 @@ Runtime AST is compiled compositionally before execution, so the hot path does n
 
 Lowering from Core AST must:
 
-- erase types and memberless proof dictionaries while retaining dictionaries used at runtime;
+- erase types while retaining dictionaries used at runtime and uncertain evidence;
 - erase single-constructor, single-field wrappers without allocating tags or boxes; assign tags and field indices for other data representations, plus function IDs and lexical addresses;
 - perform arity analysis and flatten eligible unary lambda/application chains into the calling convention;
-- erase memberless proof dictionaries when runtime code does not consume them;
+- erase memberless proof dictionaries only when their evaluation and evidence applications can safely be removed;
 - preserve strict left-to-right evaluation;
 - preserve partial and extra application behavior;
 - retain source mappings for runtime errors.
 
 The Runtime AST validator checks indices, arities, tags, case tables, capture layouts, primitive operands, non-expansive cyclic initializers, and lambda protection in recursive groups. The interpreter may rely on these invariants.
 
+### 4.5 Implemented representation and boundary
+
+`FicusBackend.Lower.Runtime.lowerProgram` independently checks Core acceptance
+and links dependency-ordered modules. It preserves their ordered binding groups.
+The Runtime validator returns an opaque `ValidatedProgram`, the only input to
+public evaluator compilation. Runtime modules import no earlier AST types.
+
+Frames are vectors of `IORef (Maybe Value)` cells. Depth zero names the nearest
+frame; function entry has one argument frame in parameter order. A sequential
+`Let` pushes a one-slot frame, and `LetRec` pushes one frame for the entire group.
+Every selected case alternative pushes a frame, including an empty frame for a
+literal test. Captures use separate zero-based slots and hold cells, so recursive
+closures share initialized storage. Creating a closure drops unrelated lexical
+frames. All global cells are allocated before the initialization schedule runs;
+local recursive cells are allocated before that group's ordered initializers.
+A premature read produces a structured error rather than a host-language knot.
+
+Dense vectors store functions, global debug identities, constructor layouts, and
+primitives. List nil, list cons, and binary pair reserve tags 0, 1, and 2.
+Bool and Unit use immediate literals. Other non-erased constructors receive
+nominal tags; dictionaries receive aggregate tags with superclass fields before
+methods. Byte uses `Word8`, Vec uses an immutable vector, Int uses `Int64`, and
+Float uses `Double`. Single-field nominal wrappers allocate no layout or box.
+All dictionaries currently survive; type-only scopes and applications do not.
+
+Arity raising crosses pure lambda chains, type scopes, and monomorphic aliases
+of supplied parameters. Matches and other strict lets stop it. Calls remain
+unary after Core lowering; even hand-built multi-operand Runtime calls evaluate
+and apply each operand before evaluating the next. Functions retain value versus
+evidence parameter roles for recursive-read validation. Bindings retain their
+Core non-expansiveness certificate and offending source span: erased syntax
+cannot reliably reconstruct this source classification. Operand types and these
+source facts remain Core acceptance responsibilities.
+
 ## 5. Evaluator compilation
 
 Runtime AST compiles to host-language evaluator functions:
 
 ```haskell
-type Eval = Env -> EvalResult Value
-compile :: RTExpr -> Eval
+type EvalM = ExceptT RuntimeError IO
+type Eval = Env -> EvalM Value
+compileExpr :: Program -> Expr -> Eval
 ```
 
-`EvalResult` accounts for runtime errors and effects; a pure presentation may simplify it to `Value`. `compile` traverses each Runtime AST expression once and returns a host closure that performs only its runtime work.
+`EvalM` accounts for runtime errors and effects; a pure presentation may simplify it to `Value`. `compileExpr` traverses each Runtime AST expression once and returns a host closure that performs only its runtime work. Compiled child evaluators and code-table elements are forced before execution, including unselected branches and delayed function bodies.
 
 ```haskell
 compile (Local address) =
@@ -579,7 +616,7 @@ compile (Fun arity body) =
 
 A lambda body is compiled to an `Eval` closure before any runtime function value is created. Evaluating the lambda packages that code closure with the current lexical environment. A partial application also stores supplied arguments; a saturated call creates the n-ary frame and invokes the stored evaluator directly.
 
-Calls, alternatives, constructor fields, primitive operands, and dictionary operations follow the same pattern: compile their subexpressions once, then combine the evaluator closures. Recursive function groups tie the knot over precompiled bodies and their shared environment.
+Calls, alternatives, constructor fields, primitive operands, and dictionary operations follow the same pattern: compile their subexpressions once, then combine the evaluator closures. Recursive function groups use precompiled bodies and explicitly shared cells.
 
 This is compositional evaluator compilation, staged interpretation, or closure threading. It resembles specializing an interpreter with respect to a program, but it is not general partial evaluation and requires neither binding-time analysis nor a Futamura projection.
 

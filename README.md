@@ -9,6 +9,10 @@ translates Concrete syntax to validated Abstract syntax with canonical names and
 source provenance. The elaborator checks kinds, qualified Hindley–Milner types,
 records, patterns, and initialization safety, then produces independently
 validated typed Core and closed interfaces for dependent modules.
+The backend lowers Core to validated, lexically addressed Runtime syntax and
+executes it with a closure-threaded interpreter, including the bundled Prelude
+and v0 primitives. It supports recursive closures, partial application, explicit
+trait dictionaries, strict initialization, and structured runtime errors.
 See [SPEC](docs/SPEC.md) for the language and
 [parsing fixtures](test/fixtures/parsing/README.md) for test coverage.
 
@@ -30,6 +34,12 @@ produce validated Core through the `Ficus.Compile` API. The command does not
 execute a program, require `main`, or write compiled artifacts.
 Diagnostics go to stderr; errors return a nonzero
 exit status, while warnings permit success.
+
+Interpreter embedding is available through `FicusBackend.Lower.Runtime` and
+`FicusBackend.Runtime`: lower dependency-ordered Core modules, select a global
+address, compile the evaluators, and run with supplied effects and arguments.
+See [the Runtime API and scope](docs/RUNTIME.md#7-embedding-api). CLI execution
+and compiled object files are subsequent work.
 
 The package bundles the v0 standard-library [Prelude](library/Prelude.ficus),
 with source modules under `Class`, `Data`, `System`, and `Ficus.Builtin`.

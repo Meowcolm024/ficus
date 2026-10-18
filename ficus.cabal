@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.39.1.
+-- This file has been generated from package.yaml by hpack version 0.38.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -532,6 +532,14 @@ library
       Ficus.Type
       Ficus.Type.Substitution
       Ficus.Util.Source
+      FicusBackend.Lower.Runtime
+      FicusBackend.Runtime
+      FicusBackend.Runtime.AST
+      FicusBackend.Runtime.Compile
+      FicusBackend.Runtime.Error
+      FicusBackend.Runtime.Primitive
+      FicusBackend.Runtime.Validate
+      FicusBackend.Runtime.Value
   other-modules:
       Paths_ficus
   autogen-modules:
@@ -624,6 +632,8 @@ test-suite ficus-test
       Ficus.Resolve.Spec
       Ficus.Resolve.Support
       Ficus.Resolve.WildcardSpec
+      FicusBackend.Runtime.Direct
+      FicusBackend.Runtime.Spec
       Paths_ficus
   autogen-modules:
       Paths_ficus

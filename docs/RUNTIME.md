@@ -1,9 +1,17 @@
-# Runtime AST and closure-threaded interpreter plan
+# Runtime AST and closure-threaded interpreter
 
-This is a proposed implementation plan, not an implemented API or a language
-specification. [SPEC.md](SPEC.md) remains normative. The design follows
+The library implementation below is available in `FicusBackend.Runtime` and
+`FicusBackend.Lower.Runtime`. This document records its design and scope;
+[SPEC.md](SPEC.md) remains normative. The design follows
 [IMPL.md sections 4–5](IMPL.md#4-runtime-ast), including strict evaluation,
 runtime erasure, lexical addressing, and compositional evaluator compilation.
+
+The interpreter supports the v0 primitive registry and the bundled Prelude.
+Tests include source-to-execution fixtures, a direct Runtime interpreter, and
+generated programs checked against an independent arithmetic/effect oracle.
+Evidence is retained conservatively; static types and single-field nominal
+wrappers are erased. CLI integration, serialization, and constant-stack tail
+calls remain subsequent work.
 
 ## 1. Module boundaries
 
@@ -42,11 +50,12 @@ numeric primitive IDs rather than key lookup.
 Keep a direct Runtime AST interpreter under tests initially as a differential
 oracle.
 
-## 2. Proposed Runtime AST
+## 2. Runtime AST
 
-The following declarations are schematic. Define IDs, indices, arities, and
-frame sizes as distinct `newtype`s, and settle their concrete containers during
-implementation.
+The following declarations are schematic. The implemented AST uses distinct
+`newtype`s for IDs, indices, arities, and frame sizes, `Node` wrappers for source
+metadata, and vectors for dense tables. Concrete conventions are recorded in
+[IMPL §4.5](IMPL.md#45-implemented-representation-and-boundary).
 
 ```haskell
 data Expr = Expr
@@ -164,7 +173,7 @@ Use an explicit runtime effect and error boundary:
 ```haskell
 type Eval = Env -> EvalM Value
 
-compileExpr :: Expr -> Eval
+compileExpr :: Program -> Expr -> Eval
 compileProgram :: ValidatedProgram -> Executable
 ```
 
@@ -222,13 +231,41 @@ evaluator too: two Runtime evaluators alone cannot detect a shared lowering bug.
 
 ## 6. Delivery sequence
 
+Implemented:
+
 1. Runtime AST, layouts, diagnostics, validator, and hand-built fixtures.
-2. Conservative Core lowering with unary calls and explicit captures.
+2. Core lowering with unary calls, explicit captures, and wrapper erasure.
 3. Direct test interpreter, closure-threaded evaluator, and differential tests.
-4. Safe arity raising and justified evidence erasure, with evaluation-order
-   regression tests.
+4. Safe arity raising with evaluation-order regression tests. Proof-dictionary
+   erasure remains optional and is deliberately conservative: all dictionaries
+   and evidence applications currently survive lowering.
 
 Record concrete implementation conventions in IMPL.md as they land. Update
 SPEC.md in the same change if any decision changes observable language behavior.
 CLI integration, object serialization, and tail-call optimization are subsequent
 work; this plan does not settle their open contracts.
+
+## 7. Embedding API
+
+`lowerProgram :: [CoreModule CoreType] -> Either [RuntimeError] LoweredProgram`
+accepts closed Core modules in dependency order. It independently scans for
+holes and calls Core acceptance validation; callers do not need to manufacture
+a validation witness. Every imported value needs a linked definition with a
+compatible scheme. The result contains a `ValidatedProgram` and a map from
+canonical global identities to runtime addresses.
+
+Select an address using `selectEntry`, then call
+`runProgram effects (compileProgram checked) entry arguments`. `Effects`
+supplies text output and line input; `ioEffects` uses standard input/output.
+`Value` supplies arguments and results, and `observe` inspects data values.
+Host closure equality is intentionally unavailable.
+
+For repeated calls, use `initialize` once and pass its `Instance` to
+`evaluateEntry`. Each instance owns its global cells and effect interface;
+separate instances may share an `Executable`. Use entries selected from the
+same validated program as the executable/instance. Entry validation here checks
+the numeric address; a future CLI driver owns the source `main` signature and
+command-line argument contract. Library programs can have no globals or entry.
+
+`RuntimeError` carries a stable kind and primary span and implements the shared
+diagnostic interface; see [ERRORS.md](ERRORS.md#runtime-and-lowering-diagnostics-r).

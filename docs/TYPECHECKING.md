@@ -12,8 +12,9 @@ implementation evidence, builtin contracts, and initialization safety before and
 after dictionary insertion. Finalization preserves diagnostic holes but publishes
 Core and interfaces only after independent acceptance validation. The semantic
 fixture runner checks positive schemes and negative diagnostic kinds/spans.
-Runtime lowering, execution, and the corresponding differential evaluator tests
-remain future work; the milestones below describe that larger target too.
+Runtime lowering, closure-threaded execution, and differential evaluator tests
+are implemented as described in [RUNTIME.md](RUNTIME.md); the milestones below
+also record that execution slice.
 
 ## 1. Reference and implementation shape
 

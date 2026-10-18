@@ -2,8 +2,9 @@
 
 Public error codes consist of one uppercase phase prefix and four decimal digits.
 `P` covers the parser frontend, including lexing and layout; `N` covers resolution;
-`T` covers type checking and elaboration. P and v0 N codes are implemented;
-future-feature N entries and the T registry below remain implementation contracts.
+`T` covers type checking and elaboration; `R` covers Runtime validation,
+lowering, and execution. P, v0 N, T, and R codes are implemented;
+future-feature entries remain implementation contracts.
 Once published, a code must not be reassigned to a different error. Messages may
 change independently of codes.
 
@@ -57,8 +58,8 @@ name is lowercase or its extension is invalid.
 
 ## Shared semantic diagnostic conventions
 
-Resolution N codes are implemented in `Ficus.Error.Resolve`; the future-feature
-and T assignments remain an elaboration contract. Render mappings are explicit,
+Resolution N codes are implemented in `Ficus.Error.Resolve`, T codes in
+`Ficus.Error.Type`, and R codes in `FicusBackend.Runtime.Error`. Render mappings are explicit,
 never derived from enum positions. Preserve existing P codes and parser fixture kinds. A source that fails
 parsing stays a P error, even if another frontend could classify it semantically.
 
@@ -185,6 +186,26 @@ Abstract/Core boundary validators reject poison and unresolved lexical reference
 Code, severity, and primary span are fixture assertions; full message prose is not.
 Type/coverage failures must never be reclassified as parse failures solely because
 a syntactic pattern looks refutable.
+
+## Runtime and lowering diagnostics (R)
+
+| Code | Kind / meaning | Primary location |
+| --- | --- | --- |
+| R0001 | MatchFailure | Origin of the failed match or conditional |
+| R0002 | PrimitiveFailure | Primitive operation, including arithmetic/conversion and IO failures |
+| R0003 | UninitializedRead | Premature recursive cell read |
+| R0004 | InvalidValue | Operation receiving an incompatible runtime representation; defensive boundary error |
+| R0099 | InvalidProgram | Invalid Runtime node, layout, address, or initialization group |
+| R0101 | InvalidEntry | Invalid selected global address |
+| R0102 | InvalidLiteral | Numeric literal rejected during Core-to-Runtime decoding |
+| R0103 | MissingGlobal | Unlinked reference, or importing module anchor when a required definition is absent |
+
+Runtime lowering independently reports `ExpressionHole` as T0101 before any
+erasure, and failed Core acceptance as T0099. Runtime has no expression-hole
+constructor or placeholder. Execution retains the originating span in errors;
+tests assert kind and primary span without freezing explanatory prose.
+
+## CLI display
 
 CLI diagnostics use `prettyDiagnosticRelativeTo` to display source-location
 filenames relative to the working directory, including related-span notes.

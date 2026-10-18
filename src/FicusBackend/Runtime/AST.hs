@@ -1,10 +1,12 @@
 -- | Untyped, addressed runtime syntax. Names occur only in debug metadata.
-module FicusBackend.Runtime.AST where
+module FicusBackend.Runtime.AST (module FicusBackend.Runtime.AST, Primitive (..)) where
 
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import Data.Vector (Vector)
+import Ficus.Primitive.Registry (Primitive (..))
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Name (GlobalId)
 import Ficus.Util.Source
 
@@ -89,67 +91,8 @@ nilConstructor = ConstructorIndex 0
 consConstructor = ConstructorIndex 1
 pairConstructor = ConstructorIndex 2
 
-data Primitive
-  = IntAdd
-  | IntSubtract
-  | IntMultiply
-  | IntDivide
-  | IntRemainder
-  | IntEqual
-  | IntLess
-  | IntShow
-  | IntNegate
-  | IntToFloat
-  | FloatAdd
-  | FloatSubtract
-  | FloatMultiply
-  | FloatDivide
-  | FloatEqual
-  | FloatLess
-  | FloatShow
-  | FloatNegate
-  | FloatToInt
-  | CharEqual
-  | CharLess
-  | CharShow
-  | StringAppend
-  | StringEqual
-  | StringLess
-  | StringLength
-  | StringToChars
-  | CharsToString
-  | Absurd
-  | VecFromList
-  | VecToList
-  | VecLength
-  | ByteFromInt
-  | ByteToInt
-  | Print
-  | Println
-  | ReadLine
-  deriving (Eq, Ord, Show, Enum, Bounded)
-
-primitiveArity :: Primitive -> Arity
-primitiveArity operation = Arity $ case operation of
-  IntAdd -> 2
-  IntSubtract -> 2
-  IntMultiply -> 2
-  IntDivide -> 2
-  IntRemainder -> 2
-  IntEqual -> 2
-  IntLess -> 2
-  FloatAdd -> 2
-  FloatSubtract -> 2
-  FloatMultiply -> 2
-  FloatDivide -> 2
-  FloatEqual -> 2
-  FloatLess -> 2
-  CharEqual -> 2
-  CharLess -> 2
-  StringAppend -> 2
-  StringEqual -> 2
-  StringLess -> 2
-  _ -> 1
+primitiveArity :: Primitive nominal -> Arity
+primitiveArity = Arity . P.primitiveArity
 
 data Program = Program
   { programSpan :: Span,
@@ -157,7 +100,7 @@ data Program = Program
     programFunctions :: Vector Function,
     programGlobals :: Vector (Node (Maybe GlobalId, Text)),
     programConstructors :: Vector (Node ConstructorLayout),
-    programPrimitives :: Vector Primitive,
+    programPrimitives :: Vector (Primitive ()),
     programInitialization :: [Node GlobalGroup]
   }
   deriving (Eq, Show)

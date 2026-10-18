@@ -13,6 +13,7 @@ module FicusBackend.Runtime
     evaluateEntry,
     runProgram,
     Effects (..),
+    StandardHandle (..),
     ioEffects,
     Value (..),
     Observation (..),

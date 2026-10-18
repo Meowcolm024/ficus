@@ -1,0 +1,10 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Ficus.Builtin.Handle (Handle, stdin, stdout, stderr, read, write)
+use System.IO (print, println, readLine, readLineFrom)
+
+copyChunk : Int -> Unit
+copyChunk count = write stdout (read stdin count)
+report : String -> Unit
+report message = write stderr message
+line : Handle -> String
+line handle = readLineFrom handle

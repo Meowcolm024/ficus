@@ -2,3 +2,14 @@
 
 {-# BUILTIN HANDLE Handle #-}
 Handle : Type
+
+{-# BUILTIN HANDLE_STDIN stdin #-}
+stdin : Handle
+{-# BUILTIN HANDLE_STDOUT stdout #-}
+stdout : Handle
+{-# BUILTIN HANDLE_STDERR stderr #-}
+stderr : Handle
+{-# BUILTIN HANDLE_READ read #-}
+read : Handle -> Int -> String
+{-# BUILTIN HANDLE_WRITE write #-}
+write : Handle -> String -> Unit

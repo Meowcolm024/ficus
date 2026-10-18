@@ -13,6 +13,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Ficus.Error.Type qualified as TypeError
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Validate (acceptCore)
 import Ficus.Syntax.Literal qualified as L
@@ -59,7 +60,7 @@ lowerProgram modules = do
         mapM (lowerGroup context) (C.coreBindings tree)
   (initializers, state) <- runStateT action (LowerState 0 IntMap.empty)
   let debug = V.fromList [fromCore binding (case C.bindingReference (C.nodeValue binding) of N.GlobalRef ident -> (Just ident, T.pack (show ident)); N.LocalRef _ -> (Nothing, "$discard")) | (_, (_, binding)) <- indexed]
-      program = R.Program origin (SourceOrigin origin) (V.fromList (IntMap.elems (functions state))) debug layouts (V.fromList [minBound .. maxBound]) initializers
+      program = R.Program origin (SourceOrigin origin) (V.fromList (IntMap.elems (functions state))) debug layouts (V.fromList P.allPrimitives) initializers
   checked <- validateProgram program
   pure (LoweredProgram checked (Map.fromList [(ident, index') | ((_, N.GlobalRef ident), index') <- Map.toList globalTable]))
   where
@@ -201,7 +202,8 @@ expression context source = case C.formOf source of
   C.ScopeTypes _ body -> expression context body
   C.Primitive primitive arguments -> do
     values <- mapM (expression context) arguments
-    pure (fromCore source (R.Primitive (R.PrimitiveIndex (fromEnum (runtimePrimitive primitive))) values))
+    index' <- maybe (failure E.InvalidCore source "primitive is absent from the shared registry") pure (P.primitiveIndex primitive)
+    pure (fromCore source (R.Primitive (R.PrimitiveIndex index') values))
   C.Fail -> pure (fromCore source R.MatchFailure)
 
 lowerCase :: Context -> C.Expr C.CoreType -> C.Expr C.CoreType -> [C.Alternative C.CoreType] -> C.Expr C.CoreType -> Lower R.Expr
@@ -276,43 +278,3 @@ decodeLiteral source literal = case literal of
   L.StringLiteral string -> pure (R.String string)
   where
     bad = failure E.InvalidLiteral source "invalid numeric literal in Core"
-
-runtimePrimitive :: N.PrimitiveId -> R.Primitive
-runtimePrimitive primitive = case primitive of
-  N.IntAdd -> R.IntAdd
-  N.IntSubtract -> R.IntSubtract
-  N.IntMultiply -> R.IntMultiply
-  N.IntDivide -> R.IntDivide
-  N.IntRemainder -> R.IntRemainder
-  N.IntEqual -> R.IntEqual
-  N.IntLess -> R.IntLess
-  N.IntShow -> R.IntShow
-  N.IntNegate -> R.IntNegate
-  N.IntToFloat -> R.IntToFloat
-  N.FloatAdd -> R.FloatAdd
-  N.FloatSubtract -> R.FloatSubtract
-  N.FloatMultiply -> R.FloatMultiply
-  N.FloatDivide -> R.FloatDivide
-  N.FloatEqual -> R.FloatEqual
-  N.FloatLess -> R.FloatLess
-  N.FloatShow -> R.FloatShow
-  N.FloatNegate -> R.FloatNegate
-  N.FloatToInt -> R.FloatToInt
-  N.CharEqual -> R.CharEqual
-  N.CharLess -> R.CharLess
-  N.CharShow -> R.CharShow
-  N.StringAppend -> R.StringAppend
-  N.StringEqual -> R.StringEqual
-  N.StringLess -> R.StringLess
-  N.StringLength -> R.StringLength
-  N.StringToChars -> R.StringToChars
-  N.CharsToString -> R.CharsToString
-  N.Print -> R.Print
-  N.Println -> R.Println
-  N.ReadLine -> R.ReadLine
-  N.Absurd _ -> R.Absurd
-  N.VecFromList _ -> R.VecFromList
-  N.VecToList _ -> R.VecToList
-  N.VecLength _ -> R.VecLength
-  N.ByteFromInt _ -> R.ByteFromInt
-  N.ByteToInt _ -> R.ByteToInt

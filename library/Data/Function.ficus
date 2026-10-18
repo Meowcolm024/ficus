@@ -12,7 +12,9 @@ apply : (a -> b) -> a -> b
 apply f x = f x
 pipe : a -> (a -> b) -> b
 pipe x f = f x
-($) : (a -> b) -> a -> b
-($) f x = apply f x
+(<<) : (b -> c) -> (a -> b) -> a -> c
+(<<) f g x = compose f g x
+(>>) : (a -> b) -> (b -> c) -> a -> c
+(>>) f g x = compose g f x
 (|>) : a -> (a -> b) -> b
 (|>) x f = pipe x f

@@ -12,7 +12,7 @@ use Class.Div (Div, (/)) pub
 use Class.Rem (Rem, (%)) pub
 use Class.Functor (Functor, map) pub
 use Class.Pure (Pure, pure) pub
-use Class.Seq (Seq, seq, (<*>), seqLeft, seqRight) pub
+use Class.Seq (Seq, seq, (<*>), (<*), (*>), seqLeft, seqRight) pub
 use Class.Bind (Bind, bind, (>>=)) pub
 use Class.Applicative (Applicative) pub
 use Class.Monad (Monad) pub
@@ -22,7 +22,7 @@ use Class.Monoid (Monoid, empty) pub
 use Class.Bifunctor (Bifunctor, bimap) pub
 use Class.Foldable (Foldable, foldr, foldMap) pub
 use Class.Traversable (Traversable, traverse, sequence) pub
-use Data.Function (id, const, compose, flip, apply, pipe, ($), (|>)) pub
+use Data.Function (id, const, compose, flip, apply, pipe, (<<), (>>), (|>)) pub
 use Data.Bool (not, (&&), (||), and, or) pub
 use Data.Product (fst, snd, curry, uncurry, swap) pub
 use Data.Ordering (Ordering(..)) pub

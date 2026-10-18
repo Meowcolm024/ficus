@@ -1,5 +1,5 @@
 -- | Stage-neutral identities. Spelling is retained for diagnostics only.
-module Ficus.Syntax.Name where
+module Ficus.Syntax.Name (module Ficus.Syntax.Name, Intrinsic (..), Primitive (..)) where
 
 import Data.Char (isAlphaNum, isUpper)
 import Data.List.NonEmpty (NonEmpty)
@@ -7,6 +7,8 @@ import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Ficus.Primitive.Registry (Intrinsic (..), Primitive (..))
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Util.Source (Span)
 
 newtype ModuleId = ModuleId (NonEmpty Text) deriving (Eq, Ord, Show)
@@ -25,57 +27,17 @@ data Namespace = ValueNS | TypeNS | ConstructorNS | KindNS deriving (Eq, Ord, Sh
 
 data Role = ValueRole | AliasRole | DataRole | RecordRole | RecordConstructorRole | ConstructorRole | TraitRole | MethodRole | KindRole deriving (Eq, Ord, Show)
 
-data Primitive = IntType | FloatType | BoolType | CharType | StringType | UnitType | ListType | ProductType | FunctionType | TypeKind | TrueConstructor | FalseConstructor | ConsConstructor | NilConstructor deriving (Eq, Ord, Show)
+type PrimitiveId = Primitive GlobalId
 
-data PrimitiveId
-  = IntAdd
-  | IntSubtract
-  | IntMultiply
-  | IntDivide
-  | IntRemainder
-  | IntEqual
-  | IntLess
-  | IntShow
-  | StringAppend
-  | StringEqual
-  | StringLength
-  | IntToFloat
-  | FloatAdd
-  | FloatSubtract
-  | FloatMultiply
-  | FloatDivide
-  | FloatEqual
-  | FloatLess
-  | FloatShow
-  | FloatToInt
-  | CharEqual
-  | CharLess
-  | CharShow
-  | StringLess
-  | StringToChars
-  | CharsToString
-  | Print
-  | Println
-  | ReadLine
-  | Absurd GlobalId
-  | VecFromList GlobalId
-  | VecToList GlobalId
-  | VecLength GlobalId
-  | ByteFromInt GlobalId
-  | ByteToInt GlobalId
-  | IntNegate
-  | FloatNegate
-  deriving (Eq, Ord, Show)
-
-data GlobalId = GlobalId ModuleId Namespace Text | IntrinsicId Primitive deriving (Eq, Ord, Show)
+data GlobalId = GlobalId ModuleId Namespace Text | IntrinsicId Intrinsic deriving (Eq, Ord, Show)
 
 data Reference = LocalRef LocalId | GlobalRef GlobalId deriving (Eq, Ord, Show)
 
 primitiveNames :: [(Namespace, Text, GlobalId, Role)]
 primitiveNames =
-  [(TypeNS, n, IntrinsicId p, DataRole) | (n, p) <- [("Int", IntType), ("Float", FloatType), ("Bool", BoolType), ("Char", CharType), ("String", StringType), ("Unit", UnitType), ("[]", ListType), ("(*)", ProductType), ("(->)", FunctionType)]]
-    ++ [(ConstructorNS, n, IntrinsicId p, ConstructorRole) | (n, p) <- [("True", TrueConstructor), ("False", FalseConstructor), ("::", ConsConstructor), ("[]", NilConstructor)]]
-    ++ [(KindNS, "Type", IntrinsicId TypeKind, KindRole)]
+  [(TypeNS, spelling, IntrinsicId intrinsic, DataRole) | (spelling, intrinsic) <- P.intrinsicTypes]
+    ++ [(ConstructorNS, spelling, IntrinsicId intrinsic, ConstructorRole) | (spelling, intrinsic) <- P.intrinsicConstructors]
+    ++ [(KindNS, spelling, IntrinsicId intrinsic, KindRole) | (spelling, intrinsic) <- P.intrinsicKinds]
 
 data Entity = Entity {entityId :: GlobalId, entityRole :: Role, entitySpan :: Span, entityOwner :: Maybe GlobalId} deriving (Eq, Show)
 

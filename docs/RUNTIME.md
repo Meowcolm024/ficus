@@ -42,10 +42,15 @@ FicusBackend.Lower.Runtime
 - `Lower.Runtime` imports Core and Runtime and owns representation selection,
   erasure, closure conversion, and arity raising.
 
-Runtime modules must not import Concrete, Abstract, or Core AST types. Shared
-source metadata and stage-neutral identities may be reused. In particular,
-builtin key spellings remain in the compiler builtin registry; execution uses
-numeric primitive IDs rather than key lookup.
+Runtime modules must not import Concrete, Abstract, or Core AST types.
+`Ficus.Primitive.Registry` owns the shared operation definition, reserved
+intrinsics, builtin keys, type templates, catalogue indices, and operand counts.
+Core uses `Primitive GlobalId`, retaining ordinary nominal library identities;
+Runtime uses the same `Primitive ()`, with that metadata erased. Lowering uses
+the shared catalogue index rather than translating between separate operation
+types. The frontend's `Ficus.Builtin.Registry` adapts catalogue entries to source
+identities and semantic kinds, and Core converts neutral type templates for its
+validator. Execution performs numeric table lookup, never builtin-key lookup.
 
 Keep a direct Runtime AST interpreter under tests initially as a differential
 oracle.
@@ -256,7 +261,15 @@ canonical global identities to runtime addresses.
 
 Select an address using `selectEntry`, then call
 `runProgram effects (compileProgram checked) entry arguments`. `Effects`
-supplies text output and line input; `ioEffects` uses standard input/output.
+supplies `writeHandle :: StandardHandle -> Text -> IO ()` and
+`readHandle :: StandardHandle -> Int64 -> IO Text`; `ioEffects` maps the three
+standard handle identities to host streams. Runtime values include opaque
+`HandleValue`s. Standard input is readable; standard output and standard error
+are writable. Bounded reads preserve Unicode code points and line terminators;
+non-positive counts skip the callback. Direction errors and host IO exceptions
+become located primitive failures. `print`, `println`, and line reading are
+ordinary source definitions built from handle primitives; no close operation is
+provided.
 `Value` supplies arguments and results, and `observe` inspects data values.
 Host closure equality is intentionally unavailable.
 

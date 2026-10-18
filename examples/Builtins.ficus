@@ -3,6 +3,11 @@
 use Data.Byte as Byte
 use Data.Vec as Vec
 use Ficus.Builtin.Int as Primitive
+use System.IO as IO
+
+-- Read a bounded chunk; standard input remains open.
+echoChunk : Int -> Unit
+echoChunk count = IO.write IO.stdout (IO.read IO.stdin count)
 
 main : [String] -> Unit
 main _ =
@@ -12,3 +17,4 @@ main _ =
     println ("Vector values: " ++ show (Vec.vecToList values))
     println ("Wrapped byte: " ++ show (Byte.byteToInt octet))
     println ("Direct primitive: " ++ show (Primitive.intAdd 2 3))
+    IO.write IO.stderr "Handle diagnostics use standard error.\n"

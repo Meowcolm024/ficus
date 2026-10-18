@@ -15,3 +15,8 @@ seqLeft : (Functor f, Seq f) => f a -> (Unit -> f b) -> f a
 seqLeft value next = seq (map (a -> _ -> a) value) next
 seqRight : (Functor f, Seq f) => f a -> (Unit -> f b) -> f b
 seqRight value next = seq (map (_ -> b -> b) value) next
+
+(<*) : (Functor f, Seq f) => f a -> (Unit -> f b) -> f a
+(<*) value next = seqLeft value next
+(*>) : (Functor f, Seq f) => f a -> (Unit -> f b) -> f b
+(*>) value next = seqRight value next

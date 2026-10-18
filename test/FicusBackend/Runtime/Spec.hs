@@ -2,7 +2,7 @@ module FicusBackend.Runtime.Spec (tests) where
 
 import Control.Monad (foldM, forM_)
 import Control.Monad.Except (runExceptT)
-import Data.IORef (modifyIORef', newIORef, readIORef)
+import Data.IORef (atomicModifyIORef', modifyIORef', newIORef, readIORef)
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
@@ -12,6 +12,7 @@ import Data.Vector qualified as V
 import Ficus.Elaborate qualified as Elab
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Library.Contracts
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Resolve
 import Ficus.Resolve.Discovery
 import Ficus.Resolve.Header (edgeTarget, headerEdges)
@@ -42,8 +43,9 @@ node = R.Node origin (SourceOrigin origin)
 literal :: R.RuntimeLiteral -> R.Expr
 literal = node . R.Literal
 
-primitive :: R.Primitive -> [R.Expr] -> R.Expr
-primitive operation = node . R.Primitive (R.PrimitiveIndex (fromEnum operation))
+primitive :: R.Primitive () -> [R.Expr] -> R.Expr
+-- A missing catalogue entry produces an invalid address, rejected by validation.
+primitive operation = node . R.Primitive (R.PrimitiveIndex (maybe (-1) id (P.primitiveIndex operation)))
 
 program :: R.Expr -> R.Program
 program body =
@@ -53,16 +55,24 @@ program body =
     V.empty
     (V.singleton (node (Nothing, "entry")))
     (V.fromList [node (R.ConstructorLayout (R.FrameSize count) name) | (count, name) <- [(0, "[]"), (2, "::"), (2, "(*)")]])
-    (V.fromList [minBound .. maxBound])
+    (V.fromList P.allPrimitives)
     [node (R.GlobalGroup False ((R.GlobalIndex 0, node (R.Binding body Nothing)) :| []))]
 
 quiet :: Effects
-quiet = Effects (const (pure ())) (pure "")
+quiet = Effects (\_ _ -> pure ()) (\_ _ -> pure "")
 
 capture :: (Effects -> IO (Either E.RuntimeError Value)) -> IO (Either (E.ErrorKind, Span) Observation, [Text])
-capture action = do
+capture = captureInput "input"
+
+captureInput :: Text -> (Effects -> IO (Either E.RuntimeError Value)) -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+captureInput input action = do
   output <- newIORef []
-  result <- action (Effects (\text -> modifyIORef' output (<> [text])) (pure "input"))
+  remaining <- newIORef input
+  let readChunk _ count = atomicModifyIORef' remaining $ \text ->
+        let size = fromIntegral (min count (fromIntegral (T.length text)))
+            (chunk, rest) = T.splitAt size text
+         in (rest, chunk)
+  result <- action (Effects (\_ text -> modifyIORef' output (<> [text])) readChunk)
   trace <- readIORef output
   pure (either (\problem -> Left (E.errorKind problem, E.errorSpan problem)) (Right . observe) result, trace)
 
@@ -72,9 +82,12 @@ execute checked ident arguments effects = case Runtime.selectEntry checked ident
   Right entry -> Runtime.runProgram effects (Runtime.compileProgram checked) entry arguments
 
 compareEvaluators :: Runtime.ValidatedProgram -> R.GlobalIndex -> [Value] -> IO (Either (E.ErrorKind, Span) Observation, [Text])
-compareEvaluators checked ident arguments = do
-  compiled <- capture (execute checked ident arguments)
-  direct <- capture (\effects -> runDirect effects checked ident arguments)
+compareEvaluators = compareEvaluatorsWithInput "input"
+
+compareEvaluatorsWithInput :: Text -> Runtime.ValidatedProgram -> R.GlobalIndex -> [Value] -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+compareEvaluatorsWithInput input checked ident arguments = do
+  compiled <- captureInput input (execute checked ident arguments)
+  direct <- captureInput input (\effects -> runDirect effects checked ident arguments)
   compiled @?= direct
   pure compiled
 
@@ -106,7 +119,7 @@ int :: Int64 -> Observation
 int = LiteralObservation . R.Integer
 
 printing :: Text
-printing = "{-# BUILTIN PRINT print #-}\nprint : String -> Unit\n"
+printing = "{-# BUILTIN HANDLE Handle #-}\nHandle : Type\n{-# BUILTIN HANDLE_STDOUT stdout #-}\nstdout : Handle\n{-# BUILTIN HANDLE_WRITE write #-}\nwrite : Handle -> String -> Unit\nprint text = write stdout text\n"
 
 arithmetic :: Text
 arithmetic = "{-# BUILTIN INT_ADD add #-}\nadd : Int -> Int -> Int\n{-# BUILTIN INT_SUB sub #-}\nsub : Int -> Int -> Int\n{-# BUILTIN INT_EQ equal #-}\nequal : Int -> Int -> Bool\n"
@@ -170,6 +183,13 @@ tests =
             case Map.lookup (N.GlobalId (N.ModuleId ("Runtime" :| [])) N.ValueNS "check") (loweredGlobals lowered) of
               Nothing -> assertFailure "missing library entry"
               Just ident -> compareEvaluators (loweredProgram lowered) ident [LiteralValue R.Unit] >>= (@?= (Right (int 12), [])),
+          testCase "derived print, println and readLine use handle primitives" $
+            libraryResult "input" "check () = { print \"first\"; println \"second\"; readLine () }\n" >>= (@?= (Right (LiteralObservation (R.String "input")), ["first", "second\n"])),
+          testCase "derived line reading preserves Unicode, EOF, and CRLF boundaries" $
+            forM_ [("a😀\r\nb\nlast", "a😀|b|last|"), ("", "|||"), ("x\r", "x\r|||")] $ \(input, expected) ->
+              libraryResult input "check () = { a = readLine (); b = readLine (); c = readLine (); d = readLine (); a ++ \"|\" ++ b ++ \"|\" ++ c ++ \"|\" ++ d }\n" >>= (@?= (Right (LiteralObservation (R.String expected)), [])),
+          testCase "composition and sequencing operators preserve order and skipped thunks" $
+            libraryResult "" "step label value = { print label; value }\ncheck () = { f = (x -> step \"f\" (x + 1)); g = (x -> step \"g\" (x * 2)); a = (f << g) 3; b = (g >> f) 3; left = Just a <* (_ -> step \"left\" (Just True)); right = Just b *> (_ -> step \"right\" (Just 9)); skipped : Maybe Int; skipped = Nothing *> (_ -> step \"wrong\" (Just 0)); show (left, right, skipped) }\n" >>= (@?= (Right (LiteralObservation (R.String "(Just (7), (Just (9), Nothing))")), ["g", "f", "g", "f", "left", "right"])),
           testCase "library vectors, bytes, do and interpolation execute" $ do
             lowered <- checkedLibrary "use Data.Vec (vecLength, listToVec)\nuse Data.Byte (byteToInt, intToByte)\ncheck () = { byte = byteToInt (intToByte (-1)); count = vecLength (listToVec [1, 2, 3]); result = do { x <- Just byte; Just (x + count) }; with result { Just total -> \"total={total}\"; Nothing -> \"missing\" } }\n"
             case Map.lookup (N.GlobalId (N.ModuleId ("Runtime" :| [])) N.ValueNS "check") (loweredGlobals lowered) of
@@ -193,7 +213,7 @@ tests =
                         Runtime.evaluateEntry instance' entry []
                   result @?= (Right (int 7), ["init"]),
           testCase "generic multi-operand calls apply between argument evaluations" $ do
-            let traced label body = node (R.Let (node (R.Binding (primitive R.Print [literal (R.String label)]) Nothing)) body)
+            let traced label body = node (R.Let (node (R.Binding (primitive (R.HandleWrite ()) [primitive (R.HandleStdout ()) [], literal (R.String label)]) Nothing)) body)
                 function body = node (R.Function (R.Arity 1) (R.FrameSize 1) (R.CaptureLayout 0) (V.singleton R.ValueParameter) body)
                 call = node (R.Call (traced "function" (node (R.Closure (R.FunctionIndex 0) []))) (traced "first" (literal R.Unit) :| [traced "second" (literal (R.Integer 9))]))
                 tree = (program call) {R.programFunctions = V.fromList [function (traced "apply" (node (R.Closure (R.FunctionIndex 1) []))), function (node (R.Load (R.Local (R.FrameDepth 0) (R.SlotIndex 0))))]}
@@ -265,30 +285,52 @@ tests =
           primitiveCase "string concatenation" R.StringAppend [R.String "a", R.String "😀"] (R.String "a😀"),
           primitiveCase "string equality" R.StringEqual [R.String "a", R.String "b"] (R.Boolean False),
           primitiveCase "string comparison uses code points" R.StringLess [R.String "\xE000", R.String "\x10000"] (R.Boolean True),
-          primitiveCase "readLine passes through EOF as empty text" R.ReadLine [R.Unit] (R.String ""),
           testCase "byte conversion reduces modulo 256" $ do
-            result <- runExceptT (evaluatePrimitive origin quiet R.ByteFromInt [LiteralValue (R.Integer (-1))] >>= \byte -> evaluatePrimitive origin quiet R.ByteToInt [byte])
+            result <- runExceptT (evaluatePrimitive origin quiet (R.ByteFromInt ()) [LiteralValue (R.Integer (-1))] >>= \byte -> evaluatePrimitive origin quiet (R.ByteToInt ()) [byte])
             fmap observe result @?= Right (int 255),
           testCase "string and immutable vector conversions preserve Unicode order" $ do
             result <- runExceptT $ do
               chars <- evaluatePrimitive origin quiet R.StringToChars [LiteralValue (R.String "a😀é")]
-              vector <- evaluatePrimitive origin quiet R.VecFromList [chars]
-              count <- evaluatePrimitive origin quiet R.VecLength [vector]
-              restored <- evaluatePrimitive origin quiet R.VecToList [vector] >>= \values -> evaluatePrimitive origin quiet R.CharsToString [values]
+              vector <- evaluatePrimitive origin quiet (R.VecFromList ()) [chars]
+              count <- evaluatePrimitive origin quiet (R.VecLength ()) [vector]
+              restored <- evaluatePrimitive origin quiet (R.VecToList ()) [vector] >>= \values -> evaluatePrimitive origin quiet R.CharsToString [values]
               pure (observe count, observe restored)
             result @?= Right (int 3, LiteralObservation (R.String "a😀é")),
           testCase "primitive failures retain their primary span" $ forM_ [(R.IntDivide, [R.Integer 1, R.Integer 0]), (R.IntRemainder, [R.Integer 1, R.Integer 0]), (R.FloatToInt, [R.Floating (0 / 0)]), (R.FloatToInt, [R.Floating (1 / 0)]), (R.FloatToInt, [R.Floating 9223372036854775808])] $ \(operation, operands) -> do
             result <- runExceptT (evaluatePrimitive origin quiet operation (map LiteralValue operands))
             case result of Left problem -> (E.errorKind problem, E.errorSpan problem) @?= (E.PrimitiveFailure, origin); Right value -> assertFailure (show (observe value)),
           testCase "IO exceptions become primitive failures" $ do
-            result <- runExceptT (evaluatePrimitive origin (Effects (\_ -> ioError (userError "fixture")) (pure "")) R.Print [LiteralValue (R.String "x")])
+            result <- runExceptT (evaluatePrimitive origin (Effects (\_ _ -> ioError (userError "fixture")) (\_ _ -> pure "")) (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "x")])
             case result of Left problem -> (E.errorKind problem, E.errorSpan problem) @?= (E.PrimitiveFailure, origin); Right _ -> assertFailure "IO exception disappeared",
-          testCase "print, println and readLine use the supplied effects" $ do
-            result <- capture $ \effects -> runExceptT $ do
-              _ <- evaluatePrimitive origin effects R.Print [LiteralValue (R.String "first")]
-              _ <- evaluatePrimitive origin effects R.Println [LiteralValue (R.String "second")]
-              evaluatePrimitive origin effects R.ReadLine [LiteralValue R.Unit]
-            result @?= (Right (LiteralObservation (R.String "input")), ["first", "second\n"])
+          testCase "standard handles retain distinct identities" $
+            forM_ [(R.HandleStdin (), StandardInput), (R.HandleStdout (), StandardOutput), (R.HandleStderr (), StandardError)] $ \(operation, handle) -> do
+              result <- runExceptT (evaluatePrimitive origin quiet operation [])
+              fmap observe result @?= Right (HandleObservation handle),
+          testCase "handle writes route stdout and stderr separately" $ do
+            output <- newIORef []
+            let effects = Effects (\handle text -> modifyIORef' output (<> [(handle, text)])) (\_ _ -> pure "")
+            result <- runExceptT $ do
+              _ <- evaluatePrimitive origin effects (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "out")]
+              evaluatePrimitive origin effects (R.HandleWrite ()) [HandleValue StandardError, LiteralValue (R.String "err")]
+            fmap observe result @?= Right (LiteralObservation R.Unit)
+            readIORef output >>= (@?= [(StandardOutput, "out"), (StandardError, "err")]),
+          testCase "handle reads consume bounded Unicode chunks" $ do
+            result <- captureInput "a😀é" $ \effects -> runExceptT $ do
+              first <- evaluatePrimitive origin effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
+              second <- evaluatePrimitive origin effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
+              lastChunk <- evaluatePrimitive origin effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
+              pure (Aggregate R.pairConstructor (V.fromList [first, Aggregate R.pairConstructor (V.fromList [second, lastChunk])]))
+            result @?= (Right (AggregateObservation R.pairConstructor [LiteralObservation (R.String "a😀"), AggregateObservation R.pairConstructor [LiteralObservation (R.String "é"), LiteralObservation (R.String "")]]), []),
+          testCase "nonpositive handle reads skip effects" $ forM_ [0, -1] $ \count -> do
+            let effects = Effects (\_ _ -> pure ()) (\_ _ -> assertFailure "read effect ran" >> pure "")
+            result <- runExceptT (evaluatePrimitive origin effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer count)])
+            fmap observe result @?= Right (LiteralObservation (R.String "")),
+          testCase "unsupported handle directions fail at the primitive span" $
+            forM_ [(R.HandleRead (), [HandleValue StandardOutput, LiteralValue (R.Integer 1)]), (R.HandleRead (), [HandleValue StandardError, LiteralValue (R.Integer 1)]), (R.HandleWrite (), [HandleValue StandardInput, LiteralValue (R.String "x")])] $ \(operation, values) -> do
+              result <- runExceptT (evaluatePrimitive origin quiet operation values)
+              case result of
+                Left problem -> (E.errorKind problem, E.errorSpan problem) @?= (E.PrimitiveFailure, origin)
+                Right _ -> assertFailure "invalid handle direction succeeded"
         ],
       QC.testProperty "compiled == direct == arithmetic oracle, including failures and traces" $ QC.forAll (QC.sized (term . min 7)) $ \value -> QC.ioProperty $ do
         case Runtime.validateProgram (program (termExpr value)) of
@@ -378,7 +420,7 @@ termExpr :: Term -> R.Expr
 termExpr value = case value of
   Number number -> literal (R.Integer number)
   Add a b -> primitive R.IntAdd [termExpr a, termExpr b]
-  Trace message body -> node (R.Let (node (R.Binding (primitive R.Print [literal (R.String message)]) Nothing)) (termExpr body))
+  Trace message body -> node (R.Let (node (R.Binding (primitive (R.HandleWrite ()) [primitive (R.HandleStdout ()) [], literal (R.String message)]) Nothing)) (termExpr body))
   Choice choice yes no -> node (R.If [node (literal (R.Boolean choice), termExpr yes)] (Just (termExpr no)))
   Failure -> node R.MatchFailure
 
@@ -394,3 +436,10 @@ termValue value = case value of
       (Right (LiteralObservation (R.Integer second)), later) -> (Right (int (first + second)), earlier ++ later)
       (failed, later) -> (failed, earlier ++ later)
     other -> other
+
+libraryResult :: Text -> Text -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+libraryResult input source = do
+  lowered <- checkedLibrary source
+  case Map.lookup (N.GlobalId (N.ModuleId ("Runtime" :| [])) N.ValueNS "check") (loweredGlobals lowered) of
+    Nothing -> assertFailure "missing library entry" >> fail "missing library entry"
+    Just ident -> compareEvaluatorsWithInput input (loweredProgram lowered) ident [LiteralValue R.Unit]

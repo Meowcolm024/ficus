@@ -25,3 +25,11 @@ orderingDisplay : Int -> String
 orderingDisplay value = show (compare value 0)
 constantTraversal : Const String (Maybe Int) -> Maybe (Const String Int)
 constantTraversal value = sequence value
+composed : Int -> Int
+composed value = ((x -> x + 1) << (x -> x * 2)) value
+forward : Int -> Int
+forward value = ((x -> x * 2) >> (x -> x + 1)) value
+keepLeft : Maybe Int -> Maybe String -> Maybe Int
+keepLeft left right = left <* (_ -> right)
+keepRight : Maybe Int -> Maybe String -> Maybe String
+keepRight left right = left *> (_ -> right)

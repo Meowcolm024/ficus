@@ -1,6 +1,6 @@
 -- | Typed, unary Core. This stage owns its syntax and diagnostic placeholders;
 -- it imports neither Abstract syntax nor inference's solver variables.
-module Ficus.Syntax.Core (module Ficus.Syntax.Core, PrimitiveId (..)) where
+module Ficus.Syntax.Core (module Ficus.Syntax.Core, PrimitiveId, Primitive (..)) where
 
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)

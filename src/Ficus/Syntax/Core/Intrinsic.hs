@@ -3,6 +3,7 @@ module Ficus.Syntax.Core.Intrinsic (constructorSignature, primitiveSignature, pr
 import Control.Monad (foldM)
 import Data.Map.Strict qualified as Map
 import Ficus.Builtin.Registry (primitiveFromKey)
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Core (ConstructorId (..), CoreType, CoreVariable (..))
 import Ficus.Syntax.Literal qualified as L
 import Ficus.Syntax.Name hiding (TypeKind)
@@ -26,54 +27,17 @@ constructorSignature constructor = case constructor of
     poly qs = Scheme [] qs []
 
 primitiveSignature :: PrimitiveId -> ([CoreType], CoreType)
-primitiveSignature primitiveId = case primitiveId of
-  IntAdd -> intBinary int
-  IntSubtract -> intBinary int
-  IntMultiply -> intBinary int
-  IntDivide -> intBinary int
-  IntRemainder -> intBinary int
-  IntEqual -> intBinary bool
-  IntLess -> intBinary bool
-  IntShow -> ([int], string)
-  StringAppend -> ([string, string], string)
-  StringEqual -> ([string, string], bool)
-  StringLength -> ([string], int)
-  IntToFloat -> ([int], float)
-  FloatAdd -> floatBinary float
-  FloatSubtract -> floatBinary float
-  FloatMultiply -> floatBinary float
-  FloatDivide -> floatBinary float
-  FloatEqual -> floatBinary bool
-  FloatLess -> floatBinary bool
-  FloatShow -> ([float], string)
-  FloatToInt -> ([float], int)
-  CharEqual -> ([char, char], bool)
-  CharLess -> ([char, char], bool)
-  CharShow -> ([char], string)
-  StringLess -> ([string, string], bool)
-  StringToChars -> ([string], list char)
-  CharsToString -> ([list char], string)
-  Print -> ([string], primitive UnitType)
-  Println -> ([string], primitive UnitType)
-  ReadLine -> ([primitive UnitType], string)
-  Absurd ident -> ([Constructor ident TypeKind], a)
-  VecFromList ident -> ([list a], vec ident a)
-  VecToList ident -> ([vec ident a], list a)
-  VecLength ident -> ([vec ident a], int)
-  ByteFromInt ident -> ([int], Constructor ident TypeKind)
-  ByteToInt ident -> ([Constructor ident TypeKind], int)
-  IntNegate -> ([int], int)
-  FloatNegate -> ([primitive FloatType], primitive FloatType)
+primitiveSignature operation =
+  let (inputs, output) = P.primitiveSignature operation
+   in (map convert inputs, convert output)
   where
-    int = primitive IntType
-    bool = primitive BoolType
-    string = primitive StringType
-    float = primitive FloatType
-    char = primitive CharType
-    a = Variable (BoundVariable (BoundId (-1))) TypeKind
-    vec ident = Application (Constructor ident (KindArrow TypeKind TypeKind))
-    floatBinary result = ([float, float], result)
-    intBinary result = ([int, int], result)
+    convert template = case template of
+      P.ScalarType intrinsic -> primitive intrinsic
+      P.ListTypeOf element -> list (convert element)
+      P.NominalType ident arguments ->
+        let kind = foldr KindArrow TypeKind (replicate (length arguments) TypeKind)
+         in foldl Application (Constructor ident kind) (map convert arguments)
+      P.TypeParameter -> Variable (BoundVariable (BoundId (-1))) TypeKind
 
 literalType :: L.Literal -> Type v
 literalType literal = primitive $ case literal of

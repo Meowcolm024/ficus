@@ -3,6 +3,7 @@ module FicusBackend.Runtime.Value where
 import Control.Monad.Except (ExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.Int (Int64)
 import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Vector qualified as V
@@ -20,7 +21,12 @@ type Cell = IORef (Maybe Value)
 type Frame = Vector Cell
 
 -- Embedders supply effects; IOException conversion belongs to primitives.
-data Effects = Effects {writeOutput :: Text -> IO (), readInput :: IO Text}
+data StandardHandle = StandardInput | StandardOutput | StandardError deriving (Eq, Ord, Show)
+
+data Effects = Effects
+  { writeHandle :: StandardHandle -> Text -> IO (),
+    readHandle :: StandardHandle -> Int64 -> IO Text
+  }
 
 data Env = Env
   { envFrames :: [Frame],
@@ -38,10 +44,10 @@ data ClosureValue = ClosureValue
     closureArguments :: Vector Value
   }
 
-data Value = LiteralValue RuntimeLiteral | Aggregate ConstructorIndex (Vector Value) | VectorValue (Vector Value) | ByteValue Word8 | FunctionValue ClosureValue
+data Value = LiteralValue RuntimeLiteral | Aggregate ConstructorIndex (Vector Value) | VectorValue (Vector Value) | ByteValue Word8 | HandleValue StandardHandle | FunctionValue ClosureValue
 
 -- Inspection deliberately does not pretend host closures have equality.
-data Observation = LiteralObservation RuntimeLiteral | AggregateObservation ConstructorIndex [Observation] | VectorObservation [Observation] | ByteObservation Word8 | FunctionObservation Arity Int
+data Observation = LiteralObservation RuntimeLiteral | AggregateObservation ConstructorIndex [Observation] | VectorObservation [Observation] | ByteObservation Word8 | HandleObservation StandardHandle | FunctionObservation Arity Int
   deriving (Eq, Show)
 
 observe :: Value -> Observation
@@ -50,6 +56,7 @@ observe value = case value of
   Aggregate tag fields -> AggregateObservation tag (map observe (V.toList fields))
   VectorValue fields -> VectorObservation (map observe (V.toList fields))
   ByteValue byte -> ByteObservation byte
+  HandleValue handle -> HandleObservation handle
   FunctionValue closure -> FunctionObservation (codeArity (closureCode closure)) (V.length (closureArguments closure))
 
 invalidValue :: Span -> Text -> EvalM a

@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.38.1.
+-- This file has been generated from package.yaml by hpack version 0.39.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -21,9 +21,11 @@ extra-source-files:
     docs/SPEC.md
     docs/ERRORS.md
     test/fixtures/compile/invalid/main.ficus
+    test/fixtures/compile/library/Handles.ficus
     test/fixtures/compile/library/Main.ficus
     test/fixtures/compile/library/negative/MissingVoidAssociation.ficus
     test/fixtures/compile/library/negative/SpecializedAbsurd.ficus
+    test/fixtures/compile/library/negative/WrongHandle.ficus
     test/fixtures/compile/library/negative/WrongNominal.ficus
     test/fixtures/compile/library/negative/WrongPolymorphism.ficus
     test/fixtures/compile/library/negative/WrongScalar.ficus
@@ -467,7 +469,6 @@ data-files:
     library/Ficus/Builtin/Float.ficus
     library/Ficus/Builtin/Handle.ficus
     library/Ficus/Builtin/Int.ficus
-    library/Ficus/Builtin/IO.ficus
     library/Ficus/Builtin/String.ficus
     library/Ficus/Builtin/Unit.ficus
     library/Ficus/Builtin/Vec.ficus
@@ -508,6 +509,7 @@ library
       Ficus.Infer.Type
       Ficus.Infer.Unify
       Ficus.Library.Contracts
+      Ficus.Primitive.Registry
       Ficus.Resolve
       Ficus.Resolve.Desugar
       Ficus.Resolve.Discovery

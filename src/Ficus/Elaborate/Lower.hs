@@ -25,6 +25,7 @@ import Ficus.Infer.Restriction
 import Ficus.Infer.Syntax (Signature (..), TypeEnvironment (..))
 import Ficus.Infer.Type
 import Ficus.Infer.Unify qualified as U
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Intrinsic hiding (primitiveFromKey)
@@ -502,7 +503,7 @@ valueBody :: Context -> A.Declaration -> InferType -> Lower (C.Expr InferType)
 valueBody context source ty = case A.nodeValue source of
   A.ValueDefinition _ _ (A.BuiltinBody key) -> case primitiveFromKey key >>= specializePrimitive (builtinTypeAssociations (declarations context)) of
     Nothing -> failure source "builtin has no lowering contract"
-    Just builtin -> etaExpand source (length (fst (primitiveSignature builtin))) ty (\arguments result -> makeExpression source result (C.Primitive builtin arguments))
+    Just builtin -> etaExpand source (P.primitiveArity builtin) ty (\arguments result -> makeExpression source result (C.Primitive builtin arguments))
   A.ValueDefinition _ _ (A.ClausesBody _ clauses) -> do
     fallback <- makeExpression source ty C.Fail
     foldM clause fallback (reverse (NE.toList clauses))

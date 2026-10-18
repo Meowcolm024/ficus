@@ -17,5 +17,6 @@ default; `--library DIR` replaces the library search root, and `--prelude FILE`
 overrides the canonical Prelude source. An overridden Prelude's explicit imports
 still need corresponding source/library roots.
 
-The current compiler checks and elaborates these modules to validated Core.
-Execution of primitive operations awaits the runtime implementation.
+The compile command checks and elaborates these modules to validated Core.
+The runtime API executes them using handle-aware effect callbacks; basic IO
+helpers are source-derived from `Ficus.Builtin.Handle`.

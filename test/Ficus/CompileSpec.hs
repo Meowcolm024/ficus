@@ -54,7 +54,7 @@ tests =
             fmap entityId (Map.lookup (ValueNS, "show") exports) @?= Just (GlobalId (ModuleId ("Class" :| ["Show"])) ValueNS "show")
             fmap entityId (Map.lookup (ValueNS, "stringAppend") exports) @?= Just (GlobalId (ModuleId ("Ficus" :| ["Builtin", "String"])) ValueNS "stringAppend")
             mapM_ (\name -> assertBool "low-level types require explicit imports" (Map.notMember (TypeNS, name) exports)) ["Handle", "Vec", "Byte"]
-            mapM_ (\name -> assertBool "primitive helpers stay explicit" (Map.notMember (ValueNS, name) exports)) ["intAdd", "intEq", "floatAdd", "escape"],
+            mapM_ (\name -> assertBool "primitive helpers stay explicit" (Map.notMember (ValueNS, name) exports)) ["intAdd", "intEq", "floatAdd", "escape", "$", "stdin", "stdout", "stderr", "read", "write"],
       testCase "all v0 examples compile against the bundled Prelude" $ do
         files <- libraryFiles "examples"
         case files of
@@ -63,11 +63,16 @@ tests =
             result <- check ((baseOptions first) {inputFiles = first :| rest})
             assertBool (show (compileDiagnostics result)) (compileSucceeded result)
             mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
+      testCase "handle clients compile with explicit imports" $ do
+        result <- check (baseOptions "test/fixtures/compile/library/Handles.ficus")
+        assertBool (show (compileDiagnostics result)) (compileSucceeded result)
+        mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
       testCase "builtin contracts preserve renamed opaque type identities" $ do
         result <- check (baseOptions "test/fixtures/compile/library/Renamed.ficus")
         assertBool (show (compileDiagnostics result)) (compileSucceeded result)
         mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
       builtinFailure "WrongScalar" 3,
+      builtinFailure "WrongHandle" 5,
       builtinFailure "WrongNominal" 5,
       builtinFailure "SpecializedAbsurd" 5,
       builtinFailure "WrongVector" 5,

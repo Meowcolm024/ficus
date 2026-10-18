@@ -13,3 +13,11 @@ unpack : Vector a -> [a]
 Octet : Type
 {-# BUILTIN BYTE_FROM_INT octet #-}
 octet : Int -> Octet
+{-# BUILTIN HANDLE Stream #-}
+Stream : Type
+{-# BUILTIN HANDLE_STDIN input #-}
+input : Stream
+{-# BUILTIN HANDLE_READ readStream #-}
+readStream : Stream -> Int -> String
+{-# BUILTIN HANDLE_WRITE writeStream #-}
+writeStream : Stream -> String -> Unit

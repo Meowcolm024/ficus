@@ -1,4 +1,21 @@
 {-# NO_IMPLICIT_PRELUDE #-}
 
-use Ficus.Builtin.IO (print, println, readLine) pub
-use Ficus.Builtin.Handle (Handle) pub
+use Ficus.Builtin.Handle (Handle, stdin, stdout, stderr, read, write) pub
+use Ficus.Builtin.String (stringAppend, stringToChars, charsToString)
+use Data.List (reverse)
+
+print : String -> Unit
+print text = write stdout text
+println : String -> Unit
+println text = write stdout (stringAppend text "\n")
+readLine : Unit -> String
+readLine () = readLineFrom stdin
+
+-- Keep a reversed character buffer; a handle read returns at most one code point.
+readLineFrom : Handle -> String
+readLineFrom handle = loop []
+    where
+        loop buffer = with stringToChars (read handle 1)
+            [] -> charsToString (reverse buffer)
+            '\n' :: _ -> charsToString (reverse (with buffer { '\r' :: rest -> rest; _ -> buffer }))
+            character :: _ -> loop (character :: buffer)

@@ -48,9 +48,9 @@ selected exports are:
 | --- | --- |
 | `Class.Eq`, `.Ord`, `.Show`, `.Debug`, `.Default` | All five traits, `==`, `/=`, comparison operators, `compare`, `min`, `max`, `show`, `debug`, `default` |
 | `Class.Add`, `.Sub`, `.Mul`, `.Div`, `.Rem` | Numeric traits and their binary operators |
-| `Class.Functor`, `.Pure`, `.Seq`, `.Bind`, `.Applicative`, `.Monad`, `.Alternative` | Traits, `map`, `pure`, `seq`, `bind`, `failure`, `orElse`, `<*>`, `>>=`, `<\|>`, `seqLeft`, `seqRight` |
+| `Class.Functor`, `.Pure`, `.Seq`, `.Bind`, `.Applicative`, `.Monad`, `.Alternative` | Traits, `map`, `pure`, `seq`, `bind`, `failure`, `orElse`, `<*>`, `<*`, `*>`, `>>=`, `<\|>`, `seqLeft`, `seqRight` |
 | `Class.Semigroup`, `.Monoid`, `.Bifunctor`, `.Foldable`, `.Traversable` | Traits, `append`, `<>`, `empty`, `bimap`, `foldr`, `foldMap`, `traverse`, `sequence` |
-| `Data.Function`, `.Bool`, `.Product` | Functions listed in Sections 3 and 9, `$`, `\|>`, `&&`, `||`, `fst`, `snd`, `curry`, `uncurry`, `swap` |
+| `Data.Function`, `.Bool`, `.Product` | Functions listed in Sections 3 and 9, `<<`, `>>`, `\|>`, `&&`, `||`, `fst`, `snd`, `curry`, `uncurry`, `swap` |
 | `Data.Ordering`, `.Maybe`, `.Result`, `.Const`, `.Void` | Types and public constructors, Maybe/Result helpers, `getConst`, `absurd` |
 | `Data.List` | Total list operations in Section 10 |
 | `Data.String`, `.Int`, `.Float` | `stringLength`, `stringAppend`, `stringToChars`, `charsToString`, `++`, `intToFloat`, `floatToInt`, `negate : Int -> Int` |
@@ -68,7 +68,7 @@ Modules marked `NO_IMPLICIT_PRELUDE` receive none of these declarations. The res
 
 | Area | Modules or traits |
 | --- | --- |
-| Builtin-backed declarations | `Ficus.Builtin.Int`, `.Float`, `.Char`, `.String`, `.Handle`, `.Vec`, `.Byte`, `.Void`, `.IO`; `.Bool` and `.Unit` document compiler-reserved declarations without imports or new keys |
+| Builtin-backed declarations | `Ficus.Builtin.Int`, `.Float`, `.Char`, `.String`, `.Handle`, `.Vec`, `.Byte`, `.Void`; `.Bool` and `.Unit` document compiler-reserved declarations without imports or new keys |
 | Basic classes | `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Debug`, `Show`, `Eq`, `Ord`, `Pure`, `Seq`, `Bind`, `Functor`, `Applicative`, `Monad`, `Alternative`, `Semigroup`, `Monoid`, `Default`, `Bifunctor`, `Foldable`, `Traversable`, each under `Class` |
 | System | `System.IO` |
 | Data | `Data.List`, `.Function`, `.Product`, `.Ordering`, `.Maybe`, `.Result`, `.Const`, `.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Vec`, `.Byte`, `.Void` |
@@ -150,11 +150,14 @@ pipe : a -> (a -> b) -> b
 pipe x f = f x
 ```
 
-Possible operator aliases:
+Composition and pipe operators (there is no `$` alias):
 
 ```text
-($) : (a -> b) -> a -> b
-($) = apply
+(<<) : (b -> c) -> (a -> b) -> a -> c
+(<<) f g x = compose f g x
+
+(>>) : (a -> b) -> (b -> c) -> a -> c
+(>>) f g x = compose g f x
 
 (|>) : a -> (a -> b) -> b
 (|>) = pipe
@@ -317,6 +320,16 @@ seqRight : (Functor f, Seq f) => f a -> (Unit -> f b) -> f b
 seqRight x next = seq (map (_ -> b -> b) x) next
 ```
 
+The operator aliases preserve the explicit thunk:
+
+```text
+(<*) : (Functor f, Seq f) => f a -> (Unit -> f b) -> f a
+(<*) value next = seqLeft value next
+
+(*>) : (Functor f, Seq f) => f a -> (Unit -> f b) -> f b
+(*>) value next = seqRight value next
+```
+
 Separate optimized `SeqLeft`/`SeqRight` traits can be considered later. Unlike Lean's default class methods, all Ficus trait members still require explicit implementations; helpers remain outside dictionaries. No proof-oriented `Lawful*` classes or dependent types are introduced by using Lean as an API reference.
 
 ### Why these traits stay separate
@@ -467,7 +480,29 @@ println : String -> Unit
 readLine : Unit -> String
 ```
 
-Opaque handles, `Vec a`, `Byte`, and low-level operations live in explicit library modules backed by `BUILTIN` declarations. They are not automatically re-exported by Prelude.
+These functions are ordinary source definitions in `System.IO`. Its explicit
+handle API re-exports the compiler-key bindings from `Ficus.Builtin.Handle`:
+
+```text
+stdin : Handle
+stdout : Handle
+stderr : Handle
+read : Handle -> Int -> String
+write : Handle -> String -> Unit
+```
+
+`read` consumes at most the requested number of Unicode code points, including
+line terminators. Non-positive counts skip IO; EOF produces the empty string.
+`write` adds no newline. Standard input is readable; standard output and error
+are writable. Invalid directions and IO errors are primitive failures. Standard
+handle values do not perform effects during initialization. No close operation
+is provided. `print` and `println` use `write stdout`; `readLine ()` uses
+`readLineFrom stdin`, where `readLineFrom : Handle -> String` is a source helper
+that removes LF/CRLF and preserves an unterminated final line.
+
+Opaque handles, `Vec a`, `Byte`, and low-level operations require explicit imports
+and are not automatically re-exported by Prelude. There is no longer a separate
+`Ficus.Builtin.IO` module or primitive print/println/readLine key.
 
 The same applies to the proposed initial v2+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit builtin-backed concurrency module, not Prelude.
 
@@ -500,9 +535,9 @@ They use the v0 value restriction and are not re-exported by Prelude.
 
 Every bundled module and representative clients pass module resolution,
 inference, elaboration, and independent Core validation. Negative fixtures cover
-scalar, nominal, and polymorphic builtin contract mismatches. The compiler has no
-runtime evaluator yet; the registry and specification define the execution
-contracts that the runtime must implement. No primitive is replaced by a source
+scalar, nominal, and polymorphic builtin contract mismatches. The runtime API
+executes the library through compiled closures and a direct interpreter used for differential tests. Derived IO is tested for output order,
+Unicode input, EOF, and LF/CRLF handling. No primitive is replaced by a source
 stub or hole.
 
 Future work includes broader instances, specialized collections, JSON, regex,

@@ -11,6 +11,18 @@ addPresent left right = do
     y <- right
     pure (x + y)
 
+-- Keep the left or right result while sequencing the thunked second operand.
+keepLeft : Maybe a -> Maybe b -> Maybe a
+keepLeft left right = left <* (_ -> right)
+keepRight : Maybe a -> Maybe b -> Maybe b
+keepRight left right = left *> (_ -> right)
+
+-- Backward and forward composition denote the same pipeline here.
+doubleThenIncrement : Int -> Int
+doubleThenIncrement value = ((x -> x + 1) << (x -> x * 2)) value
+forwardPipeline : Int -> Int
+forwardPipeline value = ((x -> x * 2) >> (x -> x + 1)) value
+
 positive : Int -> Result String Int
 positive value = if
     value > 0 -> Ok value
@@ -26,3 +38,6 @@ main _ =
     println (show (increment (Just 3)))
     println (show (addPresent (Just 2) (Just 5)))
     println (show (checkAll [1, 2, -3]))
+    println (show (keepLeft (Just 3) (Just True)))
+    println (show (keepRight (Just True) (Just 7)))
+    println (show (doubleThenIncrement 4, forwardPipeline 4))

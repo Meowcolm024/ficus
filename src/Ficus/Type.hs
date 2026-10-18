@@ -6,6 +6,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Name hiding (TypeKind)
 import Ficus.Syntax.Name qualified as N
 
@@ -54,16 +55,10 @@ kindOf ty = case ty of
         | otherwise -> Left (KindMismatch input xk)
       _ -> Left (NotATypeFunction fk)
 
-primitiveKind :: Primitive -> Kind
-primitiveKind p = case p of
-  ListType -> KindArrow TypeKind TypeKind
-  ProductType -> binary
-  FunctionType -> binary
-  _ -> TypeKind
-  where
-    binary = KindArrow TypeKind (KindArrow TypeKind TypeKind)
+primitiveKind :: Intrinsic -> Kind
+primitiveKind intrinsic = foldr KindArrow TypeKind (replicate (P.intrinsicArity intrinsic) TypeKind)
 
-primitive :: Primitive -> Type v
+primitive :: Intrinsic -> Type v
 primitive p = Constructor (IntrinsicId p) (primitiveKind p)
 
 function :: Type v -> Type v -> Type v

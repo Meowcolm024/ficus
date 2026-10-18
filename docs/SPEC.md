@@ -1004,8 +1004,9 @@ variable renaming; a specialization or additional trait predicate is invalid.
 | `VEC_LENGTH` | `Vec a -> Int` |
 | `BYTE_FROM_INT` | `Int -> Byte` |
 | `BYTE_TO_INT` | `Byte -> Int` |
-| `PRINT`, `PRINTLN` | `String -> Unit` |
-| `READ_LINE` | `Unit -> String` |
+| `HANDLE_STDIN`, `HANDLE_STDOUT`, `HANDLE_STDERR` | `Handle` |
+| `HANDLE_READ` | `Handle -> Int -> String` |
+| `HANDLE_WRITE` | `Handle -> String -> Unit` |
 
 Integer division truncates toward zero; remainder has the dividend's sign.
 Division or remainder by zero is a primitive failure. The minimum signed integer
@@ -1022,10 +1023,23 @@ the list/string conversions preserve them in order.
 `BYTE_FROM_INT` reduces modulo 256; `BYTE_TO_INT` returns a value in 0–255.
 Vectors are immutable sequences; list/vector conversions preserve order and
 `VEC_LENGTH` counts elements. `VOID` has no values and `ABSURD` eliminates it.
-`PRINT` writes without a newline; `PRINTLN` appends a newline. `READ_LINE` reads
-one line without its line terminator, returning the empty string at EOF. IO
-failures are primitive failures. `HANDLE` has no constructors or operations in
-this initial interface.
+The three standard handle bindings are stable opaque values for standard input,
+standard output, and standard error. They do not perform IO during module
+initialization. `HANDLE_READ` reads at most the requested number of Unicode code
+points from a readable handle, preserving line terminators, and returns the empty
+string at EOF. A non-positive count returns the empty string without performing
+IO. `HANDLE_WRITE` writes its string unchanged to a writable handle and returns
+unit. Standard input is readable; standard output and standard error are
+writable. Using a handle in an unsupported direction or encountering an IO error
+is a primitive failure. No close operation is provided in v0.
+
+`System.IO.print`, `println`, and `readLine` are source-derived library functions,
+not builtin keys. `print` writes to standard output without a newline; `println`
+appends LF. `readLine ()` reads from standard input, removing a terminating LF or
+CRLF and returning the empty string at EOF. A final unterminated line is returned
+unchanged. `readLineFrom : Handle -> String` provides the same behavior on an
+explicit readable handle. Low-level handles, `read`, and `write` require explicit
+imports from `Ficus.Builtin.Handle` or `System.IO`.
 
 `BUILTIN` does not affect implicit Prelude. Only `NO_IMPLICIT_PRELUDE` disables it. There is no compiler-provided `magic` identifier or module-level `MAGIC` pragma; `magic` remains an ordinary identifier.
 
@@ -1052,6 +1066,12 @@ and reuses that resulting list. List choice appends both lists and invokes its
 right thunk exactly once. `Maybe` choice invokes the right thunk only for
 `Nothing`; there is no `Alternative (Result e)` instance. List and `Maybe`/`Result`
 traversal evaluates left-to-right; a missing/error result skips later thunks.
+`(<*)` and `(*>)` are derived aliases for `seqLeft` and `seqRight`; both take
+an explicit thunk on the right and retain the selected instance's sequencing
+behavior. `Data.Function` exports backward composition `(f << g) x = f (g x)` and
+forward composition `(f >> g) x = g (f x)`. These are ordinary spelling-grouped
+operators with no special fixity declarations; `($)` is not a library export.
+The named `apply`, `pipe`, and `compose` functions remain available.
 `and`, `or`, `(&&)`, and `(||)` remain ordinary strict binary functions. Use `if`
 for boolean short-circuiting. List `head`, `tail`, and `last` return `Maybe`.
 `take` and `drop` treat non-positive counts as zero; `zip` stops at the shorter

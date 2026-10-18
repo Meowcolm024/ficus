@@ -156,6 +156,10 @@ replLoop session = handleInterrupt (outputStrLn "Interrupted." >> replLoop sessi
         result <- liftIO (Repl.inspectType session name)
         either (liftIO . report Map.empty) (outputStrLn . T.unpack) result
         replLoop session
+      Repl.KindOf name -> do
+        result <- liftIO (Repl.inspectKind session name)
+        either (liftIO . report Map.empty) (outputStrLn . T.unpack) result
+        replLoop session
       Repl.Submit source -> do
         result <- liftIO (Repl.submit Runtime.ioEffects session source)
         case result of

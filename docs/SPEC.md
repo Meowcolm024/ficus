@@ -1170,17 +1170,31 @@ provided by implicit Prelude. Values of the old type remain usable through
 previously defined functions. Ordinary source files retain their existing
 name, constructor ownership, and top-level initialization rules.
 
-The commands `:load FILE` / `:l FILE`, `:type NAME` / `:t NAME`, `:help` / `:h`,
-and `:quit` / `:q` load or reload a file, inspect a name, show command help,
-and exit. Type inspection shows a type or trait's inferred kind, together with
-the source declaration for a trait (including superclasses and method signatures).
-Otherwise it shows a value or constructor's inferred scheme. Type names take
-precedence over constructor names when both are visible with the same spelling.
+The commands `:load FILE` / `:l FILE`, `:type EXPR` / `:t EXPR`,
+`:kind TYPE` / `:k TYPE`, `:help` / `:h`, and `:quit` / `:q` load or reload a
+file, inspect a term's type, inspect a type-level expression's kind, show command help,
+and exit. End of input also exits.
+
+Type inspection accepts term expressions, including literals, applications,
+and lambdas. Bare value and constructor names retain their stored schemes,
+including explicit quantification. Kind inspection accepts type-level expressions,
+including type and trait names, applications, and function types. It shows the
+inferred kind; a bare trait name also shows its source declaration (including
+superclasses and method signatures). For example, `:k Maybe Int` reports `Type`
+and `:k Show Int` reports `Constraint`. For inspection, a trait
+taking a parameter of kind `K` has kind `K -> Constraint`; for example,
+`Functor : (Type -> Type) -> Constraint`. `Constraint` here describes the result
+of a trait predicate; it does not add a source-level kind annotation or a
+first-class constraint type. The commands use separate namespaces: `:t Box`
+inspects the constructor and `:k Box` inspects the type when both share a name.
 Qualified names follow ordinary resolution rules. Inspection does not evaluate
-the named entity. End of input also exits. A successful load replaces interactive
-imports and declarations and brings the module's exported names into scope.
+the expression or initialize any compiled code; for example, `:t 1 / 0` reports
+`Int` without performing division. Neither query adds bindings to the session.
+
+A successful load replaces interactive imports and declarations and brings the
+module's exported names into scope.
 Loading rereads the selected file and its dependencies. Failed loads, imports,
-declarations, type queries, and expression evaluation leave the last successful
+declarations, type or kind queries, and expression evaluation leave the last successful
 environment available; in particular, division by zero reports a primitive
 failure and returns to the prompt. Previously accepted right-hand sides are not
 replayed by later commands. Effects already performed before an error are not

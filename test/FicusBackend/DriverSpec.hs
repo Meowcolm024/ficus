@@ -97,33 +97,55 @@ tests =
             map Repl.parseCommand [":q", ":quit"] @?= replicate 2 Repl.Quit
             map Repl.parseCommand [":h", ":help"] @?= replicate 2 Repl.Help
             Repl.parseCommand ":h extra" @?= Repl.InvalidCommand ":help takes no arguments"
-            assertBool "help lists commands" (all (`T.isInfixOf` Repl.helpText) [":load", ":type", ":quit", ":help"])
+            assertBool "help lists commands" (all (`T.isInfixOf` Repl.helpText) [":load", ":type", ":kind", ":quit", ":help"])
             map Repl.parseCommand [":l Foo.ficus", ":load Foo.ficus"] @?= replicate 2 (Repl.Load "Foo.ficus")
             map Repl.parseCommand [":t id", ":type id"] @?= replicate 2 (Repl.TypeOf "id")
+            map Repl.parseCommand [":k Functor", ":kind Functor"] @?= replicate 2 (Repl.KindOf "Functor")
+            Repl.parseCommand ":k" @?= Repl.InvalidCommand ":kind requires a type-level expression"
             Repl.parseCommand ":load \"some folder/Foo.ficus\"" @?= Repl.Load "some folder/Foo.ficus",
-          testCase "type inspection includes kinds and trait declarations" $ do
+          testCase "kind inspection includes kinds and trait declarations" $ do
             current <- session
-            Repl.inspectType current "Int" >>= (@?= Right "Int : Type")
-            Repl.inspectType current "Maybe" >>= (@?= Right "Maybe : Type -> Type")
-            shown <- Repl.inspectType current "Show" >>= requireRight
-            assertBool "trait kind" ("Show : Type -> Type\n" `T.isPrefixOf` shown)
+            Repl.inspectKind current "Int" >>= (@?= Right "Int : Type")
+            Repl.inspectKind current "Maybe" >>= (@?= Right "Maybe : Type -> Type")
+            shown <- Repl.inspectKind current "Show" >>= requireRight
+            assertBool "trait kind" ("Show : Type -> Constraint\n" `T.isPrefixOf` shown)
             assertBool "trait method" ("show : a -> String" `T.isInfixOf` shown)
-            ordered <- Repl.inspectType current "Ord" >>= requireRight
+            ordered <- Repl.inspectKind current "Ord" >>= requireRight
+            assertBool "superclass trait kind" ("Ord : Type -> Constraint\n" `T.isPrefixOf` ordered)
             assertBool "superclass" ("trait Eq a => Ord a" `T.isInfixOf` ordered)
             (next, _) <- Repl.submit quiet current "use Class.Show as S" >>= requireRight
-            qualified <- Repl.inspectType next "S.Show" >>= requireRight
-            assertBool "qualified trait" ("S.Show : Type -> Type\n" `T.isPrefixOf` qualified),
-          testCase "type inspection follows type rebinding and namespace precedence" $ do
+            qualified <- Repl.inspectKind next "S.Show" >>= requireRight
+            assertBool "qualified trait" ("S.Show : Type -> Constraint\n" `T.isPrefixOf` qualified)
+            functor <- Repl.inspectKind next "Functor" >>= requireRight
+            assertBool "higher-kinded trait" ("Functor : (Type -> Type) -> Constraint\n" `T.isPrefixOf` functor),
+          testCase "kind inspection infers type-level expressions" $ do
+            current <- session
+            Repl.inspectKind current "Maybe Int" >>= (@?= Right "Maybe Int : Type")
+            Repl.inspectKind current "Int -> String" >>= (@?= Right "Int -> String : Type")
+            Repl.inspectKind current "[Int]" >>= (@?= Right "[Int] : Type")
+            Repl.inspectKind current "Functor Maybe" >>= (@?= Right "Functor Maybe : Constraint")
+            Repl.inspectKind current "Show Int" >>= (@?= Right "Show Int : Constraint"),
+          testCase "kind and term inspection use separate namespaces" $ do
             current <- session
             (first, _) <- Repl.submit quiet current "type Box a = Box a" >>= requireRight
-            Repl.inspectType first "Box" >>= (@?= Right "Box : Type -> Type")
+            Repl.inspectKind first "Box" >>= (@?= Right "Box : Type -> Type")
             (second, _) <- Repl.submit quiet first "type Box = Box Int" >>= requireRight
-            Repl.inspectType second "Box" >>= (@?= Right "Box : Type")
+            Repl.inspectKind second "Box" >>= (@?= Right "Box : Type")
             (third, _) <- Repl.submit quiet second "Alias = Box" >>= requireRight
-            Repl.inspectType third "Alias" >>= (@?= Right "Alias : Type")
+            Repl.inspectKind third "Alias" >>= (@?= Right "Alias : Type")
+            Repl.inspectType third "Box" >>= (@?= Right "Box : Int -> Box")
             constructor <- Repl.inspectType third "Just" >>= requireRight
             assertBool "constructors still show schemes" ("a -> Maybe a" `T.isInfixOf` constructor),
           testCase "expressions execute without a main" $ session >>= \current -> result current "1 + 2" "3",
+          testCase "type inspection infers expressions without evaluating them" $ do
+            current <- session
+            Repl.inspectType current "1" >>= (@?= Right "1 : Int")
+            Repl.inspectType current "id 1" >>= (@?= Right "id 1 : Int")
+            Repl.inspectType current "1 / 0" >>= (@?= Right "1 / 0 : Int")
+            Repl.inspectType current "(x -> x)" >>= (@?= Right "(x -> x) : a -> a")
+            Repl.inspectType current "(x -> x + x)" >>= (@?= Right "(x -> x + x) : Add a => a -> a")
+            Repl.inspectType current "println \"type query\"" >>= (@?= Right "println \"type query\" : Unit")
+            result current "2 + 3" "5",
           testCase "bindings accept trailing type annotations" $ do
             current <- session
             (next, _) <- Repl.submit quiet current "x = 2 : Int" >>= requireRight

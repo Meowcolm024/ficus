@@ -695,9 +695,15 @@ retain their normal restrictions. No source pragma activates this mode.
 Rebindings receive fresh module-owned identities. Constructor reuse is checked
 against the owner of the type being replaced; omitted constructors are hidden
 from both the retained name scope and ordinary imports such as implicit Prelude.
-`:type` resolves a name against the current source scope, trying the type
-namespace before terms. It reads stored kinds and trait declaration text, or a
-value's stored scheme, without executing it. This display metadata retains no
+`:kind` resolves type and trait names against the current source scope and reads
+stored kinds and trait declaration text. Other type-level expressions are checked
+using a temporary alias; the query reads its inferred kind and displays applied
+trait predicates with a `Constraint` result. `:type` resolves terms and reads a bare
+value or constructor's stored scheme. Other expressions are compiled inside a temporary
+Unit thunk; the query displays its inferred result scheme without lowering,
+initializing, or executing code, and without installing session bindings.
+Trait kind displays use the inferred dictionary parameter kind with a `Constraint` result, rather than Core's
+dictionary type result `Type`. This display metadata retains no
 Core AST. `:help` lists commands and aliases. Expressions are compiled inside a
 Unit thunk and formatted with qualified `Class.Debug.debug`. Successful
 loads/imports/declarations replace the session

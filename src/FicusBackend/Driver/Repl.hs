@@ -10,6 +10,7 @@ module FicusBackend.Driver.Repl
     loadSession,
     submit,
     inspectType,
+    inspectKind,
   )
 where
 
@@ -63,16 +64,17 @@ data Session = Session
   }
 
 -- Only compact display metadata survives compilation, alongside value schemes.
-data TypeInfo = TypeInfo Kind (Maybe Text)
+data TypeInfo = TypeInfo Text (Maybe Text)
 
-data ReplCommand = Load FilePath | TypeOf Text | Help | Quit | Submit Text | InvalidCommand Text deriving (Eq, Show)
+data ReplCommand = Load FilePath | TypeOf Text | KindOf Text | Help | Quit | Submit Text | InvalidCommand Text deriving (Eq, Show)
 
 helpText :: Text
 helpText =
   T.unlines
     [ ":help, :h          Show this help",
       ":load FILE, :l FILE  Load or reload a file and its dependencies",
-      ":type NAME, :t NAME  Inspect a value, constructor, type, or trait",
+      ":type EXPR, :t EXPR  Infer a term expression's type without evaluation",
+      ":kind TYPE, :k TYPE  Infer a type-level expression's kind",
       ":quit, :q          Exit the REPL",
       "Enter expressions or declarations; use/import declarations bring modules into scope."
     ]
@@ -92,6 +94,8 @@ parseCommand input = case T.words stripped of
               ":load" -> load argument
               ":t" -> typeOf argument
               ":type" -> typeOf argument
+              ":k" -> kindQuery argument
+              ":kind" -> kindQuery argument
               _ -> InvalidCommand "unknown command; use :help for available commands"
   _ -> Submit stripped
   where
@@ -104,8 +108,11 @@ parseCommand input = case T.words stripped of
       | T.null argument = InvalidCommand ":load requires a file"
       | otherwise = Load (T.unpack (unquote argument))
     typeOf argument
-      | T.null argument = InvalidCommand ":type requires a name"
+      | T.null argument = InvalidCommand ":type requires an expression or name"
       | otherwise = TypeOf argument
+    kindQuery argument
+      | T.null argument = InvalidCommand ":kind requires a type-level expression"
+      | otherwise = KindOf argument
     unquote value
       | T.length value >= 2 && T.isPrefixOf "\"" value && T.isSuffixOf "\"" value = T.dropEnd 1 (T.drop 1 value)
       | otherwise = value
@@ -201,7 +208,9 @@ types result =
 typeInfo :: C.CompileResult -> Map GlobalId TypeInfo
 typeInfo result = Map.mapWithKey describe kinds
   where
-    kinds = Map.unions [Core.coreKinds (validatedModule (checkedCore checked)) | checked <- Map.elems (C.compileModules result)]
+    cores = [validatedModule (checkedCore checked) | checked <- Map.elems (C.compileModules result)]
+    kinds = Map.unions (map Core.coreKinds cores)
+    traitParameters = Map.unions [Map.map (quantifierKind . Core.dictionaryParameter . Core.nodeValue) (Core.coreDictionaries core) | core <- cores]
     traits =
       Map.fromList
         [ (ident, T.strip (T.take (offset (end site) - offset (start site) + 1) (T.drop (offset (start site)) source)))
@@ -211,7 +220,15 @@ typeInfo result = Map.mapWithKey describe kinds
           let site = A.nodeSpan declaration,
           Just source <- [Map.lookup (sourceFile site) (C.compileSources result)]
         ]
-    describe ident kind = TypeInfo kind (Map.lookup ident traits)
+    describe ident kind = TypeInfo displayKind (Map.lookup ident traits)
+      where
+        -- Core represents dictionary types with a Type result. Interactive
+        -- inspection presents the source trait's Constraint result instead.
+        displayKind = case Map.lookup ident traitParameters of
+          Just parameter -> domain parameter <> " -> Constraint"
+          Nothing -> renderKind kind
+        domain TypeKind = "Type"
+        domain parameter = "(" <> renderKind parameter <> ")"
 
 lowerSession :: Session -> C.CompileResult -> Either [D.Diagnostic] LoweredProgram
 lowerSession session result
@@ -327,36 +344,78 @@ submit effects session input
 
 inspectType :: Session -> Text -> IO (Either [D.Diagnostic] Text)
 inspectType session name = do
-  typeReference <- resolveQuery (freshName session "FicusReplInspect") " = "
-  case typeReference >>= lookupTypeInfo of
-    Right (TypeInfo kind declaration) -> pure (Right (name <> " : " <> renderKind kind <> maybe "" ("\n" <>) declaration))
-    Left _ -> do
-      valueReference <- resolveQuery (freshName session "ficusReplInspect") " () = "
-      pure $ do
-        ident <- valueReference
-        case Map.lookup ident (sessionTypes session) of
-          Just scheme -> Right (name <> " : " <> renderScheme scheme)
-          Nothing -> Left [message "no inferred value type is available for this name"]
+  valueReference <- resolveInspectionName session (freshName session "ficusReplInspect") " () = " name
+  case valueReference >>= storedScheme of
+    Right scheme -> pure (Right (name <> " : " <> renderScheme scheme))
+    Left _ -> inferExpression
   where
+    storedScheme ident = maybe (Left [message "no inferred value type is available for this name"]) Right (Map.lookup ident (sessionTypes session))
+    inferExpression = do
+      let queryName = freshName session "ficusReplInspect"
+      -- A thunk permits ordinary expression inference and generalization,
+      -- without initializing or running any compiled code.
+      result <- compileSession session (queryName <> " () = (" <> name <> ")")
+      pure $
+        if not (C.compileSucceeded result)
+          then Left (C.compileDiagnostics result)
+          else case Map.lookup (GlobalId (replOwner session) ValueNS queryName) (types result) of
+            Just scheme
+              | Just (_, expressionType) <- functionParts (schemeType scheme) ->
+                  Right (name <> " : " <> renderScheme (scheme {schemeType = expressionType}))
+            _ -> Left [message "expression query has no inferred type"]
+
+inspectKind :: Session -> Text -> IO (Either [D.Diagnostic] Text)
+inspectKind session name = do
+  typeReference <- resolveInspectionName session (freshName session "FicusReplInspect") " = " name
+  case typeReference >>= lookupTypeInfo of
+    Right (TypeInfo kind declaration) -> pure (Right (name <> " : " <> kind <> maybe "" ("\n" <>) declaration))
+    Left _ -> inferExpression
+  where
+    inferExpression = do
+      let queryName = freshName session "FicusReplInspect"
+      result <- compileSession session (queryName <> " = " <> name)
+      let info = typeInfo result
+          tree = Map.lookup (replOwner session) (frontendModules (C.compileFrontend result))
+          predicates =
+            [ ()
+            | Just source <- [tree],
+              declaration <- A.declarations (A.abstractDeclarations source),
+              A.AliasDefinition _ _ _ body <- [A.nodeValue declaration],
+              A.TypeApplication trait _ <- [A.nodeValue body],
+              A.TypeConstructor ident <- [A.nodeValue trait],
+              Just (TypeInfo _ (Just _)) <- [Map.lookup ident info]
+            ]
+      pure $
+        if not (C.compileSucceeded result)
+          then Left (C.compileDiagnostics result)
+          else case Map.lookup (GlobalId (replOwner session) TypeNS queryName) info of
+            Just (TypeInfo kind _) -> Right (name <> " : " <> if null predicates then kind else "Constraint")
+            Nothing -> Left [message "type-level query has no inferred kind"]
     lookupTypeInfo ident = case Map.lookup ident (sessionTypeInfo session) of
       Just info -> Right info
       Nothing -> case ident of
-        IntrinsicId intrinsic -> Right (TypeInfo (primitiveKind intrinsic) Nothing)
+        IntrinsicId intrinsic -> Right (TypeInfo (renderKind (primitiveKind intrinsic)) Nothing)
         _ -> Left [message "no inferred kind is available for this name"]
-    resolveQuery queryName separator = do
-      let source = sourceText session (queryName <> separator <> name)
-          queryLine = length (T.lines source)
-      graph <- discoverModules (provider session source) [replOwner session]
-      let resolved = resolveGraphWithNames (scopes session) libraryResolveConfig librarySugarRegistry graph
-          errors = filter ((== D.Error) . D.diagnosticSeverity) (map D.toDiagnostic (frontendDiagnostics resolved))
-      pure $
-        if not (null errors)
-          then Left errors
-          else case Map.lookup (replOwner session) (frontendModules resolved) of
-            Nothing -> Left [message "type query did not resolve"]
-            Just tree -> case [A.occurrenceReference occurrence | occurrence <- A.abstractOccurrences tree, line (start (A.occurrenceSpan occurrence)) == queryLine, A.occurrenceSpelling occurrence /= queryName] of
-              [GlobalRef ident] -> Right ident
-              _ -> Left [message ":type expects one value, constructor, type, or trait name"]
+
+resolveInspectionName :: Session -> Text -> Text -> Text -> IO (Either [D.Diagnostic] GlobalId)
+resolveInspectionName session queryName separator name = do
+  let source = sourceText session (queryName <> separator <> name)
+  graph <- discoverModules (provider session source) [replOwner session]
+  let resolved = resolveGraphWithNames (scopes session) libraryResolveConfig librarySugarRegistry graph
+      errors = filter ((== D.Error) . D.diagnosticSeverity) (map D.toDiagnostic (frontendDiagnostics resolved))
+  pure $
+    if not (null errors)
+      then Left errors
+      else case Map.lookup (replOwner session) (frontendModules resolved) of
+        Nothing -> Left [message "type query did not resolve"]
+        Just tree -> case map A.nodeValue (A.declarations (A.abstractDeclarations tree)) of
+          [A.AliasDefinition _ _ _ body] | A.TypeConstructor ident <- A.nodeValue body -> Right ident
+          [A.ValueDefinition _ _ (A.ClausesBody _ (clause :| []))] -> case A.nodeValue (A.clauseBody (A.nodeValue clause)) of
+            A.Ref (GlobalRef ident) -> Right ident
+            A.Constructor ident -> Right ident
+            A.Method ident -> Right ident
+            _ -> Left [message "query is an expression"]
+          _ -> Left [message "query is not a single name"]
 
 freshName :: Session -> Text -> Text
 freshName session = choose

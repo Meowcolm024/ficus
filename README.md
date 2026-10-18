@@ -54,9 +54,16 @@ ficus> vecLength (listToVec [1, 2, 3])
 | Command | Short form | Purpose |
 | --- | --- | --- |
 | `:load FILE` | `:l FILE` | Load or reload a file and its dependencies |
-| `:type NAME` | `:t NAME` | Inspect a value or constructor's type, or a type or trait's kind; traits also show their declaration |
+| `:type EXPR` | `:t EXPR` | Inspect a term expression's type without evaluation |
+| `:kind TYPE` | `:k TYPE` | Infer a type-level expression's kind; bare traits also show their declaration |
 | `:help` | `:h` | Show commands and usage |
 | `:quit` | `:q` | Exit; end of input also exits |
+
+For example, `:k Functor` shows `Functor : (Type -> Type) -> Constraint`
+followed by its trait declaration.
+`:t 1` shows `1 : Int`; applications and lambdas also work.
+`:k Maybe Int` shows `Maybe Int : Type`, and `:k Show Int` shows
+`Show Int : Constraint`.
 
 Loading a file brings its exports into scope without invoking `main`. A
 successful load replaces interactive declarations and imports. Failed commands

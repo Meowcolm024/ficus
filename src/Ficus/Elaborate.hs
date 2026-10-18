@@ -8,6 +8,7 @@ module Ficus.Elaborate
     checkedInterface,
     checkedTypes,
     elaborateModule,
+    elaborateInteractiveModule,
   )
 where
 
@@ -23,6 +24,7 @@ import Ficus.Infer.Declaration
 import Ficus.Infer.Monad qualified as I
 import Ficus.Infer.Syntax
 import Ficus.Infer.Type
+import Ficus.Initialization
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Abstract.Validate
 import Ficus.Syntax.Core qualified as C
@@ -45,13 +47,19 @@ data CheckedModule = CheckedModule
 newtype CheckedInterface = CheckedInterface Declarations deriving (Eq, Show)
 
 elaborateModule :: [CheckedInterface] -> A.AbstractModule -> Elaboration
-elaborateModule imports source = case validateAbstract source of
+elaborateModule = elaborateWithMode OrdinaryInitialization
+
+elaborateInteractiveModule :: [CheckedInterface] -> A.AbstractModule -> Elaboration
+elaborateInteractiveModule = elaborateWithMode InteractiveInitialization
+
+elaborateWithMode :: InitializationMode -> [CheckedInterface] -> A.AbstractModule -> Elaboration
+elaborateWithMode mode imports source = case validateAbstract source of
   Left message -> Incomplete Nothing [E.diagnostic E.InvalidCoreTree (A.abstractSpan source) message]
   Right () ->
     let visible = Set.fromList (A.visibleImplementations source)
         merged = mergeInterfaces imports
         imported = merged {implementationDeclarations = Map.restrictKeys (implementationDeclarations merged) visible}
-        inferred = inferModule imported source
+        inferred = inferModuleWithMode mode imported source
         diagnostics = I.diagnostics (inferenceState inferred)
      in case lowerModule inferred source of
           (Left problem, _) -> Incomplete Nothing (diagnostics ++ [problem | not (any isError diagnostics)])

@@ -1,6 +1,6 @@
 -- | Discover, resolve, infer and elaborate modules in dependency order.
 -- Configuration and source caching belong here, outside the individual passes.
-module Ficus.Compile (CompileOptions (..), CompileResult (..), compileFiles, compileProvided, compileSucceeded, compileDiagnostics) where
+module Ficus.Compile (CompileOptions (..), CompileResult (..), compileFiles, compileProvided, compileInteractiveProvided, compileSucceeded, compileDiagnostics) where
 
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (modify', runStateT)
@@ -21,7 +21,7 @@ import Ficus.Resolve.Desugar (ResolveConfig)
 import Ficus.Resolve.Discovery
 import Ficus.Resolve.Header (edgeTarget, headerEdges)
 import Ficus.Resolve.Provider qualified as Provider
-import Ficus.Syntax.Name (ModuleId)
+import Ficus.Syntax.Name (ModuleId, NameSummary)
 import Ficus.Util.Source
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath (normalise, takeDirectory, takeExtension)
@@ -68,7 +68,12 @@ compileFiles resolver sugar options = do
 -- | Compile through an injected source provider, including unsaved interactive
 -- modules, while retaining dependency order for linking and initialization.
 compileProvided :: ResolveConfig -> SugarRegistry -> Provider.ModuleProvider IO -> [(ModuleId, Span)] -> IO CompileResult
-compileProvided resolver sugar sourceProvider entries = do
+compileProvided = compileInteractiveProvided Map.empty
+
+-- | Only modules explicitly present in scopes receive interactive initialization
+-- and name shadowing. Ordinary source files retain the normal language rules.
+compileInteractiveProvided :: Map ModuleId NameSummary -> ResolveConfig -> SugarRegistry -> Provider.ModuleProvider IO -> [(ModuleId, Span)] -> IO CompileResult
+compileInteractiveProvided scopes resolver sugar sourceProvider entries = do
   let provider owner = do
         result <- liftIO (sourceProvider owner)
         case result of
@@ -76,20 +81,22 @@ compileProvided resolver sugar sourceProvider entries = do
           Left _ -> pure ()
         pure result
   (graph, sources) <- runStateT (discoverModulesAt provider entries) Map.empty
-  let frontend = resolveGraph resolver sugar graph
-      (checked, diagnostics) = foldl (checkModule graph frontend) (Map.empty, []) (dependencyOrder graph)
+  let frontend = resolveGraphWithNames scopes resolver sugar graph
+      (checked, diagnostics) = foldl (checkModule scopes graph frontend) (Map.empty, []) (dependencyOrder graph)
   pure (CompileResult frontend sources (dependencyOrder graph) checked diagnostics)
 
-checkModule :: ModuleGraph -> FrontendResult -> (Map ModuleId Elaborate.CheckedModule, [E.Diagnostic]) -> ModuleId -> (Map ModuleId Elaborate.CheckedModule, [E.Diagnostic])
-checkModule graph frontend previous@(checked, diagnostics) owner = case (Map.lookup owner (frontendModules frontend), Map.lookup owner (graphModules graph)) of
+checkModule :: Map ModuleId NameSummary -> ModuleGraph -> FrontendResult -> (Map ModuleId Elaborate.CheckedModule, [E.Diagnostic]) -> ModuleId -> (Map ModuleId Elaborate.CheckedModule, [E.Diagnostic])
+checkModule scopes graph frontend previous@(checked, diagnostics) owner = case (Map.lookup owner (frontendModules frontend), Map.lookup owner (graphModules graph)) of
   (Just source, Just discovered) ->
     let dependencies = map edgeTarget (headerEdges (discoveredHeader discovered))
      in case traverse (`Map.lookup` checked) dependencies of
           Nothing -> previous
-          Just imports -> case Elaborate.elaborateModule (map Elaborate.checkedInterface imports) source of
+          Just imports -> case elaborate (map Elaborate.checkedInterface imports) source of
             Elaborate.Incomplete _ errors -> (checked, diagnostics ++ errors)
             Elaborate.Complete result warnings -> (Map.insert owner result checked, diagnostics ++ warnings)
   _ -> previous
+  where
+    elaborate = if Map.member owner scopes then Elaborate.elaborateInteractiveModule else Elaborate.elaborateModule
 
 entryIdentity :: [FilePath] -> FilePath -> IO (Either R.Diagnostic ModuleId)
 entryIdentity roots file = do

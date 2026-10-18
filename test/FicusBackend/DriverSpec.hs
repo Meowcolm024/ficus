@@ -133,6 +133,65 @@ tests =
               Left _ -> pure ()
               Right _ -> assertFailure "missing import accepted"
             result current "1 + 1" "2",
+          testCase "expansive bindings evaluate once and permit rebinding" $ do
+            current <- session
+            trace <- newIORef []
+            let effects = R.Effects (\_ text -> modifyIORef' trace (<> [text])) (\_ _ -> pure "")
+            (first, _) <- Repl.submit effects current "answer = { println \"once\"; 40 + 2 }" >>= requireRight
+            result first "answer" "42"
+            (second, _) <- Repl.submit effects first "answer = answer + 1" >>= requireRight
+            result second "answer" "43"
+            readIORef trace >>= (@?= ["once\n"]),
+          testCase "expansive bindings retain value restriction and recursive safety" $ do
+            current <- session
+            Repl.submit quiet current "weak = id []" >>= \case
+              Left errors -> assertBool (show errors) ("T0102" `elem` map D.diagnosticCode errors)
+              Right _ -> assertFailure "an unresolved expansive binding was generalized"
+            Repl.submit quiet current "cycle = cycle + 1" >>= \case
+              Left errors -> assertBool (show errors) ("T0202" `elem` map D.diagnosticCode errors)
+              Right _ -> assertFailure "unsafe recursive initializer accepted"
+            result current "1 + 1" "2",
+          testCase "old closures retain their bindings after a type-changing rebind" $ do
+            current <- session
+            (first, _) <- Repl.submit quiet current "value = 7" >>= requireRight
+            (second, _) <- Repl.submit quiet first "old () = value" >>= requireRight
+            (third, _) <- Repl.submit quiet second "value = True" >>= requireRight
+            result third "value" "True"
+            result third "old ()" "7"
+            Repl.inspectType third "value" >>= (@?= Right "value : Bool"),
+          testCase "type rebinding permits its own constructor and preserves old values" $ do
+            current <- session
+            (first, _) <- Repl.submit quiet current "type Box = Box Int Int" >>= requireRight
+            (second, _) <- Repl.submit quiet first "old = Box 7 0" >>= requireRight
+            (third, _) <- Repl.submit quiet second "unbox (Box x _) = x" >>= requireRight
+            (fourth, _) <- Repl.submit quiet third "type Box = Box String String" >>= requireRight
+            result fourth "unbox old" "7"
+            result fourth "with Box \"new\" \"extra\" { Box text _ -> text }" "\"new\""
+            Repl.submit quiet fourth "unbox (Box \"new\" \"extra\")" >>= \case
+              Left _ -> pure ()
+              Right _ -> assertFailure "nominally distinct Box types unified",
+          testCase "removed Prelude constructors stay hidden after type rebinding" $ do
+            current <- session
+            (first, _) <- Repl.submit quiet current "type Maybe a = Different a" >>= requireRight
+            (second, _) <- Repl.submit quiet first "value = Different 7" >>= requireRight
+            Repl.submit quiet second "Just 3" >>= \case
+              Left errors -> map D.diagnosticCode errors @?= ["N0001"]
+              Right _ -> assertFailure "constructor from the old Maybe remained visible"
+            result second "with value { Different x -> x }" "7",
+          testCase "constructor rebinding cannot take a name owned by another type" $ do
+            current <- session
+            (first, _) <- Repl.submit quiet current "type First = Shared Int" >>= requireRight
+            Repl.submit quiet first "type Second = Shared String" >>= \case
+              Left errors -> map D.diagnosticCode errors @?= ["R0104"]
+              Right _ -> assertFailure "unrelated constructor overwritten"
+            result first "with Shared 3 { Shared x -> x }" "3",
+          testCase "failed expansive rebinding preserves the old value" $ do
+            current <- session
+            (first, _) <- Repl.submit quiet current "value = 7" >>= requireRight
+            Repl.submit quiet first "value = 1 / 0" >>= \case
+              Left errors -> map D.diagnosticCode errors @?= ["R0002"]
+              Right _ -> assertFailure "division succeeded"
+            result first "value" "7",
           testCase "reload replaces values and failed reload retains the snapshot" $ withDirectory $ \directory -> do
             let file = directory </> "Reload.ficus"
             TIO.writeFile file "value = 1\n"

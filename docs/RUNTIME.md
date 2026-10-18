@@ -283,3 +283,17 @@ and command-line argument contract. Library programs can have no globals or entr
 
 `RuntimeError` carries a stable kind and primary span and implements the shared
 diagnostic interface; see [ERRORS.md](ERRORS.md#runtime-and-lowering-diagnostics-r).
+
+## 8. Interactive linking
+
+The backend REPL retains closed schemes, evaluated values/closures, source and
+name-scope snapshots, and Runtime layout metadata, without retaining Core.
+`lowerProgramWithLayouts` extends an existing constructor/dictionary tag table;
+old tags never shift when new nominal types are added. `loweredBindings` maps
+module-owned references to current global addresses, including discarded
+bindings and generated dictionary builders. `initializeWith` installs retained
+values at those addresses and skips their initializers. Captured closures retain
+their original environments, while calls use the current invocation's effects.
+Only a successful submission commits updated snapshots, values, and layouts.
+Reload starts a fresh environment. See SPEC §22.1 for rebinding and constructor
+ownership rules.

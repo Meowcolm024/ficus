@@ -12,10 +12,12 @@ module FicusBackend.Driver.Repl
   )
 where
 
+import Control.Monad (forM)
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Ficus.Compile qualified as C
@@ -23,7 +25,10 @@ import Ficus.Elaborate (checkedCore, checkedTypes)
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Library.Contracts
 import Ficus.Resolve
+import Ficus.Resolve.Discovery (discoverModules)
+import Ficus.Resolve.Header (scanHeader)
 import Ficus.Resolve.Provider qualified as P
+import Ficus.Resolve.Scope
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Concrete qualified as Concrete
 import Ficus.Syntax.Core qualified as Core
@@ -32,7 +37,6 @@ import Ficus.Syntax.Name hiding (TypeKind)
 import Ficus.Syntax.Parser (parseModule)
 import Ficus.Type
 import Ficus.Util.Source
-import FicusBackend.Driver.Run (lowerCompilation)
 import FicusBackend.Lower.Runtime
 import FicusBackend.Runtime qualified as R
 import FicusBackend.Runtime.AST qualified as Runtime
@@ -47,11 +51,13 @@ data Session = Session
   { sessionOptions :: ReplOptions,
     sessionProvider :: P.ProviderConfig,
     sessionSources :: Map ModuleId P.Source,
-    sessionLoaded :: Maybe ModuleId,
+    sessionScopes :: Map ModuleId NameSummary,
+    sessionVisible :: NameSummary,
+    sessionNext :: Int,
     sessionImports :: [Text],
-    sessionDeclarations :: [Text],
     sessionTypes :: Map GlobalId (Scheme Core.CoreType),
-    sessionInstance :: Maybe R.Instance
+    sessionValues :: Map (ModuleId, Reference) R.Value,
+    sessionLayouts :: Maybe RuntimeLayouts
   }
 
 data ReplCommand = Load FilePath | TypeOf Text | Quit | Submit Text | InvalidCommand Text deriving (Eq, Show)
@@ -85,8 +91,11 @@ parseCommand input = case T.words stripped of
       | T.length value >= 2 && T.isPrefixOf "\"" value && T.isSuffixOf "\"" value = T.dropEnd 1 (T.drop 1 value)
       | otherwise = value
 
-replOwner :: ModuleId
-replOwner = ModuleId ("FicusInteractive" :| ["Session"])
+replOwner :: Session -> ModuleId
+replOwner session = ModuleId ("FicusInteractive" :| ["Cell" <> T.justifyRight 12 '0' (T.pack (show (sessionNext session)))])
+
+replPath :: Session -> FilePath
+replPath session = "<repl:" ++ show (sessionNext session) ++ ">"
 
 anchor :: Span
 anchor = Span "<repl>" (Position 1 1 0) (Position 1 1 0)
@@ -97,8 +106,8 @@ newSession options = do
   libraries <- mapM makeAbsolute (replLibraries options)
   prelude <- traverse makeAbsolute (replPrelude options)
   let config = P.ProviderConfig (nub (roots ++ libraries)) (maybe P.PreludeFromRoots P.PreludeFile prelude)
-      session = Session options config Map.empty Nothing [] [] Map.empty Nothing
-  compileSession session "" >>= install session
+      session = Session options config Map.empty Map.empty Map.empty 0 [] Map.empty Map.empty Nothing
+  compileSession session "" >>= install R.ioEffects session
 
 loadSession :: Session -> FilePath -> IO (Either [D.Diagnostic] Session)
 loadSession session file = do
@@ -111,44 +120,51 @@ loadSession session file = do
     else do
       let owners = [owner | (owner, tree) <- Map.toList (frontendModules (C.compileFrontend result)), normalise (sourceFile (A.abstractSpan tree)) == absolute]
       case owners of
-        [owner] | owner /= replOwner -> do
+        [owner] | not (interactiveOwner owner) -> do
           searchRoots <- mapM makeAbsolute (roots ++ replLibraries options)
-          let candidate =
+          let ordinary = Map.findWithDefault Map.empty owner (Map.map A.abstractExports (frontendModules (C.compileFrontend result)))
+              candidate =
                 session
                   { sessionProvider = (sessionProvider session) {P.sourceRoots = nub searchRoots},
                     sessionSources = snapshots result,
-                    sessionLoaded = Just owner,
+                    sessionScopes = Map.empty,
+                    sessionVisible = ordinary,
+                    sessionNext = 0,
                     sessionImports = [],
-                    sessionDeclarations = []
+                    sessionTypes = Map.empty,
+                    sessionValues = Map.empty,
+                    sessionLayouts = Nothing
                   }
-          compileSession candidate "" >>= install candidate
+          compileSession candidate "" >>= install R.ioEffects candidate
         _ -> pure (Left [message "cannot select the loaded module (reserved interactive module or ambiguous identity)"])
 
+interactiveOwner :: ModuleId -> Bool
+interactiveOwner (ModuleId (first :| _)) = first == "FicusInteractive"
+
 sourceText :: Session -> Text -> Text
-sourceText session suffix =
-  T.unlines
-    ( maybe [] (\owner -> ["use " <> moduleText owner <> " (..)"]) (sessionLoaded session)
-        ++ sessionImports session
-        ++ sessionDeclarations session
-        ++ [suffix]
-    )
+sourceText session suffix = T.unlines (dependencies ++ sessionImports session ++ [suffix])
+  where
+    owners = Set.toAscList (Set.fromList [owner | entity <- Map.elems (sessionVisible session), GlobalId owner _ _ <- [entityId entity]])
+    dependencies = ["use " <> moduleText owner <> " as FicusReplDependency" <> T.pack (show index) | (index, owner) <- zip [0 :: Int ..] owners]
 
 provider :: Session -> Text -> P.ModuleProvider IO
 provider session source owner
-  | owner == replOwner = pure (Right (P.Source "<repl>" source))
+  | owner == replOwner session = pure (Right (P.Source (replPath session) source))
   | otherwise = case Map.lookup owner (sessionSources session) of
       Just cached -> pure (Right cached)
       Nothing -> P.fileProvider (sessionProvider session) owner
 
+scopes :: Session -> Map ModuleId NameSummary
+scopes session = Map.insert (replOwner session) (sessionVisible session) (sessionScopes session)
+
 compileSession :: Session -> Text -> IO C.CompileResult
-compileSession session suffix = C.compileProvided libraryResolveConfig librarySugarRegistry (provider session (sourceText session suffix)) [(replOwner, anchor)]
+compileSession session suffix = C.compileInteractiveProvided (scopes session) libraryResolveConfig librarySugarRegistry (provider session (sourceText session suffix)) [(replOwner session, anchor {sourceFile = replPath session})]
 
 snapshots :: C.CompileResult -> Map ModuleId P.Source
 snapshots result =
   Map.fromList
     [ (owner, P.Source file text)
     | (owner, tree) <- Map.toList (frontendModules (C.compileFrontend result)),
-      owner /= replOwner,
       let file = sourceFile (A.abstractSpan tree),
       Just text <- [Map.lookup file (C.compileSources result)]
     ]
@@ -162,14 +178,75 @@ types result =
       let core = validatedModule (checkedCore checked)
     ]
 
-install :: Session -> C.CompileResult -> IO (Either [D.Diagnostic] Session)
-install session result = case lowerCompilation result of
+lowerSession :: Session -> C.CompileResult -> Either [D.Diagnostic] LoweredProgram
+lowerSession session result
+  | not (C.compileSucceeded result) = Left (C.compileDiagnostics result)
+  | otherwise =
+      either
+        (Left . map D.toDiagnostic)
+        Right
+        ( lowerProgramWithLayouts
+            (sessionLayouts session)
+            [validatedModule (checkedCore checked) | owner <- C.compileOrder result, Just checked <- [Map.lookup owner (C.compileModules result)]]
+        )
+
+initializeSession :: R.Effects -> Session -> LoweredProgram -> IO (Either [D.Diagnostic] R.Instance)
+initializeSession effects session lowered = do
+  let cached = Map.fromList [(address, value) | (ident, value) <- Map.toList (sessionValues session), Just address <- [Map.lookup ident (loweredBindings lowered)]]
+  either (Left . pure . D.toDiagnostic) Right <$> R.initializeWith effects (R.compileProgram (loweredProgram lowered)) cached
+
+install :: R.Effects -> Session -> C.CompileResult -> IO (Either [D.Diagnostic] Session)
+install effects session result = case prepare of
   Left diagnostics -> pure (Left diagnostics)
-  Right lowered -> do
-    initialized <- R.initialize R.ioEffects (R.compileProgram (loweredProgram lowered))
-    pure $ case initialized of
-      Left problem -> Left [D.toDiagnostic problem]
-      Right instance' -> Right session {sessionSources = snapshots result, sessionTypes = types result, sessionInstance = Just instance'}
+  Right (lowered, visible) -> do
+    initialized <- initializeSession effects session lowered
+    case initialized of
+      Left diagnostics -> pure (Left diagnostics)
+      Right instance' -> do
+        values <- forM (Map.toList (loweredBindings lowered)) $ \(ident, address) -> case R.selectEntry (loweredProgram lowered) address of
+          Left problem -> pure (Left [D.toDiagnostic problem])
+          Right entry -> fmap (either (Left . pure . D.toDiagnostic) (Right . (ident,))) (R.evaluateEntry instance' entry [])
+        let source = Map.lookup (replPath session) (C.compileSources result)
+            oldSources = Map.filterWithKey (\owner _ -> not (interactiveOwner owner)) (snapshots result) `Map.union` sessionSources session
+            savedSources = maybe oldSources (\text -> Map.insert (replOwner session) (P.Source (replPath session) text) oldSources) source
+        pure $ do
+          stored <- sequence values
+          Right
+            session
+              { sessionSources = savedSources,
+                sessionScopes = scopes session,
+                sessionVisible = visible,
+                sessionNext = sessionNext session + 1,
+                sessionTypes = types result `Map.union` sessionTypes session,
+                sessionValues = Map.fromList stored `Map.union` sessionValues session,
+                sessionLayouts = Just (loweredLayouts lowered)
+              }
+  where
+    prepare = do
+      tree <- maybe (Left [message "interactive module did not resolve"]) Right (Map.lookup (replOwner session) (frontendModules (C.compileFrontend result)))
+      let own = A.abstractExports tree
+          previous = sessionVisible session
+          replacements = [(entityId old, entityId new) | ((TypeNS, name), new) <- Map.toList own, Just old <- [Map.lookup (TypeNS, name) previous], entityId old /= entityId new]
+          collisions =
+            [ new
+            | (key@(ConstructorNS, _), new) <- Map.toList own,
+              Just old <- [Map.lookup key previous],
+              entityId old /= entityId new,
+              (entityOwner old, entityOwner new) `notElem` [(Just before, Just after) | (before, after) <- replacements]
+            ]
+      case collisions of
+        constructor : _ -> Left [(message "constructor name belongs to a different visible type") {D.diagnosticSpan = entitySpan constructor}]
+        [] -> pure ()
+      lowered <- lowerSession session result
+      let imported = case Map.lookup (replPath session) (C.compileSources result) >>= either (const Nothing) Just . parseModule (replPath session) of
+            Nothing -> Map.empty
+            Just concrete ->
+              let (header, _) = scanHeader (replOwner session) concrete
+                  (scope, _, _) = buildScope header concrete own (frontendInterfaces (C.compileFrontend result))
+               in Map.mapMaybe (\case [Candidate entity _] -> Just entity; _ -> Nothing) (openedNames scope)
+          keep entity = constructorVisible (own `Map.union` previous) entity
+          visible = own `Map.union` Map.filter keep previous `Map.union` Map.filter keep imported
+      Right (lowered, visible)
 
 -- A successful declaration/import replaces the session transactionally.
 -- Expression errors return diagnostics and leave the caller's session intact.
@@ -180,12 +257,11 @@ submit effects session input
       Right tree | not (null (Concrete.moduleImports tree)) && null (Concrete.moduleDeclarations tree) && null (Concrete.modulePragmas tree) -> do
         let candidate = session {sessionImports = sessionImports session ++ [normalized]}
         result <- compileSession candidate ""
-        installed <- install candidate result
+        installed <- install effects candidate result
         pure ((\next -> (next, Nothing)) <$> installed)
       Right tree | null (Concrete.moduleImports tree) && not (null (Concrete.moduleDeclarations tree)) && null (Concrete.modulePragmas tree) -> do
-        let candidate = session {sessionDeclarations = sessionDeclarations session ++ [input]}
-        result <- compileSession candidate ""
-        installed <- install candidate result
+        result <- compileSession session input
+        installed <- install effects session result
         pure ((\next -> (next, Nothing)) <$> installed)
       _ -> evaluateExpression
   where
@@ -197,16 +273,19 @@ submit effects session input
     evaluateExpression = do
       -- The thunk preserves ordinary v0 restrictions on top-level initialization.
       result <- compileSession (session {sessionImports = sessionImports session ++ ["use Class.Debug as " <> debugName]}) (valueName <> " () = " <> debugName <> ".debug (" <> input <> ")")
-      case lowerCompilation result of
+      case lowerSession session result of
         Left diagnostics -> pure (Left diagnostics)
-        Right lowered -> case Map.lookup (GlobalId replOwner ValueNS valueName) (loweredGlobals lowered) of
+        Right lowered -> case Map.lookup (GlobalId (replOwner session) ValueNS valueName) (loweredGlobals lowered) of
           Nothing -> pure (Left [message "interactive expression has no runtime address"])
           Just address -> case R.selectEntry (loweredProgram lowered) address of
             Left problem -> pure (Left [D.toDiagnostic problem])
             Right entry -> do
-              outcome <- R.runProgram effects (R.compileProgram (loweredProgram lowered)) entry [R.LiteralValue Runtime.Unit]
+              initialized <- initializeSession effects session lowered
+              outcome <- case initialized of
+                Left diagnostics -> pure (Left diagnostics)
+                Right instance' -> either (Left . pure . D.toDiagnostic) Right <$> R.evaluateEntry instance' entry [R.LiteralValue Runtime.Unit]
               pure $ case outcome of
-                Left problem -> Left [D.toDiagnostic problem]
+                Left diagnostics -> Left diagnostics
                 Right (R.LiteralValue (Runtime.String output)) -> Right (session, Just output)
                 Right _ -> Left [message "interactive Debug result is not a string"]
 
@@ -216,12 +295,13 @@ inspectType session name = do
       suffix = queryName <> " () = " <> name
       source = sourceText session suffix
       queryLine = length (T.lines source)
-  resolved <- resolveSources libraryResolveConfig librarySugarRegistry (provider session source) [replOwner]
+  graph <- discoverModules (provider session source) [replOwner session]
+  let resolved = resolveGraphWithNames (scopes session) libraryResolveConfig librarySugarRegistry graph
   let errors = filter ((== D.Error) . D.diagnosticSeverity) (map D.toDiagnostic (frontendDiagnostics resolved))
   pure $
     if not (null errors)
       then Left errors
-      else case Map.lookup replOwner (frontendModules resolved) of
+      else case Map.lookup (replOwner session) (frontendModules resolved) of
         Nothing -> Left [message "type query did not resolve"]
         Just tree -> case [A.occurrenceReference occurrence | occurrence <- A.abstractOccurrences tree, line (start (A.occurrenceSpan occurrence)) == queryLine, A.occurrenceSpelling occurrence /= queryName] of
           [GlobalRef ident] -> case Map.lookup ident (sessionTypes session) of
@@ -234,7 +314,7 @@ freshName session = choose
   where
     source = sourceText session ""
     choose candidate
-      | candidate `T.isInfixOf` source = choose (candidate <> "'")
+      | candidate `T.isInfixOf` source || any ((== candidate) . snd) (Map.keys (sessionVisible session)) = choose (candidate <> "'")
       | otherwise = candidate
 
 renderScheme :: Scheme Core.CoreType -> Text

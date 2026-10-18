@@ -145,3 +145,10 @@ buildScope header m own interfaces = foldl importOne (initial, own, []) (C.modul
 
 collectFields :: ModuleId -> C.ConcreteModule -> Map (GlobalId, Text) FieldDescriptor
 collectFields owner m = Map.fromList [((gid, C.nameText name), FieldDescriptor gid (C.nameText name) (C.nameLocation name)) | C.Located _ _ (C.DataDeclaration n _ (C.Fields block)) <- C.moduleDeclarations m, let gid = GlobalId owner TypeNS (C.nameText n), C.Located _ _ (C.FieldSignature name _) <- C.blockItems block, C.nameText name /= "_"]
+
+-- | Interactive type shadowing also hides constructors from the previous
+-- nominal version, including constructors supplied by implicit Prelude.
+constructorVisible :: NameSummary -> Entity -> Bool
+constructorVisible names entity = case entityOwner entity of
+  Just owner@(GlobalId _ TypeNS name) -> maybe True ((== owner) . entityId) (Map.lookup (TypeNS, name) names)
+  _ -> True

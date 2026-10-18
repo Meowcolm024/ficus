@@ -676,7 +676,7 @@ Ordinary expression-block and `do` `=` bindings are sequential and non-recursive
 
 `where` introduces mutually visible declarations. Initialization follows dependency order, breaking ties by source order; the enclosing body runs after all required declarations are initialized. Top-level declarations and `impl` members follow the same rules.
 
-In v0, every top-level value initializer must be non-expansive (Section 16), including acyclic definitions and definitions with complete signatures. v1+ retains this default, with an exception for acyclic top-level definitions in a `STANDALONE` module (Section 24.4). Written value parameters count as surrounding lambdas, so effects may run when a function is called, but not while loading its module. The check includes any attached `where` group that runs during initialization: a definition without written value parameters cannot hide an expansive initializer there, even if its right-hand side is a lambda. Local bindings may still be expansive, subject to the existing value restriction and cyclic-initializer checks.
+In v0, every top-level value initializer must be non-expansive (Section 16), including acyclic definitions and definitions with complete signatures. Interactive submissions have the separate rules in Section 22.1. v1+ retains this default, with an exception for acyclic top-level definitions in a `STANDALONE` module (Section 24.4). Written value parameters count as surrounding lambdas, so effects may run when a function is called, but not while loading its module. The check includes any attached `where` group that runs during initialization: a definition without written value parameters cannot hide an expansive initializer there, even if its right-hand side is a lambda. Local bindings may still be expansive, subject to the existing value restriction and cyclic-initializer checks.
 
 ```text
 answer = 42                 -- allowed
@@ -774,7 +774,7 @@ Ficus uses Hindley–Milner inference with qualified types.
 
 Inference covers the complete module. Accepted unconstrained definitions have principal types, subject to trait ambiguity.
 
-At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a value lambda (including a definition with written value parameters), literal, variable, constructor, or aggregate of non-expansive values. Value applications, including partial applications, projections, record updates, conditionals, matches, `do`, and expression blocks are expansive, with one exception: an expression or `do` block containing exactly one expression and no declarations inherits that expression's classification. Thus `{ 1 }` and `{ x -> x }` are non-expansive, while `{ f x }` and `{ 1; 2 }` are expansive. Expansive result variables remain monomorphic. A signature cannot override this restriction; in particular, a local `inc = (+) 1` cannot acquire a polymorphic type merely by adding one. Such an initializer is rejected outright at top level unless the v1+ `STANDALONE` exception applies; the value restriction still applies there.
+At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a value lambda (including a definition with written value parameters), literal, variable, constructor, or aggregate of non-expansive values. Value applications, including partial applications, projections, record updates, conditionals, matches, `do`, and expression blocks are expansive, with one exception: an expression or `do` block containing exactly one expression and no declarations inherits that expression's classification. Thus `{ 1 }` and `{ x -> x }` are non-expansive, while `{ f x }` and `{ 1; 2 }` are expansive. Expansive result variables remain monomorphic. A signature cannot override this restriction; in particular, a local `inc = (+) 1` cannot acquire a polymorphic type merely by adding one. In source files, such an initializer is rejected outright at top level unless the v1+ `STANDALONE` exception applies; the value restriction still applies there.
 
 The v0 monomorphism restriction further keeps an **unsigned**, constrained binding monomorphic when it has no written value parameters or outer value lambda, even if its initializer is non-expansive. A complete signature may override this extra restriction when the value restriction permits generalization and the definition checks against it; a signature with holes cannot. Otherwise, unresolved trait predicates must be solved for the binding's one monotype. This restriction concerns constrained bindings only; it does not prevent generalizing an unconstrained non-expansive value.
 
@@ -912,7 +912,7 @@ Operations that would be default instance methods in Haskell are instead ordinar
 
 A trait or implementation may use an explicit empty block `{}`. This supports marker traits that bundle only supertrait requirements, such as Prelude's `Applicative` and `Monad`. Layout-controlled trait and implementation blocks remain nonempty.
 
-By default, every top-level value initializer must be non-expansive, whether signed, recursive, or acyclic; v1+ `STANDALONE` relaxes this only for acyclic top-level definitions. Every `impl` member initializer must still be non-expansive. Written value parameters count as surrounding lambdas; type binders do not. Non-expansive forms are:
+In source files, every top-level value initializer must be non-expansive by default, whether signed, recursive, or acyclic; v1+ `STANDALONE` relaxes this only for acyclic top-level definitions. Every `impl` member initializer must still be non-expansive. Written value parameters count as surrounding lambdas; type binders do not. Non-expansive forms are:
 
 - variables, literals, and constructors;
 - value lambdas (static type-only abstractions are classified by their body);
@@ -921,7 +921,7 @@ By default, every top-level value initializer must be non-expansive, whether sig
 - annotations around non-expansive expressions;
 - expression or `do` blocks containing exactly one non-expansive expression and no declarations.
 
-General function application, blocks with declarations or multiple expressions, conditionals, matching, `do` with declarations or multiple statements, projection, record update, and primitive calls are expansive. A single-expression block retains its expression's classification, as specified in Section 15. Expansive initializers are rejected as immediate top-level initializers except for the v1+ `STANDALONE` case, and as implementation-member initializers, although they may appear inside a function or member's lambda body.
+General function application, blocks with declarations or multiple expressions, conditionals, matching, `do` with declarations or multiple statements, projection, record update, and primitive calls are expansive. A single-expression block retains its expression's classification, as specified in Section 15. In source files, expansive initializers are rejected as immediate top-level initializers except for the v1+ `STANDALONE` case, and as implementation-member initializers, although they may appear inside a function or member's lambda body.
 
 ```text
 impl Show Person =
@@ -1137,8 +1137,27 @@ to standard error. Exception handling at the entry point belongs to v1+.
 it does not require or invoke `main`. Expressions execute strictly and their
 results are displayed through the library's `Debug` contract, so a result needs
 a visible `Debug` instance. Single-line top-level declarations may be added using
-ordinary declaration syntax and retain the language's initialization and
-polymorphism restrictions. Duplicate declarations remain errors.
+ordinary declaration syntax. Acyclic interactive bindings may have expansive
+right-hand sides, which evaluate when the submission is accepted. This is an
+interactive initialization policy, not support for the v1+ `STANDALONE` pragma
+in source files. Value and monomorphism restrictions still apply; signatures
+cannot generalize expansive expressions. Cyclic initializers and implementation
+members retain their ordinary non-expansiveness and recursive-read checks.
+
+A later submission may rebind a value or type name. New lookups see the newest
+binding; old closures, values, and inferred schemes retain their original
+identities and captures. A strict value rebinding such as `x = x + 1` reads the
+previous `x` on its right-hand side. Functions with written parameters retain
+ordinary recursive scope. Duplicate declarations within one submission remain
+errors.
+
+Redefining a type creates a fresh nominal identity. Its new constructors may
+reuse names owned by the previous version of that same type, but cannot take
+constructor names owned by an unrelated visible type. Constructors omitted by
+the replacement type leave interactive scope, including those originally
+provided by implicit Prelude. Values of the old type remain usable through
+previously defined functions. Ordinary source files retain their existing
+name, constructor ownership, and top-level initialization rules.
 
 The commands `:load FILE` / `:l FILE`, `:type NAME` / `:t NAME`, and `:quit` /
 `:q` load or reload a file, inspect a value or constructor's inferred scheme,
@@ -1147,8 +1166,9 @@ imports and declarations and brings the module's exported names into scope.
 Loading rereads the selected file and its dependencies. Failed loads, imports,
 declarations, type queries, and expression evaluation leave the last successful
 environment available; in particular, division by zero reports a primitive
-failure and returns to the prompt. Effects already performed before an error
-are not rolled back.
+failure and returns to the prompt. Previously accepted right-hand sides are not
+replayed by later commands. Effects already performed before an error are not
+rolled back.
 
 Interactive `use` declarations follow ordinary source import rules. As a REPL
 convenience, `import Module` means `use Module (..)`, while `import` with a

@@ -1,6 +1,6 @@
 -- | Link dependency-ordered, closed Core modules and lower to validated Runtime.
 -- Core is independently accepted here; holes are rejected before any erasure.
-module FicusBackend.Lower.Runtime (LoweredProgram (..), lowerProgram) where
+module FicusBackend.Lower.Runtime (LoweredProgram (..), RuntimeLayouts, lowerProgram, lowerProgramWithLayouts) where
 
 import Control.Monad (forM, unless)
 import Control.Monad.Except (throwError)
@@ -26,7 +26,11 @@ import FicusBackend.Runtime.Error qualified as E
 import FicusBackend.Runtime.Validate
 import Text.Read (readMaybe)
 
-data LoweredProgram = LoweredProgram {loweredProgram :: ValidatedProgram, loweredGlobals :: Map N.GlobalId R.GlobalIndex, loweredConstructors :: Map C.ConstructorId R.ConstructorIndex} deriving (Eq, Show)
+data LoweredProgram = LoweredProgram {loweredProgram :: ValidatedProgram, loweredGlobals :: Map N.GlobalId R.GlobalIndex, loweredConstructors :: Map C.ConstructorId R.ConstructorIndex, loweredBindings :: Map (N.ModuleId, N.Reference) R.GlobalIndex, loweredLayouts :: RuntimeLayouts} deriving (Eq, Show)
+
+-- | Stable layout identities let retained REPL closures exchange aggregates
+-- with newly compiled code. The table contains Runtime metadata, never Core.
+data RuntimeLayouts = RuntimeLayouts (Map N.GlobalId R.ConstructorIndex) (V.Vector (R.Node R.ConstructorLayout)) deriving (Eq, Show)
 
 data Representation = Erased | Immediate R.RuntimeLiteral | Boxed R.ConstructorIndex
 
@@ -44,7 +48,10 @@ data LowerState = LowerState {nextFunction :: Int, functions :: IntMap.IntMap R.
 type Lower = StateT LowerState (Either [E.RuntimeError])
 
 lowerProgram :: [C.CoreModule C.CoreType] -> Either [E.RuntimeError] LoweredProgram
-lowerProgram modules = do
+lowerProgram = lowerProgramWithLayouts Nothing
+
+lowerProgramWithLayouts :: Maybe RuntimeLayouts -> [C.CoreModule C.CoreType] -> Either [E.RuntimeError] LoweredProgram
+lowerProgramWithLayouts previousLayouts modules = do
   unless (null holes) (Left holes)
   mapM_ checkCore modules
   let allBindings = [(C.coreId tree, binding) | tree <- modules, group <- C.coreBindings tree, binding <- C.groupBindings group]
@@ -53,7 +60,7 @@ lowerProgram modules = do
       providers = Map.fromList [(key owner (C.bindingReference (C.nodeValue binding)), C.bindingScheme (C.nodeValue binding)) | (_, (owner, binding)) <- indexed]
   unless (length allBindings == Map.size globalTable) (Left [E.RuntimeError E.InvalidCore origin "duplicate linked Core declaration"])
   mapM_ (checkImports providers) modules
-  let (representations, layouts, dictionaryLayouts) = representationTables origin modules
+  let (representations, layouts, dictionaryLayouts, layoutState) = representationTables previousLayouts origin modules
       recordTable = Map.unions [Map.map (C.recordConstructor . C.nodeValue) (C.coreRecords tree) | tree <- modules]
       action = fmap concat $ forM modules $ \tree -> do
         let context = Context (C.coreId tree) Map.empty globalTable representations recordTable dictionaryLayouts
@@ -62,7 +69,7 @@ lowerProgram modules = do
   let debug = V.fromList [fromCore binding (case C.bindingReference (C.nodeValue binding) of N.GlobalRef ident -> (Just ident, T.pack (show ident)); N.LocalRef _ -> (Nothing, "$discard")) | (_, (_, binding)) <- indexed]
       program = R.Program origin (SourceOrigin origin) (V.fromList (IntMap.elems (functions state))) debug layouts (V.fromList P.allPrimitives) initializers
   checked <- validateProgram program
-  pure (LoweredProgram checked (Map.fromList [(ident, index') | ((_, N.GlobalRef ident), index') <- Map.toList globalTable]) (Map.mapMaybe (\case Boxed tag -> Just tag; _ -> Nothing) representations))
+  pure (LoweredProgram checked (Map.fromList [(ident, index') | ((_, N.GlobalRef ident), index') <- Map.toList globalTable]) (Map.mapMaybe (\case Boxed tag -> Just tag; _ -> Nothing) representations) globalTable layoutState)
   where
     origin = case modules of tree : _ -> C.coreSpan tree; [] -> Span "<runtime>" (Position 1 1 0) (Position 1 1 0)
     holes = [E.RuntimeError E.ExpressionHole (C.nodeSpan hole) "an expression hole prevents Runtime generation" | tree <- modules, group <- C.coreBindings tree, binding <- C.groupBindings group, hole <- C.expressionHoles (C.bindingBody (C.nodeValue binding))]
@@ -91,15 +98,26 @@ generated source = R.Node (C.nodeSpan source) (GeneratedOrigin "runtime lowering
 failure :: E.ErrorKind -> C.Node a -> T.Text -> Lower b
 failure kind source message = throwError [E.RuntimeError kind (C.nodeSpan source) message]
 
-representationTables :: Span -> [C.CoreModule C.CoreType] -> (Map C.ConstructorId Representation, V.Vector (R.Node R.ConstructorLayout), Map N.GlobalId (R.ConstructorIndex, Int))
-representationTables origin modules = (allRepresentations, V.fromList (intrinsicLayouts ++ nominalLayouts ++ dictionaryLayouts), dictionaryIndices)
+representationTables :: Maybe RuntimeLayouts -> Span -> [C.CoreModule C.CoreType] -> (Map C.ConstructorId Representation, V.Vector (R.Node R.ConstructorLayout), Map N.GlobalId (R.ConstructorIndex, Int), RuntimeLayouts)
+representationTables previous origin modules = (allRepresentations, layouts, dictionaryIndices, RuntimeLayouts indices layouts)
   where
     descriptors = Map.unions (map C.coreConstructors modules)
     families = Map.fromListWith (+) [(C.constructorOwner (C.nodeValue node), 1 :: Int) | node <- Map.elems descriptors]
     isWrapper node = let descriptor = C.nodeValue node in C.constructorArity descriptor == 1 && Map.lookup (C.constructorOwner descriptor) families == Just 1
     boxed = [(ident, node) | (ident, node) <- Map.toAscList descriptors, not (isWrapper node)]
-    nominalIndices = Map.fromList [(ident, R.ConstructorIndex index') | (index', (ident, _)) <- zip [3 ..] boxed]
-    nominalRepresentations = Map.fromList [(ident, Erased) | (ident, node) <- Map.toList descriptors, isWrapper node] `Map.union` Map.map Boxed nominalIndices
+    traits = Map.toAscList (Map.unions (map C.coreDictionaries modules))
+    intrinsicLayouts = V.fromList [R.Node origin (GeneratedOrigin "intrinsic layout" origin) (R.ConstructorLayout (R.FrameSize size) name) | (size, name) <- [(0, "[]"), (2, "::"), (2, "(*)")]]
+    initial = case previous of Nothing -> (Map.empty, intrinsicLayouts); Just (RuntimeLayouts known table) -> (known, table)
+    candidates =
+      [(ident, fromCore node (R.ConstructorLayout (R.FrameSize (C.constructorArity (C.nodeValue node))) (T.pack (show ident)))) | (C.DataConstructor ident, node) <- boxed]
+        ++ [(ident, fromCore node (R.ConstructorLayout (R.FrameSize (length (C.dictionarySuperclasses (C.nodeValue node)) + length (C.dictionaryMethods (C.nodeValue node)))) (T.pack (show ident)))) | (ident, node) <- traits]
+    allocate (known, table) (ident, descriptor) = case Map.lookup ident known of
+      Just _ -> (known, table)
+      Nothing -> (Map.insert ident (R.ConstructorIndex (V.length table)) known, V.snoc table descriptor)
+    (indices, layouts) = foldl allocate initial candidates
+    nominalRepresentations =
+      Map.fromList [(ident, Erased) | (ident, node) <- Map.toList descriptors, isWrapper node]
+        `Map.union` Map.fromList [(constructor, Boxed tag) | (constructor@(C.DataConstructor ident), _) <- boxed, Just tag <- [Map.lookup ident indices]]
     allRepresentations =
       Map.fromList
         [ (C.DataConstructor (N.IntrinsicId N.TrueConstructor), Immediate (R.Boolean True)),
@@ -110,11 +128,7 @@ representationTables origin modules = (allRepresentations, V.fromList (intrinsic
           (C.UnitConstructor, Immediate R.Unit)
         ]
         `Map.union` nominalRepresentations
-    intrinsicLayouts = [R.Node origin (GeneratedOrigin "intrinsic layout" origin) (R.ConstructorLayout (R.FrameSize size) name) | (size, name) <- [(0, "[]"), (2, "::"), (2, "(*)")]]
-    nominalLayouts = [fromCore node (R.ConstructorLayout (R.FrameSize (C.constructorArity (C.nodeValue node))) (T.pack (show ident))) | (ident, node) <- boxed]
-    traits = Map.toAscList (Map.unions (map C.coreDictionaries modules))
-    dictionaryIndices = Map.fromList [(ident, (R.ConstructorIndex index', length (C.dictionarySuperclasses (C.nodeValue node)))) | (index', (ident, node)) <- zip [3 + length boxed ..] traits]
-    dictionaryLayouts = [fromCore node (R.ConstructorLayout (R.FrameSize (length (C.dictionarySuperclasses (C.nodeValue node)) + length (C.dictionaryMethods (C.nodeValue node)))) (T.pack (show ident))) | (ident, node) <- traits]
+    dictionaryIndices = Map.fromList [(ident, (tag, length (C.dictionarySuperclasses (C.nodeValue node)))) | (ident, node) <- traits, Just tag <- [Map.lookup ident indices]]
 
 withFrame :: [N.Reference] -> Context -> Context
 withFrame references context = context {locals = Map.fromList [(reference, R.Local (R.FrameDepth 0) (R.SlotIndex index')) | (index', reference) <- zip [0 ..] references] `Map.union` Map.map shift (locals context)}

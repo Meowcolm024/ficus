@@ -67,6 +67,7 @@ lowerModule inferred source = runInferFrom (inferenceState inferred) (runExceptT
       pure
         C.CoreModule
           { C.coreId = A.abstractId source,
+            C.coreInitialization = inferenceInitialization inferred,
             C.coreSpan = A.abstractSpan source,
             C.coreOrigin = A.abstractOrigin source,
             C.coreKinds = typeKinds (declarationTypes prepared),

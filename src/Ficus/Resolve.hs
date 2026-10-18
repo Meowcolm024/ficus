@@ -1,5 +1,5 @@
 -- | Composition of independently usable discovery and translation passes.
-module Ficus.Resolve (FrontendResult (..), resolveGraph, resolveSources) where
+module Ficus.Resolve (FrontendResult (..), resolveGraph, resolveGraphWithNames, resolveSources) where
 
 import Data.List (nubBy, sortOn)
 import Data.Map.Strict (Map)
@@ -28,7 +28,10 @@ resolveSources :: (Monad m) => ResolveConfig -> SugarRegistry -> ModuleProvider 
 resolveSources config registry provider entries = resolveGraph config registry <$> discoverModules provider entries
 
 resolveGraph :: ResolveConfig -> SugarRegistry -> ModuleGraph -> FrontendResult
-resolveGraph config registry graph =
+resolveGraph = resolveGraphWithNames Map.empty
+
+resolveGraphWithNames :: Map ModuleId NameSummary -> ResolveConfig -> SugarRegistry -> ModuleGraph -> FrontendResult
+resolveGraphWithNames scopes config registry graph =
   let result = foldl resolve initial (dependencyOrder graph)
    in result {frontendDiagnostics = sortOn diagnosticOrder (nubBy sameDiagnostic (frontendDiagnostics result))}
   where
@@ -42,7 +45,7 @@ resolveGraph config registry graph =
       Nothing -> result
       Just (DiscoveredModule header input) ->
         let dependencies = Map.restrictKeys (frontendInterfaces result) (Map.keysSet (Map.fromList [(edgeTarget edge, ()) | edge <- headerEdges header]))
-            resolution = resolveModule config registry header input dependencies
+            resolution = resolveModuleWithNames (Map.findWithDefault Map.empty owner scopes) config registry header input dependencies
             dependencyFailed = any (\edge -> Map.notMember (edgeTarget edge) (frontendModules result)) (headerEdges header)
             valid = if dependencyFailed then Nothing else resolvedModule resolution
          in result

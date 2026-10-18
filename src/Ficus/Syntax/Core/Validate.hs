@@ -8,6 +8,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Ficus.Error.Type qualified as E
+import Ficus.Initialization
 import Ficus.Syntax.Core
 import Ficus.Syntax.Core.Intrinsic
 import Ficus.Syntax.Name hiding (TypeKind)
@@ -57,7 +58,7 @@ validateCore tree =
           visible = case group of NonRecursive _ -> environment; Recursive _ -> extended
           cycleErrors = case group of NonRecursive _ -> []; Recursive bs -> checkRecursion (NE.toList bs)
           duplicateErrors = concatMap (\binding -> require (nodeSpan binding) (Map.notMember (bindingReference (nodeValue binding)) environment) "duplicate Core binding") bindings
-          topLevelErrors = concatMap (\binding -> maybe [] (\origin -> invalid origin "expansive top-level initializer") (expansiveOrigin (bindingFacts (nodeValue binding)))) bindings
+          topLevelErrors = if coreInitialization tree == InteractiveInitialization then [] else concatMap (\binding -> maybe [] (\origin -> invalid origin "expansive top-level initializer") (expansiveOrigin (bindingFacts (nodeValue binding)))) bindings
        in (extended, errors ++ duplicateErrors ++ topLevelErrors ++ cycleErrors ++ concatMap (checkBinding tree visible Map.empty) bindings)
     checkGoal (ident, goal) = checkNode goal ++ require (nodeSpan goal) (ident == goalIdentity (nodeValue goal)) "hole goal key disagrees with its identity"
 

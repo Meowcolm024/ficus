@@ -109,6 +109,13 @@ applyValue origin function argument = case function of
           else invalidValue origin "closure received too many stored arguments"
   _ -> invalidValue origin "application requires a function"
 
+-- Retained interactive closures keep lexical cells and code, while effects
+-- belong to the current invocation rather than the session that created them.
+applyValueWithEffects :: Effects -> Span -> Value -> Value -> EvalM Value
+applyValueWithEffects effects origin function argument = case function of
+  FunctionValue closure -> applyValue origin (FunctionValue closure {closureEnvironment = (closureEnvironment closure) {envEffects = effects}}) argument
+  _ -> applyValue origin function argument
+
 selectField :: Span -> ConstructorIndex -> FieldIndex -> Value -> EvalM Value
 selectField origin owner (FieldIndex field) value = case value of
   Aggregate actual fields | owner == actual -> index origin fields field

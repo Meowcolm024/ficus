@@ -674,15 +674,32 @@ are decoded by numeric tags rather than runtime name lookup.
 
 `FicusBackend.Driver.Repl` owns interactive compilation and execution; the CLI
 uses Haskeline only for terminal input and command dispatch. A session retains
-source snapshots for reload, inferred schemes, and an initialized runtime
-instance containing compiled closures. Core modules are temporary compilation
-results and are not retained in the session. The initial implementation
-recompiles source snapshots for new expressions/declarations rather than
-incrementally linking code into an existing instance. `:type` resolves a name
+source snapshots, name scopes, inferred schemes, evaluated values and compiled
+closures, and a stable constructor/dictionary layout table. Core modules are
+temporary compilation results and are not retained in the session. Each accepted
+submission has a fresh internal module identity. Previously
+accepted names are injected explicitly into resolution scope, preserving
+canonical identities and letting new submissions shadow names without editing
+old source. Source snapshots are recompiled for new expressions/declarations,
+but evaluated globals are reused by identity with `initializeWith`; previous
+initializers and their effects do not run again. Retained closures keep their
+original global cells and code. Calls use the current invocation's effect
+interface. Stable numeric constructor and dictionary tags allow old closures
+and new code to exchange data even after additional types are defined.
+
+The compiler's explicit `InteractiveInitialization` mode permits only acyclic
+expansive top-level initializers. Ordinary compilation retains
+`OrdinaryInitialization`; the mode is carried into Core so its validator checks
+the correct boundary contract. Recursive groups and implementation members
+retain their normal restrictions. No source pragma activates this mode.
+Rebindings receive fresh module-owned identities. Constructor reuse is checked
+against the owner of the type being replaced; omitted constructors are hidden
+from both the retained name scope and ordinary imports such as implicit Prelude.
+`:type` resolves a name
 against the current source scope and reads its stored scheme without executing
 it. Expressions are compiled inside a Unit thunk and formatted with qualified
 `Class.Debug.debug`. Successful loads/imports/declarations replace the session
-transactionally; failed operations preserve the previous snapshot and instance.
+transactionally; failed operations preserve the previous snapshots and retained values.
 Runtime errors are reported without leaving the REPL loop. Source snapshots
 remain stable until an explicit successful reload. Object output paths remain
 open.

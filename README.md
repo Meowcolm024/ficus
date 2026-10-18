@@ -65,8 +65,21 @@ formatted with `Debug`, so their types need a visible instance.
 
 Ordinary `use` imports work interactively. `import Module` is shorthand for
 `use Module (..)`, and selections or aliases can be supplied explicitly.
-Declarations follow ordinary source rules, including duplicate-name and
-initialization checks.
+Interactive bindings may evaluate expressions immediately, and later inputs
+can rebind values or types:
+
+```text
+ficus> x = 20 + 1
+ficus> x = x + 1
+ficus> x
+22
+```
+
+Existing closures keep their earlier bindings, and previous initializers are not
+rerun. Replacing a type creates a new nominal type and may reuse constructors
+owned by the type being replaced. Constructor names belonging to unrelated
+types cannot be overwritten. Value restrictions and recursive safety checks
+still apply; ordinary source-file rules are unchanged.
 
 ## Check and format source
 
@@ -105,8 +118,8 @@ winner. See [the standard library](docs/PRELUDE.md) for its layout and Prelude A
 `Ficus.Compile` discovers, resolves, and elaborates source to validated typed
 Core. Backend drivers in `FicusBackend.Driver.Run` and
 `FicusBackend.Driver.Repl` consume those results. The REPL retains inferred
-schemes and compiled runtime closures, with source snapshots for reload; Core
-is temporary compilation data.
+schemes, evaluated values and compiled runtime closures, with source snapshots
+for reload and stable constructor layouts; Core is temporary compilation data.
 
 For interpreter embedding, use `FicusBackend.Lower.Runtime` and
 `FicusBackend.Runtime` to lower dependency-ordered Core modules, select an

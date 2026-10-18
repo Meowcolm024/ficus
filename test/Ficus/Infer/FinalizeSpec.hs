@@ -8,6 +8,7 @@ import Ficus.Elaborate.Finalize
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Monad
 import Ficus.Infer.Type
+import Ficus.Initialization
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Literal qualified as L
@@ -27,6 +28,7 @@ tree :: InferType -> C.ExprF InferType -> C.CoreModule InferType
 tree ty form =
   C.CoreModule
     owner
+    OrdinaryInitialization
     origin
     (SourceOrigin origin)
     Map.empty

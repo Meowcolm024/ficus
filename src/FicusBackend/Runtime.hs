@@ -10,6 +10,7 @@ module FicusBackend.Runtime
     compileProgram,
     selectEntry,
     initialize,
+    initializeWith,
     evaluateEntry,
     runProgram,
     Effects (..),

@@ -1,7 +1,7 @@
 -- | Pure Concrete-to-Abstract conversion. File lookup and graph traversal are
 -- deliberately absent. Reader carries lexical scope, State owns fresh IDs and
 -- diagnostics, and Except aborts only the current independently recoverable item.
-module Ficus.Resolve.Desugar (ResolveConfig (..), Resolution (..), resolveModule) where
+module Ficus.Resolve.Desugar (ResolveConfig (..), Resolution (..), resolveModule, resolveModuleWithNames) where
 
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Control.Monad.Except
@@ -38,6 +38,7 @@ data Env = Env
   { envHeader :: Header,
     envScope :: Scope,
     envOwn :: A.NameSummary,
+    envRebindings :: A.NameSummary,
     envValues :: Map Text Reference,
     envTypes :: Map Text TypeVarId,
     envConfig :: ResolveConfig,
@@ -55,10 +56,21 @@ data ResolveState = ResolveState
 type Resolve = ExceptT () (ReaderT Env (State ResolveState))
 
 resolveModule :: ResolveConfig -> SugarRegistry -> Header -> C.ConcreteModule -> Map ModuleId Interface -> Resolution
-resolveModule config registry header input interfaces =
+resolveModule = resolveModuleWithNames Map.empty
+
+-- | Previously accepted interactive names shadow imports, while declarations
+-- in this submission retain their ordinary mutual scope.
+resolveModuleWithNames :: A.NameSummary -> ResolveConfig -> SugarRegistry -> Header -> C.ConcreteModule -> Map ModuleId Interface -> Resolution
+resolveModuleWithNames interactive config registry header input interfaces =
   let (own, nameErrors) = collectNames (headerId header) input
-      (scope, exports, importErrors) = buildScope header input own interfaces
-      env = Env header scope own Map.empty Map.empty config registry
+      (importScope, exports, importErrors) = buildScope header input own interfaces
+      scope = importScope {openedNames = Map.map (\entity -> [Candidate entity []]) interactive `Map.union` Map.mapMaybe visibleCandidates (openedNames importScope)}
+      visibleCandidates candidates
+        | Map.null interactive = Just candidates
+        | otherwise = case filter (constructorVisible (own `Map.union` interactive) . candidateEntity) candidates of
+            [] -> Nothing
+            available -> Just available
+      env = Env header scope own interactive Map.empty Map.empty config registry
       (_, headerErrors) = scanHeader (headerId header) input
       initial = ResolveState 0 (reverse (headerErrors ++ nameErrors ++ importErrors)) [] Map.empty []
       action = do
@@ -633,7 +645,13 @@ valueDefinition allocated key ds = do
       forM_ rest $ \later -> do
         when (written == 0) (emit ((diagnostic DuplicateDeclaration (C.nameLocation (clauseName later)) "duplicate zero-argument definition") {relatedSpans = [(C.location first, "earlier declaration")]}))
         when (arity later /= written) (emit ((diagnostic ClauseArityMismatch (headSpan later) "clauses have different written value arities") {relatedSpans = [(headSpan first, "first clause head")]}))
-      resolved <- catMaybes <$> mapM (recover . resolveClause) clauses
+      previous <- asks (Map.lookup (ValueNS, key) . envRebindings)
+      -- Rebinding a strict value reads the previous binding on its RHS.
+      -- Functions with written parameters keep ordinary recursive scope.
+      let scopeRhs env = case previous of
+            Just _ | written == 0 -> env {envOwn = Map.delete (ValueNS, key) (envOwn env)}
+            _ -> env
+      resolved <- local scopeRhs (catMaybes <$> mapM (recover . resolveClause) clauses)
       case resolved of
         c : cs -> sourceNode first (A.ValueDefinition ref annotation (A.ClausesBody written (c :| cs)))
         [] -> throwError ()

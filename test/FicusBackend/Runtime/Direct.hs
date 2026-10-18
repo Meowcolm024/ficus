@@ -22,7 +22,7 @@ runDirect effects checked (GlobalIndex entry) arguments = runExceptT $ do
     cell <- index (nodeSpan binding) globals ident
     writeCell cell value
   value <- index (programSpan program) globals entry >>= readCell (programSpan program)
-  foldM (applyValue (programSpan program)) value arguments
+  foldM (applyValueWithEffects (envEffects env) (programSpan program)) value arguments
   where
     program = validatedProgram checked
 
@@ -34,7 +34,7 @@ interpret program source env = case nodeValue source of
   Closure function captures -> makeClosure origin env function (map nodeValue captures)
   Call function arguments -> do
     value <- interpret program function env
-    foldM (\current argument -> interpret program argument env >>= applyValue origin current) value arguments
+    foldM (\current argument -> interpret program argument env >>= applyValueWithEffects (envEffects env) origin current) value arguments
   Let binding body -> do
     value <- interpret program (bindingBody (nodeValue binding)) env
     frame <- valueFrame [value]

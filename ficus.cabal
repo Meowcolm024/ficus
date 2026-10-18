@@ -519,6 +519,7 @@ library
       Ficus.Infer.Syntax
       Ficus.Infer.Type
       Ficus.Infer.Unify
+      Ficus.Initialization
       Ficus.Library.Contracts
       Ficus.Primitive.Registry
       Ficus.Resolve

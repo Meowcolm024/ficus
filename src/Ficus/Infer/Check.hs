@@ -1,7 +1,7 @@
 -- | Source type inference. Its work tables retain source identities for the
 -- elaborator; they are not a second checked expression AST. Residual evidence
 -- obligations must be discharged before a module can cross the Core boundary.
-module Ficus.Infer.Check (Inference (..), inferModule) where
+module Ficus.Infer.Check (Inference (..), inferModule, inferModuleWithMode) where
 
 import Control.Monad (foldM, forM, forM_, unless, void, when)
 import Control.Monad.State.Strict (gets, modify')
@@ -23,6 +23,7 @@ import Ficus.Infer.Monad
 import Ficus.Infer.Restriction
 import Ficus.Infer.Syntax
 import Ficus.Infer.Type
+import Ficus.Initialization
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Intrinsic (constructorSignature, literalType, primitiveScheme)
@@ -32,7 +33,8 @@ import Ficus.Type.Substitution qualified as S
 import Ficus.Util.Source
 
 data Inference = Inference
-  { inferredDeclarations :: Declarations,
+  { inferenceInitialization :: InitializationMode,
+    inferredDeclarations :: Declarations,
     inferredValues :: Map Reference (Scheme InferType),
     remainingWanteds :: [Wanted],
     inferenceState :: InferState
@@ -51,14 +53,17 @@ data Context = Context
 data Judgement = Judgement {judgementType :: InferType, judgementWanteds :: [Wanted]}
 
 inferModule :: Declarations -> A.AbstractModule -> Inference
-inferModule imported tree =
+inferModule = inferModuleWithMode OrdinaryInitialization
+
+inferModuleWithMode :: InitializationMode -> Declarations -> A.AbstractModule -> Inference
+inferModuleWithMode mode imported tree =
   let action = do
         prepared <- prepareDeclarations imported tree
         let names = Map.fromList [(A.occurrenceReference occurrence, (A.occurrenceSpelling occurrence, A.occurrenceSpan occurrence)) | occurrence <- A.abstractOccurrences tree]
             importedValues = Map.map signatureScheme (valueSignatures imported)
             methods = Map.fromList [(GlobalRef method, scheme) | trait <- Map.elems (traitDeclarations prepared), (method, scheme) <- Map.toList (traitMethods (C.nodeValue trait))]
             context = Context prepared (methods `Map.union` importedValues) Map.empty names Map.empty []
-        (checked, wanteds) <- bindingGroup True context (A.abstractDeclarations tree)
+        (checked, wanteds) <- bindingGroup (mode == OrdinaryInitialization) context (A.abstractDeclarations tree)
         solveFields checked
         checkImplementations checked tree
         constraints <- resolveWanteds checked wanteds
@@ -78,7 +83,7 @@ inferModule imported tree =
         values <- mapM zonkScheme (contextValues checked)
         pure (prepared, values, constraints)
       ((finalDeclarations, finalValues, finalWanteds), state) = runInferFrom (initialState {nextVariable = importedFreshStart imported}) action
-   in Inference finalDeclarations finalValues finalWanteds state
+   in Inference mode finalDeclarations finalValues finalWanteds state
 
 -- Imported schemes have independent scopes, but specialization can place an
 -- imported method underneath new local binders. Keep new identities disjoint

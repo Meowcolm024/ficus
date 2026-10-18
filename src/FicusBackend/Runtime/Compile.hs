@@ -8,6 +8,7 @@ module FicusBackend.Runtime.Compile
     compileExpr,
     selectEntry,
     initialize,
+    initializeWith,
     evaluateEntry,
     runProgram,
   )
@@ -16,6 +17,8 @@ where
 import Control.Monad (foldM, forM_)
 import Control.Monad.Except (runExceptT, throwError)
 import Data.List.NonEmpty qualified as NE
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Vector qualified as V
 import Ficus.Util.Source
 import FicusBackend.Runtime.AST
@@ -46,11 +49,16 @@ compileProgram checked = Executable program functions initializers
     compileBinding (ident, binding) = let !evaluator = compileExpr program (bindingBody (nodeValue binding)) in (ident, evaluator)
 
 initialize :: Effects -> Executable -> IO (Either E.RuntimeError Instance)
-initialize effects (Executable program functions initializers) = runExceptT $ do
+initialize effects executable = initializeWith effects executable Map.empty
+
+-- | Reuse already evaluated globals when linking an interactive submission.
+-- Values and closures keep their original lexical environments.
+initializeWith :: Effects -> Executable -> Map GlobalIndex Value -> IO (Either E.RuntimeError Instance)
+initializeWith effects (Executable program functions initializers) cached = runExceptT $ do
   globals <- emptyFrame (V.length (programGlobals program))
   let env = Env [] V.empty globals functions effects
   forM_ initializers $ \(GlobalIndex slot, evaluator) -> do
-    value <- evaluator env
+    value <- maybe (evaluator env) pure (Map.lookup (GlobalIndex slot) cached)
     cell <- index (programSpan program) globals slot
     writeCell cell value
   pure (Instance env)
@@ -59,7 +67,7 @@ evaluateEntry :: Instance -> Entry -> [Value] -> IO (Either E.RuntimeError Value
 evaluateEntry (Instance env) (Entry origin (GlobalIndex slot)) arguments = runExceptT $ do
   cell <- index origin (envGlobals env) slot
   value <- readCell origin cell
-  foldM (applyValue origin) value arguments
+  foldM (applyValueWithEffects (envEffects env) origin) value arguments
 
 runProgram :: Effects -> Executable -> Entry -> [Value] -> IO (Either E.RuntimeError Value)
 runProgram effects executable@(Executable program _ _) entry@(Entry origin (GlobalIndex slot)) arguments
@@ -79,7 +87,7 @@ compileExpr program source = case nodeValue source of
         !operands = strictMap compile (NE.toList arguments)
      in \env -> do
           initial <- callee env
-          foldM (\value operand -> operand env >>= applyValue origin value) initial operands
+          foldM (\value operand -> operand env >>= applyValueWithEffects (envEffects env) origin value) initial operands
   Let binding body ->
     let !initializer = compile (bindingBody (nodeValue binding)); !rest = compile body
      in \env -> do value <- initializer env; frame <- valueFrame [value]; rest (pushFrame frame env)

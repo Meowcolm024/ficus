@@ -3,6 +3,7 @@ module Ficus.Core.Spec (tests) where
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Ficus.Error.Type qualified as E
+import Ficus.Initialization
 import Ficus.Syntax.Core
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Literal qualified as L
@@ -35,6 +36,7 @@ moduleWith :: Scheme CoreType -> Expr CoreType -> CoreModule CoreType
 moduleWith scheme body =
   CoreModule
     owner
+    OrdinaryInitialization
     origin
     (SourceOrigin origin)
     Map.empty
@@ -112,6 +114,14 @@ tests =
         let value = expr 2 int (Literal (L.IntegerLiteral "1"))
             bad = expr 1 int (If [node 3 (expr 4 int (Literal (L.IntegerLiteral "0")), value)] Nothing)
         assertInvalid (moduleWith (monomorphic int) bad),
+      testCase "interactive initialization permits expansive values but not cycles" $ do
+        let body = expr 1 int (Primitive IntNegate [expr 2 int (Literal (L.IntegerLiteral "1"))])
+            binding = node 0 (Binding global (monomorphic int) body (BindingFacts 0 (Just origin)))
+            ordinary = (moduleWith (monomorphic int) body) {coreBindings = [NonRecursive binding]}
+            interactive = ordinary {coreInitialization = InteractiveInitialization}
+        assertInvalid ordinary
+        validateCore interactive @?= []
+        assertInvalid (interactive {coreBindings = [Recursive (binding :| [])]}),
       testCase "unbound values fail" $
         assertInvalid (moduleWith (monomorphic int) (expr 1 int (Var (LocalRef (LocalId 4)) []))),
       testCase "application types are checked independently" $ do

@@ -696,7 +696,7 @@ Rebindings receive fresh module-owned identities. Constructor reuse is checked
 against the owner of the type being replaced; omitted constructors are hidden
 from both the retained name scope and ordinary imports such as implicit Prelude.
 `:kind` resolves type and trait names against the current source scope and reads
-stored kinds and trait declaration text. Other type-level expressions are checked
+stored kinds, displaying only the kind. Other type-level expressions are checked
 using a temporary alias; the query reads its inferred kind and displays applied
 trait predicates with a `Constraint` result. `:type` resolves terms and reads a bare
 value or constructor's stored scheme. Other expressions are compiled inside a temporary

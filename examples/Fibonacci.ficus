@@ -1,0 +1,14 @@
+-- Recursive call/branch benchmark. Clamp the input so even fib 30 is only 832040.
+-- The default fib 24 = 46368 deliberately recomputes overlapping subproblems.
+fibonacci : Int -> Int
+fibonacci requested = go (min 30 (max 0 requested))
+    where
+        go n = if
+            n < 2 -> n
+            _ -> go (n - 1) + go (n - 2)
+
+benchmark : Unit -> Int
+benchmark () = fibonacci 24
+
+main : [String] -> Unit
+main _ = println (show (benchmark ()))

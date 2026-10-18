@@ -1,0 +1,25 @@
+-- Integer arithmetic/branch benchmark. Trial division avoids squaring a divisor.
+isPrime : Int -> Bool
+isPrime candidate = if { candidate < 2 -> False; _ -> check 2 }
+    where
+        check divisor = if
+            divisor > candidate / divisor -> True
+            candidate % divisor == 0 -> False
+            _ -> check (divisor + 1)
+
+-- Scan at most 20000 candidates: count <= 20000 and sum < 400000000.
+-- Return both count and sum to make incorrect results easy to spot.
+primeStats : Int -> (Int * Int)
+primeStats requested = scan 2 0 0
+    where
+        limit = min 20000 (max 0 requested)
+        scan candidate count total = if
+            candidate > limit -> (count, total)
+            isPrime candidate -> scan (candidate + 1) (count + 1) (total + candidate)
+            _ -> scan (candidate + 1) count total
+
+benchmark : Unit -> (Int * Int)
+benchmark () = primeStats 10000
+
+main : [String] -> Unit
+main _ = println (show (benchmark ()))

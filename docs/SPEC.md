@@ -1179,9 +1179,9 @@ Type inspection accepts term expressions, including literals, applications,
 and lambdas. Bare value and constructor names retain their stored schemes,
 including explicit quantification. Kind inspection accepts type-level expressions,
 including type and trait names, applications, and function types. It shows the
-inferred kind; a bare trait name also shows its source declaration (including
-superclasses and method signatures). For example, `:k Maybe Int` reports `Type`
-and `:k Show Int` reports `Constraint`. For inspection, a trait
+inferred kind only, including for a bare trait name. For example,
+`:k Maybe Int` reports `Type` and `:k Show Int` reports `Constraint`.
+For inspection, a trait
 taking a parameter of kind `K` has kind `K -> Constraint`; for example,
 `Functor : (Type -> Type) -> Constraint`. `Constraint` here describes the result
 of a trait predicate; it does not add a source-level kind annotation or a
@@ -1200,10 +1200,8 @@ failure and returns to the prompt. Previously accepted right-hand sides are not
 replayed by later commands. Effects already performed before an error are not
 rolled back.
 
-Interactive `use` declarations follow ordinary source import rules. As a REPL
-convenience, `import Module` means `use Module (..)`, while `import` with a
-selection or alias is translated to the corresponding `use` declaration. This
-convenience does not add an `import` keyword to source files. Failed optional
+Interactive `use` declarations follow ordinary source import rules, including
+selections and aliases. The REPL has no `import` shorthand. Failed optional
 startup loads report diagnostics and leave an empty interactive session.
 
 ## 23. v0 exclusions

@@ -64,7 +64,7 @@ data Session = Session
   }
 
 -- Only compact display metadata survives compilation, alongside value schemes.
-data TypeInfo = TypeInfo Text (Maybe Text)
+data TypeInfo = TypeInfo Text Bool
 
 data ReplCommand = Load FilePath | TypeOf Text | KindOf Text | Help | Quit | Submit Text | InvalidCommand Text deriving (Eq, Show)
 
@@ -76,7 +76,7 @@ helpText =
       ":type EXPR, :t EXPR  Infer a term expression's type without evaluation",
       ":kind TYPE, :k TYPE  Infer a type-level expression's kind",
       ":quit, :q          Exit the REPL",
-      "Enter expressions or declarations; use/import declarations bring modules into scope."
+      "Enter expressions or declarations; use declarations bring modules into scope."
     ]
 
 parseCommand :: Text -> ReplCommand
@@ -211,16 +211,7 @@ typeInfo result = Map.mapWithKey describe kinds
     cores = [validatedModule (checkedCore checked) | checked <- Map.elems (C.compileModules result)]
     kinds = Map.unions (map Core.coreKinds cores)
     traitParameters = Map.unions [Map.map (quantifierKind . Core.dictionaryParameter . Core.nodeValue) (Core.coreDictionaries core) | core <- cores]
-    traits =
-      Map.fromList
-        [ (ident, T.strip (T.take (offset (end site) - offset (start site) + 1) (T.drop (offset (start site)) source)))
-        | tree <- Map.elems (frontendModules (C.compileFrontend result)),
-          declaration <- A.declarations (A.abstractDeclarations tree),
-          A.TraitDefinition ident _ _ _ <- [A.nodeValue declaration],
-          let site = A.nodeSpan declaration,
-          Just source <- [Map.lookup (sourceFile site) (C.compileSources result)]
-        ]
-    describe ident kind = TypeInfo displayKind (Map.lookup ident traits)
+    describe ident kind = TypeInfo displayKind (Map.member ident traitParameters)
       where
         -- Core represents dictionary types with a Type result. Interactive
         -- inspection presents the source trait's Constraint result instead.
@@ -306,9 +297,9 @@ install effects session result = case prepare of
 submit :: R.Effects -> Session -> Text -> IO (Either [D.Diagnostic] (Session, Maybe Text))
 submit effects session input
   | T.null (T.strip input) = pure (Right (session, Nothing))
-  | otherwise = case parseModule "<repl>" normalized of
+  | otherwise = case parseModule "<repl>" input of
       Right tree | not (null (Concrete.moduleImports tree)) && null (Concrete.moduleDeclarations tree) && null (Concrete.modulePragmas tree) -> do
-        let candidate = session {sessionImports = sessionImports session ++ [normalized]}
+        let candidate = session {sessionImports = sessionImports session ++ [input]}
         result <- compileSession candidate ""
         installed <- install effects candidate result
         pure ((\next -> (next, Nothing)) <$> installed)
@@ -318,9 +309,6 @@ submit effects session input
         pure ((\next -> (next, Nothing)) <$> installed)
       _ -> evaluateExpression
   where
-    normalized = case T.stripPrefix "import " (T.strip input) of
-      Just imported -> "use " <> imported <> if length (T.words imported) == 1 then " (..)" else ""
-      Nothing -> input
     valueName = freshName session "ficusReplValue"
     debugName = freshName session "FicusReplDebug"
     evaluateExpression = do
@@ -368,7 +356,7 @@ inspectKind :: Session -> Text -> IO (Either [D.Diagnostic] Text)
 inspectKind session name = do
   typeReference <- resolveInspectionName session (freshName session "FicusReplInspect") " = " name
   case typeReference >>= lookupTypeInfo of
-    Right (TypeInfo kind declaration) -> pure (Right (name <> " : " <> kind <> maybe "" ("\n" <>) declaration))
+    Right (TypeInfo kind _) -> pure (Right (name <> " : " <> kind))
     Left _ -> inferExpression
   where
     inferExpression = do
@@ -383,7 +371,7 @@ inspectKind session name = do
               A.AliasDefinition _ _ _ body <- [A.nodeValue declaration],
               A.TypeApplication trait _ <- [A.nodeValue body],
               A.TypeConstructor ident <- [A.nodeValue trait],
-              Just (TypeInfo _ (Just _)) <- [Map.lookup ident info]
+              Just (TypeInfo _ True) <- [Map.lookup ident info]
             ]
       pure $
         if not (C.compileSucceeded result)
@@ -394,7 +382,7 @@ inspectKind session name = do
     lookupTypeInfo ident = case Map.lookup ident (sessionTypeInfo session) of
       Just info -> Right info
       Nothing -> case ident of
-        IntrinsicId intrinsic -> Right (TypeInfo (renderKind (primitiveKind intrinsic)) Nothing)
+        IntrinsicId intrinsic -> Right (TypeInfo (renderKind (primitiveKind intrinsic)) False)
         _ -> Left [message "no inferred kind is available for this name"]
 
 resolveInspectionName :: Session -> Text -> Text -> Text -> IO (Either [D.Diagnostic] GlobalId)

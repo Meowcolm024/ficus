@@ -103,21 +103,15 @@ tests =
             map Repl.parseCommand [":k Functor", ":kind Functor"] @?= replicate 2 (Repl.KindOf "Functor")
             Repl.parseCommand ":k" @?= Repl.InvalidCommand ":kind requires a type-level expression"
             Repl.parseCommand ":load \"some folder/Foo.ficus\"" @?= Repl.Load "some folder/Foo.ficus",
-          testCase "kind inspection includes kinds and trait declarations" $ do
+          testCase "kind inspection displays only kinds" $ do
             current <- session
             Repl.inspectKind current "Int" >>= (@?= Right "Int : Type")
             Repl.inspectKind current "Maybe" >>= (@?= Right "Maybe : Type -> Type")
-            shown <- Repl.inspectKind current "Show" >>= requireRight
-            assertBool "trait kind" ("Show : Type -> Constraint\n" `T.isPrefixOf` shown)
-            assertBool "trait method" ("show : a -> String" `T.isInfixOf` shown)
-            ordered <- Repl.inspectKind current "Ord" >>= requireRight
-            assertBool "superclass trait kind" ("Ord : Type -> Constraint\n" `T.isPrefixOf` ordered)
-            assertBool "superclass" ("trait Eq a => Ord a" `T.isInfixOf` ordered)
+            Repl.inspectKind current "Show" >>= (@?= Right "Show : Type -> Constraint")
+            Repl.inspectKind current "Ord" >>= (@?= Right "Ord : Type -> Constraint")
             (next, _) <- Repl.submit quiet current "use Class.Show as S" >>= requireRight
-            qualified <- Repl.inspectKind next "S.Show" >>= requireRight
-            assertBool "qualified trait" ("S.Show : Type -> Constraint\n" `T.isPrefixOf` qualified)
-            functor <- Repl.inspectKind next "Functor" >>= requireRight
-            assertBool "higher-kinded trait" ("Functor : (Type -> Type) -> Constraint\n" `T.isPrefixOf` functor),
+            Repl.inspectKind next "S.Show" >>= (@?= Right "S.Show : Type -> Constraint")
+            Repl.inspectKind next "Functor" >>= (@?= Right "Functor : (Type -> Type) -> Constraint"),
           testCase "kind inspection infers type-level expressions" $ do
             current <- session
             Repl.inspectKind current "Maybe Int" >>= (@?= Right "Maybe Int : Type")
@@ -177,11 +171,19 @@ tests =
             Repl.inspectType loaded "value" >>= (@?= Right "value : Int"),
           testCase "interactive imports work" $ do
             current <- session
-            (next, _) <- Repl.submit quiet current "import Data.Vec" >>= requireRight
+            (next, _) <- Repl.submit quiet current "use Data.Vec (..)" >>= requireRight
             result next "vecLength (listToVec [1, 2, 3])" "3",
+          testCase "import shorthand is not accepted" $ do
+            current <- session
+            Repl.submit quiet current "import Data.Vec" >>= \case
+              Left errors -> do
+                map D.diagnosticCode errors @?= ["N0001"]
+                map (sourceFile . D.diagnosticSpan) errors @?= ["<repl:1>"]
+              Right _ -> assertFailure "import shorthand accepted"
+            result current "1 + 1" "2",
           testCase "failed imports preserve the previous environment" $ do
             current <- session
-            Repl.submit quiet current "import MissingModule" >>= \case
+            Repl.submit quiet current "use MissingModule (..)" >>= \case
               Left _ -> pure ()
               Right _ -> assertFailure "missing import accepted"
             result current "1 + 1" "2",

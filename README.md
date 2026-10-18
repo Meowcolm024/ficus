@@ -46,7 +46,7 @@ ficus> double 21
 42
 ficus> :type double
 double : Add a => a -> a
-ficus> import Data.Vec
+ficus> use Data.Vec (..)
 ficus> vecLength (listToVec [1, 2, 3])
 3
 ```
@@ -55,12 +55,11 @@ ficus> vecLength (listToVec [1, 2, 3])
 | --- | --- | --- |
 | `:load FILE` | `:l FILE` | Load or reload a file and its dependencies |
 | `:type EXPR` | `:t EXPR` | Inspect a term expression's type without evaluation |
-| `:kind TYPE` | `:k TYPE` | Infer a type-level expression's kind; bare traits also show their declaration |
+| `:kind TYPE` | `:k TYPE` | Infer a type-level expression's kind |
 | `:help` | `:h` | Show commands and usage |
 | `:quit` | `:q` | Exit; end of input also exits |
 
-For example, `:k Functor` shows `Functor : (Type -> Type) -> Constraint`
-followed by its trait declaration.
+For example, `:k Functor` shows `Functor : (Type -> Type) -> Constraint`.
 `:t 1` shows `1 : Int`; applications and lambdas also work.
 `:k Maybe Int` shows `Maybe Int : Type`, and `:k Show Int` shows
 `Show Int : Constraint`.
@@ -71,8 +70,7 @@ and runtime errors, including division by zero, leave the previous session
 usable. Effects already performed are not rolled back. REPL results are
 formatted with `Debug`, so their types need a visible instance.
 
-Ordinary `use` imports work interactively. `import Module` is shorthand for
-`use Module (..)`, and selections or aliases can be supplied explicitly.
+Ordinary `use` imports work interactively, including selections and aliases.
 Interactive bindings may evaluate expressions immediately, and later inputs
 can rebind values or types:
 

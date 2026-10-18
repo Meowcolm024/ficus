@@ -1,0 +1,46 @@
+-- Allocation/list/recursion benchmark, using deterministic bounded input.
+-- Seeds stay below 65521, so seed * 251 + 17 never exceeds 16445537.
+generate : Int -> [Int]
+generate requested = loop (min 4096 (max 0 requested)) 1 []
+    where
+        loop remaining seed values = if
+            remaining <= 0 -> reverse values
+            _ ->
+                next = (seed * 251 + 17) % 65521
+                loop (remaining - 1) next (next :: values)
+
+splitAlternating : [a] -> ([a] * [a])
+splitAlternating values = with values
+    [] -> ([], [])
+    item :: [] -> ([item], [])
+    left :: right :: rest ->
+        (lefts, rights) = splitAlternating rest
+        (left :: lefts, right :: rights)
+
+merge : [Int] -> [Int] -> [Int]
+merge left right = with (left, right)
+    ([], _) -> right
+    (_, []) -> left
+    (x :: xs, y :: ys) -> if
+        x <= y -> x :: merge xs right
+        _ -> y :: merge left ys
+
+mergeSort : [Int] -> [Int]
+mergeSort values = with values
+    [] -> []
+    item :: [] -> [item]
+    _ ->
+        (left, right) = splitAlternating values
+        merge (mergeSort left) (mergeSort right)
+
+-- For generated input, the one-based weighted checksum is <= 549755781120.
+checksum : [Int] -> Int
+checksum values = snd (foldl ((index, total) -> value -> (index + 1, total + index * value)) (1, 0) values)
+
+benchmark : Unit -> (Int * Int)
+benchmark () =
+    sorted = mergeSort (generate 2048)
+    (length sorted, checksum sorted)
+
+main : [String] -> Unit
+main _ = println (show (benchmark ()))

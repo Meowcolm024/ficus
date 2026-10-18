@@ -1,0 +1,2 @@
+main : [String] -> Unit
+main args = with args { first :: rest -> println first; [] -> println "empty" }

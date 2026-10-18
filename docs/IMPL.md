@@ -634,7 +634,7 @@ Optimized or generated code must remain observationally equivalent to the refere
 
 ## 7. Entry points and compiler artifacts
 
-Execution takes an explicitly selected entry-module identity; do not discover an entry by searching for `main`. Resolve and validate a `main` defined by that module, reject missing or invalid entry functions, and retain its resolved identity/address for invocation rather than doing runtime string lookup. Do not require library modules to define `main` or invoke unselected entry candidates. Entry-point validation accepts exactly `main : [String] -> Unit` and `main : [String] -> Result String Unit` in v0. Runtime invocation passes command-line arguments and handles the chosen return form; argument conventions, error reporting, and exit-status details still need specification. Entry-point exception handling belongs to v1+.
+Execution takes an explicitly selected entry-module identity; do not discover an entry by searching for `main`. Resolve and validate a `main` defined by that module, reject missing or invalid entry functions, and retain its resolved identity/address for invocation rather than doing runtime string lookup. Do not require library modules to define `main` or invoke unselected entry candidates. Entry-point validation accepts exactly `main : [String] -> Unit` and `main : [String] -> Result String Unit` in v0. The backend driver passes command-line arguments and handles Unit/Result returns and exit reporting according to SPEC §22. Entry-point exception handling belongs to v1+.
 
 v1+ compilation produces both module interface files and object files, each using Lisp-like syntax. The initial object files serialize Runtime AST as text; integration with v2+ generated JavaScript and later backend artifacts remains to be specified. The concrete schemas, file extensions, compatibility/versioning rules, output paths, and linking details remain to be specified.
 
@@ -649,9 +649,10 @@ ficus lsp
 ```
 
 The current early-development `compile FILE...` command runs discovery, parsing,
-and name resolution only. It returns success when those stages pass, emits no
-artifacts, and neither requires nor invokes `main`. Errors return nonzero;
-warnings do not fail the command. The future full compilation behavior below
+name resolution, type inference, and elaboration to validated Core. It emits no
+artifacts and neither requires nor invokes `main`. `Ficus.Compile` has no backend
+dependency; backend drivers consume its checked modules and retained dependency
+order. Errors return nonzero; warnings do not fail the command. The future full compilation behavior below
 remains planned.
 
 `--library DIR` replaces the default bundled library root and is repeatable.
@@ -665,9 +666,26 @@ package data rather than found relative to the current working directory.
 `Ficus.Library.Contracts` holds its provisional compiler/sugar contracts;
 fixture-only configuration remains in tests.
 
-`compile` runs the frontend and runtime lowering and emits only interface files and textual Runtime AST object files before the v2+ JavaScript backend. `run FILE` explicitly selects the module represented by FILE as the entry module, validates its own `main`, and executes it with the evaluator. Compilation alone does not select or invoke an entry module. `repl` starts an interactive evaluator session and optionally loads a file. `format` parses to Concrete AST and pretty-prints it with layout as a naive formatter. `lsp` initially exposes semantic highlighting, jumping to definitions, and showing inferred types using the spans, declaration identities, and provenance retained across AST stages.
+Future artifact emission will use a backend driver to lower the Core produced by `Ficus.Compile` and write interface and textual Runtime AST object files. `run FILE` explicitly selects the module represented by FILE as the entry module, validates its own `main`, and executes it with the evaluator. Compilation alone does not select or invoke an entry module. `repl` starts an interactive evaluator session and optionally loads a file. `format` parses to Concrete AST and pretty-prints it with layout as a naive formatter. `lsp` initially exposes semantic highlighting, jumping to definitions, and showing inferred types using the spans, declaration identities, and provenance retained across AST stages.
 
-The command surface is settled; output paths, optional-file loading behavior, and formatter input/output details remain open.
+`FicusBackend.Driver.Run` validates the selected module's own entry signature
+before initialization. Lowering exposes constructor addresses so Result returns
+are decoded by numeric tags rather than runtime name lookup.
+
+`FicusBackend.Driver.Repl` owns interactive compilation and execution; the CLI
+uses Haskeline only for terminal input and command dispatch. A session retains
+source snapshots for reload, inferred schemes, and an initialized runtime
+instance containing compiled closures. Core modules are temporary compilation
+results and are not retained in the session. The initial implementation
+recompiles source snapshots for new expressions/declarations rather than
+incrementally linking code into an existing instance. `:type` resolves a name
+against the current source scope and reads its stored scheme without executing
+it. Expressions are compiled inside a Unit thunk and formatted with qualified
+`Class.Debug.debug`. Successful loads/imports/declarations replace the session
+transactionally; failed operations preserve the previous snapshot and instance.
+Runtime errors are reported without leaving the REPL loop. Source snapshots
+remain stable until an explicit successful reload. Object output paths remain
+open.
 
 ## 9. Further versioned work
 

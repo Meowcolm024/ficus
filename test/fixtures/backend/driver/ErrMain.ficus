@@ -1,0 +1,2 @@
+main : [String] -> Result String Unit
+main args = Err "entry failed"

@@ -26,7 +26,7 @@ import FicusBackend.Runtime.Error qualified as E
 import FicusBackend.Runtime.Validate
 import Text.Read (readMaybe)
 
-data LoweredProgram = LoweredProgram {loweredProgram :: ValidatedProgram, loweredGlobals :: Map N.GlobalId R.GlobalIndex} deriving (Eq, Show)
+data LoweredProgram = LoweredProgram {loweredProgram :: ValidatedProgram, loweredGlobals :: Map N.GlobalId R.GlobalIndex, loweredConstructors :: Map C.ConstructorId R.ConstructorIndex} deriving (Eq, Show)
 
 data Representation = Erased | Immediate R.RuntimeLiteral | Boxed R.ConstructorIndex
 
@@ -62,7 +62,7 @@ lowerProgram modules = do
   let debug = V.fromList [fromCore binding (case C.bindingReference (C.nodeValue binding) of N.GlobalRef ident -> (Just ident, T.pack (show ident)); N.LocalRef _ -> (Nothing, "$discard")) | (_, (_, binding)) <- indexed]
       program = R.Program origin (SourceOrigin origin) (V.fromList (IntMap.elems (functions state))) debug layouts (V.fromList P.allPrimitives) initializers
   checked <- validateProgram program
-  pure (LoweredProgram checked (Map.fromList [(ident, index') | ((_, N.GlobalRef ident), index') <- Map.toList globalTable]))
+  pure (LoweredProgram checked (Map.fromList [(ident, index') | ((_, N.GlobalRef ident), index') <- Map.toList globalTable]) (Map.mapMaybe (\case Boxed tag -> Just tag; _ -> Nothing) representations))
   where
     origin = case modules of tree : _ -> C.coreSpan tree; [] -> Span "<runtime>" (Position 1 1 0) (Position 1 1 0)
     holes = [E.RuntimeError E.ExpressionHole (C.nodeSpan hole) "an expression hole prevents Runtime generation" | tree <- modules, group <- C.coreBindings tree, binding <- C.groupBindings group, hole <- C.expressionHoles (C.bindingBody (C.nodeValue binding))]

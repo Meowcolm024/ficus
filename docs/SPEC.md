@@ -1123,7 +1123,38 @@ main : [String] -> Unit
 main : [String] -> Result String Unit
 ```
 
-The entry function takes command-line arguments and either returns `Unit` directly or reports a string error through `Result`. `main : Unit` and a polymorphic `Show a => [String] -> Result a Unit` entry point are unsupported. Argument conventions, error reporting, and exit-status details remain to be specified. Exception handling at the entry point belongs to v1+.
+The entry function takes command-line arguments and either returns `Unit` directly or reports a string error through `Result`. `main : Unit` and a polymorphic `Show a => [String] -> Result a Unit` entry point are unsupported. `ficus run FILE [-- ARGS...]` selects FILE's module and passes only ARGS as
+strings, excluding the executable and source filename. The `Result` form uses
+the canonical `Data.Result.Result` type, including ordinary aliases and
+re-exports. Returning `Unit` or `Ok ()` exits successfully. Returning `Err message`
+writes the message to standard error and exits with status 1. Compilation,
+entry-point, and runtime errors also exit with status 1 and report diagnostics
+to standard error. Exception handling at the entry point belongs to v1+.
+
+### 22.1 Interactive execution
+
+`ficus repl [FILE]` starts an interactive session and optionally loads a module;
+it does not require or invoke `main`. Expressions execute strictly and their
+results are displayed through the library's `Debug` contract, so a result needs
+a visible `Debug` instance. Single-line top-level declarations may be added using
+ordinary declaration syntax and retain the language's initialization and
+polymorphism restrictions. Duplicate declarations remain errors.
+
+The commands `:load FILE` / `:l FILE`, `:type NAME` / `:t NAME`, and `:quit` /
+`:q` load or reload a file, inspect a value or constructor's inferred scheme,
+and exit. End of input also exits. A successful load replaces interactive
+imports and declarations and brings the module's exported names into scope.
+Loading rereads the selected file and its dependencies. Failed loads, imports,
+declarations, type queries, and expression evaluation leave the last successful
+environment available; in particular, division by zero reports a primitive
+failure and returns to the prompt. Effects already performed before an error
+are not rolled back.
+
+Interactive `use` declarations follow ordinary source import rules. As a REPL
+convenience, `import Module` means `use Module (..)`, while `import` with a
+selection or alias is translated to the corresponding `use` declaration. This
+convenience does not add an `import` keyword to source files. Failed optional
+startup loads report diagnostics and leave an empty interactive session.
 
 ## 23. v0 exclusions
 

@@ -196,9 +196,10 @@ a syntactic pattern looks refutable.
 | R0003 | UninitializedRead | Premature recursive cell read |
 | R0004 | InvalidValue | Operation receiving an incompatible runtime representation; defensive boundary error |
 | R0099 | InvalidProgram | Invalid Runtime node, layout, address, or initialization group |
-| R0101 | InvalidEntry | Invalid selected global address |
+| R0101 | InvalidEntry | Invalid selected address, main declaration, or selected module anchor for missing main |
 | R0102 | InvalidLiteral | Numeric literal rejected during Core-to-Runtime decoding |
 | R0103 | MissingGlobal | Unlinked reference, or importing module anchor when a required definition is absent |
+| R0104 | Interactive query error | Interactive command anchor for unsupported type queries or driver failures |
 
 Runtime lowering independently reports `ExpressionHole` as T0101 before any
 erasure, and failed Core acceptance as T0099. Runtime has no expression-hole

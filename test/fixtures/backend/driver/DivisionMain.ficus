@@ -1,0 +1,2 @@
+main : [String] -> Unit
+main args = println (show (1 / 0))

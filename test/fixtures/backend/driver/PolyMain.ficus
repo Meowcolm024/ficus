@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+main : {a} -> [String] -> Unit
+main @a args = ()

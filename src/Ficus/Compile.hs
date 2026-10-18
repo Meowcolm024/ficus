@@ -1,6 +1,6 @@
 -- | Discover, resolve, infer and elaborate modules in dependency order.
 -- Configuration and source caching belong here, outside the individual passes.
-module Ficus.Compile (CompileOptions (..), CompileResult (..), compileFiles, compileSucceeded, compileDiagnostics) where
+module Ficus.Compile (CompileOptions (..), CompileResult (..), compileFiles, compileProvided, compileSucceeded, compileDiagnostics) where
 
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (modify', runStateT)
@@ -37,6 +37,7 @@ data CompileOptions = CompileOptions
 data CompileResult = CompileResult
   { compileFrontend :: FrontendResult,
     compileSources :: Map FilePath Text,
+    compileOrder :: [ModuleId],
     compileModules :: Map ModuleId Elaborate.CheckedModule,
     compileTypeDiagnostics :: [E.Diagnostic]
   }
@@ -58,8 +59,18 @@ compileFiles resolver sugar options = do
   let entries = [(owner, Span file (Position 1 1 0) (Position 1 1 0)) | (file, Right owner) <- zip (NE.toList files) identities]
       entryErrors = [ResolutionDiagnostic d | Left d <- identities]
       config = Provider.ProviderConfig (nub (roots ++ libraries)) (maybe Provider.PreludeFromRoots Provider.PreludeFile prelude)
-      provider owner = do
-        result <- liftIO (Provider.fileProvider config owner)
+  result <- compileProvided resolver sugar (Provider.fileProvider config) entries
+  let frontend = compileFrontend result
+  pure (result {compileFrontend = frontend {frontendDiagnostics = entryErrors ++ frontendDiagnostics frontend}})
+  where
+    absolute path = normalise <$> makeAbsolute path
+
+-- | Compile through an injected source provider, including unsaved interactive
+-- modules, while retaining dependency order for linking and initialization.
+compileProvided :: ResolveConfig -> SugarRegistry -> Provider.ModuleProvider IO -> [(ModuleId, Span)] -> IO CompileResult
+compileProvided resolver sugar sourceProvider entries = do
+  let provider owner = do
+        result <- liftIO (sourceProvider owner)
         case result of
           Right source -> modify' (Map.insert (Provider.sourcePath source) (Provider.sourceText source))
           Left _ -> pure ()
@@ -67,9 +78,7 @@ compileFiles resolver sugar options = do
   (graph, sources) <- runStateT (discoverModulesAt provider entries) Map.empty
   let frontend = resolveGraph resolver sugar graph
       (checked, diagnostics) = foldl (checkModule graph frontend) (Map.empty, []) (dependencyOrder graph)
-  pure (CompileResult (frontend {frontendDiagnostics = entryErrors ++ frontendDiagnostics frontend}) sources checked diagnostics)
-  where
-    absolute path = normalise <$> makeAbsolute path
+  pure (CompileResult frontend sources (dependencyOrder graph) checked diagnostics)
 
 checkModule :: ModuleGraph -> FrontendResult -> (Map ModuleId Elaborate.CheckedModule, [E.Diagnostic]) -> ModuleId -> (Map ModuleId Elaborate.CheckedModule, [E.Diagnostic])
 checkModule graph frontend previous@(checked, diagnostics) owner = case (Map.lookup owner (frontendModules frontend), Map.lookup owner (graphModules graph)) of

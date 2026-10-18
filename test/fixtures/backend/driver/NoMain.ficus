@@ -1,0 +1,2 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+value = 7

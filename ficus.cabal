@@ -20,6 +20,17 @@ extra-source-files:
     CHANGELOG.md
     docs/SPEC.md
     docs/ERRORS.md
+    test/fixtures/backend/driver/ArgsMain.ficus
+    test/fixtures/backend/driver/BadMain.ficus
+    test/fixtures/backend/driver/DivisionMain.ficus
+    test/fixtures/backend/driver/ErrMain.ficus
+    test/fixtures/backend/driver/LocalMain.ficus
+    test/fixtures/backend/driver/NoMain.ficus
+    test/fixtures/backend/driver/OkMain.ficus
+    test/fixtures/backend/driver/PolyMain.ficus
+    test/fixtures/backend/driver/ReexportMain.ficus
+    test/fixtures/backend/driver/UnitMain.ficus
+    test/fixtures/backend/driver/Values.ficus
     test/fixtures/compile/invalid/main.ficus
     test/fixtures/compile/library/Handles.ficus
     test/fixtures/compile/library/Main.ficus
@@ -534,6 +545,8 @@ library
       Ficus.Type
       Ficus.Type.Substitution
       Ficus.Util.Source
+      FicusBackend.Driver.Repl
+      FicusBackend.Driver.Run
       FicusBackend.Lower.Runtime
       FicusBackend.Runtime
       FicusBackend.Runtime.AST
@@ -634,6 +647,7 @@ test-suite ficus-test
       Ficus.Resolve.Spec
       Ficus.Resolve.Support
       Ficus.Resolve.WildcardSpec
+      FicusBackend.DriverSpec
       FicusBackend.Runtime.Direct
       FicusBackend.Runtime.Spec
       Paths_ficus

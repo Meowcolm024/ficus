@@ -10,8 +10,8 @@ The interpreter supports the v0 primitive registry and the bundled Prelude.
 Tests include source-to-execution fixtures, a direct Runtime interpreter, and
 generated programs checked against an independent arithmetic/effect oracle.
 Evidence is retained conservatively; static types and single-field nominal
-wrappers are erased. CLI integration, serialization, and constant-stack tail
-calls remain subsequent work.
+wrappers are erased. Backend drivers provide `run` and `repl`; serialization
+and constant-stack tail calls remain subsequent work.
 
 ## 1. Module boundaries
 
@@ -247,8 +247,9 @@ Implemented:
 
 Record concrete implementation conventions in IMPL.md as they land. Update
 SPEC.md in the same change if any decision changes observable language behavior.
-CLI integration, object serialization, and tail-call optimization are subsequent
-work; this plan does not settle their open contracts.
+CLI execution is implemented by `FicusBackend.Driver.Run` and
+`FicusBackend.Driver.Repl`; see SPEC §22 and IMPL §8. Object serialization and
+tail-call optimization remain subsequent work.
 
 ## 7. Embedding API
 
@@ -277,8 +278,8 @@ For repeated calls, use `initialize` once and pass its `Instance` to
 `evaluateEntry`. Each instance owns its global cells and effect interface;
 separate instances may share an `Executable`. Use entries selected from the
 same validated program as the executable/instance. Entry validation here checks
-the numeric address; a future CLI driver owns the source `main` signature and
-command-line argument contract. Library programs can have no globals or entry.
+the numeric address; `FicusBackend.Driver.Run` owns the source `main` signature
+and command-line argument contract. Library programs can have no globals or entry.
 
 `RuntimeError` carries a stable kind and primary span and implements the shared
 diagnostic interface; see [ERRORS.md](ERRORS.md#runtime-and-lowering-diagnostics-r).

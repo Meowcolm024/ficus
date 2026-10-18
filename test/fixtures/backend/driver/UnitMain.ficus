@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+main : [String] -> Unit
+main args = ()

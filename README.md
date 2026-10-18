@@ -1,69 +1,116 @@
 # ficus
 
-A minimal functional scripting language.
+A small, strictly evaluated functional scripting language with type inference,
+algebraic data types, records, traits, and a bundled standard library. Programs
+execute through a closure-threaded interpreter.
 
-The v0 Megaparsec frontend exposes `Ficus.Syntax.Parser.parseModule`, returning either a
-structured diagnostic or an Agda-style typed Concrete AST with source spans,
-provenance, comments, and explicit/layout block metadata. The independent resolver
-translates Concrete syntax to validated Abstract syntax with canonical names and
-source provenance. The elaborator checks kinds, qualified Hindley–Milner types,
-records, patterns, and initialization safety, then produces independently
-validated typed Core and closed interfaces for dependent modules.
-The backend lowers Core to validated, lexically addressed Runtime syntax and
-executes it with a closure-threaded interpreter, including the bundled Prelude
-and v0 primitives. It supports recursive closures, partial application, explicit
-trait dictionaries, strict initialization, and structured runtime errors.
-See [SPEC](docs/SPEC.md) for the language and
-[parsing fixtures](test/fixtures/parsing/README.md) for test coverage.
-
-Build and run the fixture suite with `stack build` and `stack test`.
-
-The CLI supports:
+## Build and test
 
 ```sh
-stack exec ficus -- --version
-stack exec ficus -- compile path/to/Main.ficus
-stack exec ficus -- compile --source-root src --library library --prelude library/Prelude.ficus src/Main.ficus
-stack exec ficus -- format test/fixtures/parsing/positive/LayoutBraces.ficus
-stack exec ficus -- format < test/fixtures/parsing/positive/LayoutBraces.ficus
+stack build
+stack test
 ```
 
-`compile FILE...` parses, resolves, typechecks, and elaborates modules in dependency
-order. Type errors and expression holes fail compilation; successful modules
-produce validated Core through the `Ficus.Compile` API. The command does not
-execute a program, require `main`, or write compiled artifacts.
-Diagnostics go to stderr; errors return a nonzero
-exit status, while warnings permit success.
+## Run a program
 
-Interpreter embedding is available through `FicusBackend.Lower.Runtime` and
-`FicusBackend.Runtime`: lower dependency-ordered Core modules, select a global
-address, compile the evaluators, and run with supplied effects and arguments.
-See [the Runtime API and scope](docs/RUNTIME.md#7-embedding-api). CLI execution
-and compiled object files are subsequent work.
+```sh
+stack exec ficus -- run examples/Main.ficus -- hello world
+```
 
-The package bundles the v0 standard-library [Prelude](library/Prelude.ficus),
-with source modules under `Class`, `Data`, `System`, and `Ficus.Builtin`.
-See [the examples](examples/README.md) for complete v0 programs. Optional discovery flags are:
+The selected file must define its own entry point with one of these types:
 
-- `--library DIR`: use this standard-library source root instead of the bundled
-  directory; repeat to search multiple roots.
-- `--prelude FILE`: use this file as the canonical Prelude module. Dependencies
-  still use the configured source and library roots.
-- `--source-root DIR`: set a project source root; repeat for multiple roots.
-  By default, each input file's directory is a project root. Supply a common
-  root explicitly when nested directories should form a module path.
+```text
+main : [String] -> Unit
+main : [String] -> Result String Unit
+```
 
-These options are for early development and are **subject to change**. Source
-roots must identify modules unambiguously; their order does not pick a winner.
-The library layout and selected Prelude API are documented in [PRELUDE.md](docs/PRELUDE.md).
+Only arguments after the filename are passed to `main`. Use `--` before program
+arguments that could be interpreted as CLI options. Returning `Unit` or `Ok ()`
+succeeds; `Err message` writes the message to stderr and exits with status 1.
+Compilation, entry-point, and runtime errors also exit with status 1.
 
-`format [FILE]` writes formatted source to stdout. Omit the file or use `-` to read
-stdin. Input files are never overwritten. Syntax errors go to stderr and return
-a nonzero exit status. Diagnostics include a stable code such as `P0001`, the
-source line, and an underline. Source-location filenames are relative to the
-working directory; module search paths remain absolute. See [error codes](docs/ERRORS.md).
+See [examples](examples/README.md) for complete programs.
 
-`Ficus.Syntax.Concrete.Pretty.prettyModule` is a naive AST printer: it normalizes
-blocks to braces with four-space indentation, keeps literal spellings and
-parentheses, and retains comments in source order above their containing
-top-level item. `renderSource` still returns the exact original source text.
+## Interactive use
+
+```sh
+stack exec ficus -- repl
+stack exec ficus -- repl examples/Main.ficus
+```
+
+Evaluate expressions or add single-line declarations:
+
+```text
+ficus> double x = x + x
+ficus> double 21
+42
+ficus> :type double
+double : Add a => a -> a
+ficus> import Data.Vec
+ficus> vecLength (listToVec [1, 2, 3])
+3
+```
+
+| Command | Short form | Purpose |
+| --- | --- | --- |
+| `:load FILE` | `:l FILE` | Load or reload a file and its dependencies |
+| `:type NAME` | `:t NAME` | Inspect a value or constructor's inferred type |
+| `:quit` | `:q` | Exit; end of input also exits |
+
+Loading a file brings its exports into scope without invoking `main`. A
+successful load replaces interactive declarations and imports. Failed commands
+and runtime errors, including division by zero, leave the previous session
+usable. Effects already performed are not rolled back. REPL results are
+formatted with `Debug`, so their types need a visible instance.
+
+Ordinary `use` imports work interactively. `import Module` is shorthand for
+`use Module (..)`, and selections or aliases can be supplied explicitly.
+Declarations follow ordinary source rules, including duplicate-name and
+initialization checks.
+
+## Check and format source
+
+```sh
+stack exec ficus -- compile examples/Main.ficus examples/Collections.ficus
+stack exec ficus -- format examples/Main.ficus
+stack exec ficus -- format < examples/Main.ficus
+stack exec ficus -- --version
+```
+
+`compile FILE...` checks modules in dependency order and produces validated Core
+through the compiler API. It emits no artifacts and does not execute `main`.
+`format [FILE]` writes formatted source to stdout; omit FILE or use `-` to read
+stdin. Input files are never overwritten.
+
+Diagnostics go to stderr with a stable code and source location. Errors produce
+a nonzero exit status; warnings permit success. See [error codes](docs/ERRORS.md).
+
+## Module discovery
+
+The standard library is bundled with the package. `run`, `repl`, and `compile`
+accept these options:
+
+- `--library DIR`: replace the bundled library root; repeat for multiple roots.
+- `--prelude FILE`: override the canonical Prelude file. Its dependencies still
+  use the configured source and library roots.
+- `--source-root DIR`: set project roots; repeat for multiple roots. By default,
+  source files use their containing directory, and an empty REPL uses the
+  current directory. Set a common root for nested module paths.
+
+Source roots must identify modules unambiguously; their order does not select a
+winner. See [the standard library](docs/PRELUDE.md) for its layout and Prelude API.
+
+## Compiler and runtime APIs
+
+`Ficus.Compile` discovers, resolves, and elaborates source to validated typed
+Core. Backend drivers in `FicusBackend.Driver.Run` and
+`FicusBackend.Driver.Repl` consume those results. The REPL retains inferred
+schemes and compiled runtime closures, with source snapshots for reload; Core
+is temporary compilation data.
+
+For interpreter embedding, use `FicusBackend.Lower.Runtime` and
+`FicusBackend.Runtime` to lower dependency-ordered Core modules, select an
+address, and execute with supplied effects. See [the Runtime API](docs/RUNTIME.md#7-embedding-api).
+
+[Specification](docs/SPEC.md) · [Implementation](docs/IMPL.md) ·
+[Runtime design](docs/RUNTIME.md) · [Tests](test/fixtures/parsing/README.md)

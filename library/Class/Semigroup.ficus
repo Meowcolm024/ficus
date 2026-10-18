@@ -1,0 +1,11 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.String (stringAppend)
+trait Semigroup a =
+    append : a -> a -> a
+(<>) : Semigroup a => a -> a -> a
+(<>) left right = append left right
+impl Semigroup String =
+    append left right = stringAppend left right
+impl Semigroup [a] =
+    append left right = with left { [] -> right; x :: xs -> x :: append xs right }

@@ -1,0 +1,6 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+trait Bifunctor p =
+    bimap : (a -> c) -> (b -> d) -> p a b -> p c d
+impl Bifunctor (*) =
+    bimap f g (left, right) = (f left, g right)

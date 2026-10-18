@@ -1,0 +1,10 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Semigroup (..)
+
+trait Bind f =
+    bind : f a -> (a -> f b) -> f b
+(>>=) : Bind f => f a -> (a -> f b) -> f b
+(>>=) value next = bind value next
+impl Bind [] =
+    bind values next = with values { [] -> []; x :: xs -> append (next x) (bind xs next) }

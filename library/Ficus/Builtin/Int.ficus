@@ -1,0 +1,20 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN INT_ADD intAdd #-}
+intAdd : Int -> Int -> Int
+{-# BUILTIN INT_SUB intSub #-}
+intSub : Int -> Int -> Int
+{-# BUILTIN INT_MUL intMul #-}
+intMul : Int -> Int -> Int
+{-# BUILTIN INT_DIV intDiv #-}
+intDiv : Int -> Int -> Int
+{-# BUILTIN INT_REM intRem #-}
+intRem : Int -> Int -> Int
+{-# BUILTIN INT_EQ intEq #-}
+intEq : Int -> Int -> Bool
+{-# BUILTIN INT_LT intLt #-}
+intLt : Int -> Int -> Bool
+{-# BUILTIN INT_SHOW intShow #-}
+intShow : Int -> String
+{-# BUILTIN INT_TO_FLOAT intToFloat #-}
+intToFloat : Int -> Float

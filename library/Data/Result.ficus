@@ -1,0 +1,57 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Eq (..)
+use Class.Ord (..)
+use Class.Show (..)
+use Class.Debug (..)
+use Class.Default (..)
+use Class.Functor (..)
+use Class.Pure (..)
+use Class.Seq (..)
+use Class.Bind (..)
+use Class.Applicative (..)
+use Class.Monad (..)
+use Class.Alternative (..)
+use Class.Foldable (..)
+use Class.Traversable (..)
+use Data.Bool (not, (&&))
+use Data.Ordering (Ordering(..))
+use Ficus.Builtin.String (stringAppend)
+
+use Class.Bifunctor (..)
+use Data.Maybe (Maybe(..))
+type Result e a = { Err e; Ok a }
+result : (e -> c) -> (a -> c) -> Result e a -> c
+result onError onSuccess value = with value { Err e -> onError e; Ok a -> onSuccess a }
+mapError : (e -> f) -> Result e a -> Result f a
+mapError f value = with value { Err e -> Err (f e); Ok a -> Ok a }
+toResult : e -> Maybe a -> Result e a
+toResult e value = with value { Nothing -> Err e; Just a -> Ok a }
+toMaybe : Result e a -> Maybe a
+toMaybe value = with value { Err _ -> Nothing; Ok a -> Just a }
+impl (Eq e, Eq a) => Eq (Result e a) =
+    (==) x y = with (x, y) { (Err a, Err b) -> a == b; (Ok a, Ok b) -> a == b; _ -> False }
+impl (Ord e, Ord a) => Ord (Result e a) =
+    compare x y = with (x, y) { (Err a, Err b) -> compare a b; (Err _, Ok _) -> Less; (Ok _, Err _) -> Greater; (Ok a, Ok b) -> compare a b }
+impl (Show e, Show a) => Show (Result e a) =
+    show value = with value { Err e -> stringAppend "Err (" (stringAppend (show e) ")"); Ok a -> stringAppend "Ok (" (stringAppend (show a) ")") }
+impl (Debug e, Debug a) => Debug (Result e a) =
+    debug value = with value { Err e -> stringAppend "Err (" (stringAppend (debug e) ")"); Ok a -> stringAppend "Ok (" (stringAppend (debug a) ")") }
+impl Default a => Default (Result e a) =
+    default = Ok default
+impl Functor (Result e) =
+    map f value = with value { Err e -> Err e; Ok a -> Ok (f a) }
+impl Pure (Result e) =
+    pure value = Ok value
+impl Seq (Result e) =
+    seq value next = with value { Err e -> Err e; Ok f -> map f (next ()) }
+impl Bind (Result e) =
+    bind value next = with value { Err e -> Err e; Ok a -> next a }
+impl Applicative (Result e) = {}
+impl Monad (Result e) = {}
+impl Foldable (Result e) =
+    foldr f initial value = with value { Err _ -> initial; Ok a -> f a initial }
+impl Traversable (Result e) =
+    traverse f value = with value { Err e -> pure (Err e); Ok a -> map (x -> Ok x) (f a) }
+impl Bifunctor Result =
+    bimap f g value = with value { Err e -> Err (f e); Ok a -> Ok (g a) }

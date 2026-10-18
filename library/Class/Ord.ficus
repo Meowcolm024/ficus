@@ -1,0 +1,52 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.Int (..)
+use Ficus.Builtin.Float (..)
+use Ficus.Builtin.Char (..)
+use Ficus.Builtin.String (..)
+use Class.Eq (..)
+use Data.Ordering (Ordering(..))
+trait Eq a => Ord a =
+    compare : a -> a -> Ordering
+(<) : Ord a => a -> a -> Bool
+(<) x y = with compare x y { Less -> True; _ -> False }
+(<=) : Ord a => a -> a -> Bool
+(<=) x y = with compare x y { Greater -> False; _ -> True }
+(>) : Ord a => a -> a -> Bool
+(>) x y = y < x
+(>=) : Ord a => a -> a -> Bool
+(>=) x y = y <= x
+min : Ord a => a -> a -> a
+min x y = if { x <= y -> x; _ -> y }
+max : Ord a => a -> a -> a
+max x y = if { x >= y -> x; _ -> y }
+impl Ord Int =
+    compare x y = if { intLt x y -> Less; intEq x y -> Equal; _ -> Greater }
+impl Ord Float =
+    compare x y = if { floatEq x x -> if { floatEq y y -> if { floatLt x y -> Less; floatEq x y -> Equal; _ -> Greater }; _ -> Less }; floatEq y y -> Greater; _ -> Equal }
+impl Ord Char =
+    compare x y = if { charLt x y -> Less; charEq x y -> Equal; _ -> Greater }
+impl Ord String =
+    compare x y = if { stringLt x y -> Less; stringEq x y -> Equal; _ -> Greater }
+impl Ord Bool =
+    compare x y = with (x, y) { (False, True) -> Less; (True, False) -> Greater; _ -> Equal }
+impl Ord Unit =
+    compare () () = Equal
+impl Ord a => Ord [a] =
+    compare xs ys = with (xs, ys)
+        ([], []) -> Equal
+        ([], _ :: _) -> Less
+        (_ :: _, []) -> Greater
+        (x :: rest, y :: more) -> with compare x y { Equal -> compare rest more; other -> other }
+impl (Ord a, Ord b) => Ord (a * b) =
+    compare (a, b) (c, d) = with compare a c { Equal -> compare b d; other -> other }
+
+impl Ord Ordering =
+    compare left right = with (left, right)
+        (Less, Less) -> Equal
+        (Less, _) -> Less
+        (Equal, Less) -> Greater
+        (Equal, Equal) -> Equal
+        (Equal, Greater) -> Less
+        (Greater, Greater) -> Equal
+        (Greater, _) -> Greater

@@ -1,0 +1,42 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Functor (..)
+use Class.Bifunctor (..)
+use Class.Eq (..)
+use Class.Show (..)
+use Class.Ord (..)
+use Class.Debug (..)
+use Class.Default (..)
+use Class.Foldable (..)
+use Class.Traversable (..)
+use Class.Pure (..)
+use Class.Seq (..)
+use Class.Applicative (..)
+use Class.Monoid (..)
+type Const a b = Const a
+getConst : Const a b -> a
+getConst (Const value) = value
+impl Functor (Const a) =
+    map _ (Const value) = Const value
+impl Bifunctor Const =
+    bimap f _ (Const value) = Const (f value)
+impl Eq a => Eq (Const a b) =
+    (==) (Const x) (Const y) = x == y
+impl Show a => Show (Const a b) =
+    show (Const value) = show value
+
+impl Ord a => Ord (Const a b) =
+    compare (Const x) (Const y) = compare x y
+impl Debug a => Debug (Const a b) =
+    debug (Const value) = debug value
+impl Default a => Default (Const a b) =
+    default = Const default
+impl Foldable (Const a) =
+    foldr _ initial _ = initial
+impl Traversable (Const a) =
+    traverse _ (Const value) = pure (Const value)
+impl Monoid a => Pure (Const a) =
+    pure _ = Const empty
+impl Semigroup a => Seq (Const a) =
+    seq (Const left) next = with next () { Const right -> Const (append left right) }
+impl Monoid a => Applicative (Const a) = {}

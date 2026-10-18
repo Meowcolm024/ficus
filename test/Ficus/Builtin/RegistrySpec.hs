@@ -6,6 +6,7 @@ import Ficus.Builtin.Registry
 import Ficus.Library.Contracts (libraryResolveConfig)
 import Ficus.Resolve.Desugar qualified as Resolve
 import Ficus.Resolve.Support (fixtureConfig)
+import Ficus.Syntax.Core.Intrinsic (matchesPrimitive, primitiveSignature)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -18,6 +19,15 @@ tests =
         Resolve.builtinKeys fixtureConfig @?= builtinKeys,
       testCase "type and value contracts have distinct lookups" $
         mapM_ check (Map.toList builtinRegistry),
+      testCase "all registered value signatures pass the independent primitive checker" $
+        mapM_
+          ( \primitive ->
+              let (inputs, output) = primitiveSignature primitive
+               in do
+                    assertBool "complete signature" (matchesPrimitive primitive inputs output)
+                    assertBool "wrong arity" (not (matchesPrimitive primitive (output : inputs) output))
+          )
+          [primitive | ValueBuiltin primitive <- Map.elems builtinRegistry],
       testCase "unregistered keys have no contracts" $ do
         primitiveFromKey "UNKNOWN" @?= Nothing
         typeKindFromKey "UNKNOWN" @?= Nothing

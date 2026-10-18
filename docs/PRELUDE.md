@@ -1,12 +1,12 @@
-# Intended Prelude
+# v0 Prelude
 
-This document sketches a small v0 Prelude. It is non-normative and intentionally incomplete. v1+ expands it in the style of Haskell and adds JSON and regex facilities, potentially supplied by builtin-backed modules. The proposed module organization is recorded below; expanded APIs and the exact implicit re-export list remain to be frozen.
+This document describes the bundled v0 Prelude and standard library. It is non-normative; SPEC.md defines language and builtin contracts. The organization follows the small implicit surface of [Haskell Prelude](https://www.haskell.org/onlinereport/modules.html#sect5.6) and the separation between builtin bindings and public data modules in [Agda Data.Nat.Base](https://agda.github.io/agda-stdlib/master/Data.Nat.Base.html). v1+ may add JSON and regex facilities through explicit modules.
 
 The control hierarchy follows Lean's fine-grained approach: operations such as `map`, `pure`, application, and `bind` have separate traits. Conventional `Applicative` and `Monad` names remain available as composite marker traits.
 
 ## 1. Organization
 
-The proposed public layout is:
+The public layout is:
 
 ```text
 Prelude                  -- selected re-exports
@@ -32,33 +32,57 @@ Control
     ...
 ```
 
-Indented entries denote modules such as `Ficus.Builtin.Int` and `Class.Show`. This is a proposed organization, not a commitment that every module is available in v0. `System.IO` names an operations module; it does not introduce an `IO` type.
+Indented entries denote modules such as `Ficus.Builtin.Int` and `Class.Show`. Ellipses and the Map, Environment, and Exception examples indicate future extensions, not shipped modules. `System.IO` names an operations module; it does not introduce an `IO` type.
 
-`Ficus.Builtin.*` holds declarations backed by `BUILTIN` and their minimal support definitions. The six reserved primitive types are already in scope and are not redeclared there. Ordinary library types such as `Handle`, `Byte`, and `Vec` retain their defining module identity. Public operations and wrappers may be exposed through `Data.*`, `System.*`, or `Control.*` without changing that identity.
+`Ficus.Builtin.*` holds declarations backed by `BUILTIN` and their minimal support definitions. It never imports `Data.*` or the higher-level trait/system layers. The six reserved primitive types are already in scope and are not redeclared there. Ordinary library types such as `Handle`, `Byte`, and `Vec` retain their defining module identity. Public operations and wrappers may be exposed through `Data.*`, `System.*`, or `Control.*` without changing that identity.
 
 `Class.*` defines the basic traits and associated constrained functions. Under the existing ownership rule, implementations for primitive types and built-in list/product/function constructors must live in the module defining the trait: for example, `Show Int` belongs in `Class.Show`. Implementations for ordinary library types may instead live with their type. Keep this distinction when selecting module dependencies.
 
-The proposed bootstrap policy is to put `{-# NO_IMPLICIT_PRELUDE #-}` before imports in every standard-library module, including `Prelude` itself. All library dependencies are then explicit; application modules retain implicit Prelude unless they opt out. This avoids an accidental dependency back to Prelude when an internal module is added or moved into its dependency graph. Bootstrap from builtin declarations and basic data definitions, then build traits and higher-level operations according to their actual dependencies, with Prelude last. Basic types such as Ordering may be needed by trait contracts, so the module roots are not strict dependency layers. Keep constructor-only data dependencies independent of trait modules where needed; place implementations according to ownership without introducing imports back into their dependencies. Actual dependencies must remain acyclic. `BUILTIN` alone does not disable implicit Prelude. Primitive-named modules may be imported directly, for example `use Ficus.Builtin.Int`; a distinct alias such as `as BInt` is optional. Whether this may coexist with `use Data.Int` under the same local module name remains open. Under the current v0 rules, disabling implicit Prelude also forbids `do` and string interpolation even when their supporting definitions are imported explicitly; standard-library bootstrap code uses ordinary function calls instead. Changing that sugar rule would require a separate spec revision.
+The bootstrap policy is to put `{-# NO_IMPLICIT_PRELUDE #-}` before imports in every standard-library module, including `Prelude` itself. All library dependencies are then explicit; application modules retain implicit Prelude unless they opt out. This avoids an accidental dependency back to Prelude when an internal module is added or moved into its dependency graph. Bootstrap from builtin declarations and basic data definitions, then build traits and higher-level operations according to their actual dependencies, with Prelude last. Basic types such as Ordering may be needed by trait contracts, so the module roots are not strict dependency layers. Keep constructor-only data dependencies independent of trait modules where needed; place implementations according to ownership without introducing imports back into their dependencies. Actual dependencies must remain acyclic. `BUILTIN` alone does not disable implicit Prelude. Primitive-named modules may be imported directly, for example `use Ficus.Builtin.Int`; a distinct alias such as `as BInt` is optional. It may coexist with `use Data.Int` under the same local qualifier; ordinary use-site ambiguity rules apply. Under the current v0 rules, disabling implicit Prelude also forbids `do` and string interpolation even when their supporting definitions are imported explicitly; standard-library bootstrap code uses ordinary function calls instead. Changing that sugar rule would require a separate spec revision.
 
-Prelude should use explicit selective re-exports. Freeze a reviewed list of values, operators, types, constructors, and traits before treating the implicit API as stable; adding a definition to a source module must not silently expand Prelude. Candidate categories are the existing basic traits, common data types, list/string operations, function combinators, and selected IO helpers. Environment access, specialized collections, exception/concurrency APIs, and low-level builtin operations should require explicit imports unless individually selected. The exact selections remain open, including which basic type constructors and trait implementations are visible through those imports.
+Prelude uses explicit selective re-exports. The complete implicit API is reviewed
+in `library/Prelude.ficus`; adding a source definition does not expand it. The
+selected exports are:
+
+| Modules | Selected API |
+| --- | --- |
+| `Class.Eq`, `.Ord`, `.Show`, `.Debug`, `.Default` | All five traits, `==`, `/=`, comparison operators, `compare`, `min`, `max`, `show`, `debug`, `default` |
+| `Class.Add`, `.Sub`, `.Mul`, `.Div`, `.Rem` | Numeric traits and their binary operators |
+| `Class.Functor`, `.Pure`, `.Seq`, `.Bind`, `.Applicative`, `.Monad`, `.Alternative` | Traits, `map`, `pure`, `seq`, `bind`, `failure`, `orElse`, `<*>`, `>>=`, `<\|>`, `seqLeft`, `seqRight` |
+| `Class.Semigroup`, `.Monoid`, `.Bifunctor`, `.Foldable`, `.Traversable` | Traits, `append`, `<>`, `empty`, `bimap`, `foldr`, `foldMap`, `traverse`, `sequence` |
+| `Data.Function`, `.Bool`, `.Product` | Functions listed in Sections 3 and 9, `$`, `\|>`, `&&`, `||`, `fst`, `snd`, `curry`, `uncurry`, `swap` |
+| `Data.Ordering`, `.Maybe`, `.Result`, `.Const`, `.Void` | Types and public constructors, Maybe/Result helpers, `getConst`, `absurd` |
+| `Data.List` | Total list operations in Section 10 |
+| `Data.String`, `.Int`, `.Float` | `stringLength`, `stringAppend`, `stringToChars`, `charsToString`, `++`, `intToFloat`, `floatToInt`, `negate : Int -> Int` |
+| `System.IO` | `print`, `println`, `readLine` |
+
+`Handle`, `Byte`, `Vec`, scalar primitive entry points such as `intEq`, and
+specialized collections require explicit imports. Implementations are owned by
+the defining trait module for compiler-owned types and by the defining type
+module for ordinary data. The implicit import exposes the selected traits/types
+and their reachable implementations under the normal instance-visibility rules.
 
 Modules marked `NO_IMPLICIT_PRELUDE` receive none of these declarations. The reserved types `Int`, `Float`, `Bool`, `Char`, `String`, and `Unit` remain available.
 
-### Proposed v0 scope
+### v0 scope
 
 | Area | Modules or traits |
 | --- | --- |
-| Builtin-backed declarations | `Ficus.Builtin.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Handle`, `.Vec`, `.Byte` |
-| Basic classes | `Debug`, `Show`, `Eq`, `Ord`, `Pure`, `Seq`, `Bind`, `Functor`, `Applicative`, `Monad`, `Alternative`, `Semigroup`, `Monoid`, `Default`, `Bifunctor`, `Foldable`, `Traversable`, each under `Class` |
+| Builtin-backed declarations | `Ficus.Builtin.Int`, `.Float`, `.Char`, `.String`, `.Handle`, `.Vec`, `.Byte`, `.Void`, `.IO`; `.Bool` and `.Unit` document compiler-reserved declarations without imports or new keys |
+| Basic classes | `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Debug`, `Show`, `Eq`, `Ord`, `Pure`, `Seq`, `Bind`, `Functor`, `Applicative`, `Monad`, `Alternative`, `Semigroup`, `Monoid`, `Default`, `Bifunctor`, `Foldable`, `Traversable`, each under `Class` |
 | System | `System.IO` |
-| Data | `Data.List`, `.Function`, `.Product`, `.Ordering`, `.Maybe`, `.Result` or `.Either`, `.Const`, `.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Vec`, `.Byte` |
+| Data | `Data.List`, `.Function`, `.Product`, `.Ordering`, `.Maybe`, `.Result`, `.Const`, `.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Vec`, `.Byte`, `.Void` |
 | Control | No v0 modules; exceptions and concurrency remain later work |
 
-`Handle` stays out of the proposed `Data` layer; its public IO operations belong in `System.IO`. Primitive data modules expose operations on the already-reserved types rather than defining replacement types. `Data.Const` denotes the constant type constructor, distinct from the ordinary `const` function in `Data.Function`.
+`Handle` stays out of the `Data` layer; its public IO operations belong in `System.IO`. Primitive data modules expose operations on the already-reserved types rather than defining replacement types. `Data.Const` denotes the constant type constructor, distinct from the ordinary `const` function in `Data.Function`.
 
-The requested composites are `Applicative = Functor + Pure + Seq` and `Monad = Applicative + Bind`. `Functor` remains independently usable and is also an `Applicative` supertrait. Following Lean, `Seq` takes a thunked second operand and `Alternative` extends `Applicative` with `failure` and thunked `orElse`; the earlier eager `Apply` sketch is superseded. `Debug` and `Default` still need concrete operation contracts before freezing their interfaces. The earlier `Fail`/`OrElse` sketches are not additional v0 commitments.
+The composites are `Applicative = Functor + Pure + Seq` and `Monad = Applicative + Bind`. `Functor` remains independently usable and is also an `Applicative` supertrait. Following Lean, `Seq` takes a thunked second operand and `Alternative` extends `Applicative` with `failure` and thunked `orElse`; the earlier eager `Apply` sketch is superseded. `Debug.debug : a -> String` renders diagnostic output (quoting and escaping characters/strings); `Show String` stays the identity. `Default.default : a` provides a conventional initial value. Scalar defaults are zero, false, space, the empty string, and unit; lists and Maybe default to empty/Nothing, and Result defaults to `Ok default`. The earlier `Fail`/`OrElse` sketches are not additional v0 commitments.
 
-This inventory defines proposed v0 library scope, not a blanket Prelude export list. `Data.Map` is outside Prelude and outside this initial inventory; its release availability remains open. `System.Environment`, exceptions, and concurrency are outside the proposed v0 scope. `Data.Ordering` is included because the current `Ord.compare` contract returns `Ordering`. The naming choice between `Result` and `Either` remains open; existing examples and the current entry-point contract still use `Result`. Numeric traits (`Add`, `Sub`, `Mul`, `Div`, `Rem`) and the existing `Void`/`absurd` bootstrap must be reconciled with this inventory before freezing it; their current contracts are not silently removed.
+The inventory defines v0 scope, while the selective table defines the implicit
+API. `Data.Map`, `System.Environment`, exceptions, and concurrency are later work.
+`Data.Ordering` supports `Ord.compare`. `Result` is retained for compatibility
+with the entry-point contract. The numeric traits and `Void` bootstrap remain
+part of the library. `Data.Const` defines a separate `Const a b` type constructor.
 
 ## 2. Basic data types
 
@@ -170,7 +194,7 @@ min : Ord a => a -> a -> a
 max : Ord a => a -> a -> a
 ```
 
-Initial implementations should include the primitive scalar types and structural lists and products where their components satisfy the required traits. Because no module owns the primitive types or `[]` and `(*)`, these implementations must be declared in the module that defines the corresponding trait.
+Initial implementations include the primitive scalar types and structural lists and products where their components satisfy the required traits. Because no module owns the primitive types or `[]` and `(*)`, these implementations must be declared in the module that defines the corresponding trait.
 
 In v0, string interpolation introduces a `Show a` requirement for each embedded bare or qualified variable. The `Show String` instance is the identity: `show s = s`, so interpolation does not add quotes around strings.
 
@@ -195,7 +219,7 @@ trait Rem a =
     (%) : a -> a -> a
 ```
 
-The compiler handles unary `-` directly for `Int` and `Float`. Binary numeric traits should initially have implementations for those two types where meaningful.
+The compiler handles unary `-` directly for `Int` and `Float`. `Add`, `Sub`, `Mul`, and `Div` have Int and Float implementations; `Rem` has an Int implementation. `Ord Float` places NaNs last and compares them as Equal, while Eq retains IEEE equality.
 
 Conversions are explicit:
 
@@ -204,7 +228,7 @@ intToFloat : Int -> Float
 floatToInt : Float -> Int
 ```
 
-The rounding and overflow behavior of conversions must be specified before stabilization.
+`intToFloat` rounds to nearest, ties to even. `floatToInt` truncates toward zero and fails for non-finite or out-of-range results. Integer arithmetic wraps; division truncates toward zero and remainder has the dividend’s sign. Division by zero fails; see SPEC.md Section 19 for the complete primitive contracts.
 
 ## 6. Fine-grained control traits
 
@@ -301,9 +325,16 @@ A function that only maps should require `Functor f`, not `Monad f`. A parser ma
 
 ## 7. Initial control instances
 
-The proposed initial types for `Functor`, `Pure`, `Seq`, `Bind`, `Applicative`, and `Monad` implementations are `Maybe`, `Result e`, and `[]`. The `Result`/`Either` naming decision remains open. `Alternative Maybe` uses the short-circuiting contract above; list choice and any error-bearing choice implementation still need reviewed contracts.
+The initial types for `Functor`, `Pure`, `Seq`, `Bind`, `Applicative`, and `Monad`
+are `Maybe`, `Result e`, and `[]`. `Alternative Maybe` selects the first success;
+`Alternative []` concatenates and invokes its right thunk exactly once. There is
+no `Alternative (Result e)` instance.
 
-The exact behavior of list `Seq` must be chosen explicitly. Cartesian application and zip application are different semantics; a zip variant should use a distinct wrapper type if Cartesian application is selected.
+List `Seq` is Cartesian in function-major order. An empty function list skips the
+argument thunk. A nonempty function list invokes it exactly once and reuses the
+result for every function. A future zip application API needs a distinct wrapper.
+`Maybe` and `Result` skip the argument thunk on Nothing/Err. Traversal visits
+left-to-right and skips later work after a missing/error result.
 
 ## 8. Maybe and Result helpers
 
@@ -401,7 +432,7 @@ trait Semigroup a => Monoid a =
 (<>) = append
 ```
 
-Expected implementations include `Semigroup [a]`, `Monoid [a]`, `Semigroup String`, and `Monoid String`. List and string `(++)` may remain specialized aliases when clearer.
+Implementations include `Semigroup [a]`, `Monoid [a]`, `Semigroup String`, and `Monoid String`. `(++)` is the specialized string alias; lists use `append` or `(<>)`.
 
 The associativity and identity laws are library contracts; the compiler does not prove them. Derived operations are ordinary constrained top-level functions outside trait dictionaries; traits never provide default member implementations.
 
@@ -424,7 +455,7 @@ foldMap : (Foldable t, Monoid m) => (a -> m) -> t a -> m
 sequence : (Traversable t, Applicative f) => t (f a) -> f (t a)
 ```
 
-Initial instances should cover lists and `Maybe`; `Result e` should be `Traversable` in its successful value parameter.
+Instances cover lists, `Maybe`, and the successful value parameter of `Result e`.
 
 ## 14. IO-facing functions
 
@@ -465,11 +496,14 @@ readRef : Ref a -> a
 
 They use the v0 value restriction and are not re-exported by Prelude.
 
-## 15. Open decisions
+## 15. Validation and later work
 
-Before stabilization, decide:
+Every bundled module and representative clients pass module resolution,
+inference, elaboration, and independent Core validation. Negative fixtures cover
+scalar, nominal, and polymorphic builtin contract mismatches. The compiler has no
+runtime evaluator yet; the registry and specification define the execution
+contracts that the runtime must implement. No primitive is replaced by a source
+stub or hole.
 
-- whether `Apply` should be named `Seq` to match Lean more closely;
-- whether `Fail` should carry `String` or use a separate error type;
-- integer division, out-of-range literals, floating-point display, and numeric conversions;
-- the minimum instances imported by default.
+Future work includes broader instances, specialized collections, JSON, regex,
+exceptions, and concurrency. These do not silently expand the implicit API.

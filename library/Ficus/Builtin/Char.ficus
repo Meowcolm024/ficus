@@ -1,0 +1,8 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN CHAR_EQ charEq #-}
+charEq : Char -> Char -> Bool
+{-# BUILTIN CHAR_LT charLt #-}
+charLt : Char -> Char -> Bool
+{-# BUILTIN CHAR_SHOW charShow #-}
+charShow : Char -> String

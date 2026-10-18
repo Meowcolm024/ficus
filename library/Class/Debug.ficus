@@ -1,0 +1,39 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Show (Show, show)
+use Class.Functor (map)
+use Class.Foldable (foldr)
+use Ficus.Builtin.String (stringAppend, stringToChars)
+use Ficus.Builtin.Char (charShow)
+use Data.Ordering (Ordering(..))
+trait Debug a =
+    debug : a -> String
+impl Debug Int =
+    debug x = show x
+impl Debug Float =
+    debug x = show x
+impl Debug Bool =
+    debug x = show x
+impl Debug Char =
+    debug x = stringAppend "'" (stringAppend (escape x) "'")
+impl Debug String =
+    debug x = stringAppend "\"" (stringAppend (foldr (c -> rest -> stringAppend (escape c) rest) "" (stringToChars x)) "\"")
+impl Debug Unit =
+    debug x = show x
+impl Debug a => Debug [a] =
+    debug xs = show (map debug xs)
+impl (Debug a, Debug b) => Debug (a * b) =
+    debug (x, y) = show (debug x, debug y)
+
+escape : Char -> String
+escape character = with character
+    '\\' -> "\\\\"
+    '\"' -> "\\\""
+    '\'' -> "\\'"
+    '\n' -> "\\n"
+    '\r' -> "\\r"
+    '\t' -> "\\t"
+    other -> charShow other
+
+impl Debug Ordering =
+    debug value = show value

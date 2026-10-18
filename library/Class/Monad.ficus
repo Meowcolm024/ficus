@@ -1,0 +1,7 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Applicative (..)
+use Class.Bind (..)
+
+trait (Applicative f, Bind f) => Monad f = {}
+impl Monad [] = {}

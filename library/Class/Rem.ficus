@@ -1,0 +1,9 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.Int as I
+
+trait Rem a =
+    (%) : a -> a -> a
+
+impl Rem Int =
+    (%) x y = I.intRem x y

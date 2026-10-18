@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+type Ordering = { Less; Equal; Greater }

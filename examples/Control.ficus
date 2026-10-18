@@ -1,0 +1,28 @@
+-- Seq and Alternative take explicit thunks in this strict language.
+withFallback : Maybe Int -> Maybe Int
+withFallback value = value <|> (_ -> Just 42)
+
+increment : Maybe Int -> Maybe Int
+increment value = Just (x -> x + 1) <*> (_ -> value)
+
+addPresent : Maybe Int -> Maybe Int -> Maybe Int
+addPresent left right = do
+    x <- left
+    y <- right
+    pure (x + y)
+
+positive : Int -> Result String Int
+positive value = if
+    value > 0 -> Ok value
+    _ -> Err "expected a positive number"
+
+-- Traversal stops on the first Err and keeps the successful list structure.
+checkAll : [Int] -> Result String [Int]
+checkAll values = traverse positive values
+
+main : [String] -> Unit
+main _ =
+    println (show (withFallback Nothing))
+    println (show (increment (Just 3)))
+    println (show (addPresent (Just 2) (Just 5)))
+    println (show (checkAll [1, 2, -3]))

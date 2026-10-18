@@ -1,0 +1,22 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Data.Ordering (Ordering(..))
+
+trait Default a =
+    default : a
+impl Default Int =
+    default = 0
+impl Default Float =
+    default = 0.0
+impl Default Bool =
+    default = False
+impl Default Char =
+    default = ' '
+impl Default String =
+    default = ""
+impl Default Unit =
+    default = ()
+impl Default [a] =
+    default = []
+
+impl Default Ordering =
+    default = Equal

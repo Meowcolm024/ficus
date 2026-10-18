@@ -1,0 +1,17 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Functor (..)
+use Class.Semigroup (..)
+
+trait Seq f =
+    seq : f (a -> b) -> (Unit -> f a) -> f b
+(<*>) : Seq f => f (a -> b) -> (Unit -> f a) -> f b
+(<*>) value next = seq value next
+impl Seq [] =
+    seq functions next = with functions
+        [] -> []
+        f :: fs -> { values = next (); append (map f values) (seq fs (_ -> values)) }
+seqLeft : (Functor f, Seq f) => f a -> (Unit -> f b) -> f a
+seqLeft value next = seq (map (a -> _ -> a) value) next
+seqRight : (Functor f, Seq f) => f a -> (Unit -> f b) -> f b
+seqRight value next = seq (map (_ -> b -> b) value) next

@@ -1,0 +1,14 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN STRING_APPEND stringAppend #-}
+stringAppend : String -> String -> String
+{-# BUILTIN STRING_EQ stringEq #-}
+stringEq : String -> String -> Bool
+{-# BUILTIN STRING_LT stringLt #-}
+stringLt : String -> String -> Bool
+{-# BUILTIN STRING_LENGTH stringLength #-}
+stringLength : String -> Int
+{-# BUILTIN STRING_TO_CHARS stringToChars #-}
+stringToChars : String -> [Char]
+{-# BUILTIN STRING_FROM_CHARS charsToString #-}
+charsToString : [Char] -> String

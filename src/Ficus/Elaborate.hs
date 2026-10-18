@@ -76,7 +76,8 @@ elaborateModule imports source = case validateAbstract source of
 mergeInterfaces :: [CheckedInterface] -> Declarations
 mergeInterfaces interfaces =
   Declarations
-    { declarationTypes =
+    { builtinTypeAssociations = Map.unions (map builtinTypeAssociations entries),
+      declarationTypes =
         TypeEnvironment
           { typeKinds = Map.unions (map (typeKinds . declarationTypes) entries),
             binderKinds = Map.empty,

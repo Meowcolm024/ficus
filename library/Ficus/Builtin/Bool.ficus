@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+-- Bool, True, and False are reserved compiler declarations.
+-- Boolean operations are ordinary source definitions in Data.Bool.

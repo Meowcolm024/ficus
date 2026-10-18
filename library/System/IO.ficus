@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.IO (print, println, readLine) pub
+use Ficus.Builtin.Handle (Handle) pub

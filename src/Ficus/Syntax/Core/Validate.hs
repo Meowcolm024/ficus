@@ -166,8 +166,7 @@ checkExpression tree environment scope expression =
               ++ same ty (typeOf body)
               ++ checkExpression tree environment extended body
       Primitive primitiveId arguments ->
-        let (expected, result) = primitiveSignature primitiveId
-         in concatMap check arguments ++ checkOperands location expected arguments ++ same ty result
+        concatMap check arguments ++ require location (matchesPrimitive primitiveId (map typeOf arguments) ty) "primitive arguments or result differ from its contract"
       Fail -> []
     checkMethod expected actual =
       let (scheme, body) = nodeValue actual

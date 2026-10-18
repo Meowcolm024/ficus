@@ -1,76 +1,8 @@
-{-# STANDALONE #-}
-use Data.Map as M
-use Data.Map (Map)
-use Foo
-use Foo (baz) pub
+-- The implicit Prelude supplies strings, lists, Maybe, Show, and basic IO.
+greeting : [String] -> String
+greeting args = "Hello, " ++ fromMaybe "World" (head args) ++ "!"
 
-{-# BUILTIN HANDLE Handle #-}
-Handle : Type
-
-type Tree a = 
-    Leaf a
-    Node (Tree a) (Tree a)
-
-{-# DERIVE #-}
-impl Eq a => Eq (Tree a) = {}
-
-{-# PRIVATE #-}
-depth : Tree a -> Int
-depth (Leaf _) = 1
-depth (Node left right) = 1 + max (depth left) (depth right)
-
-impl Functor Tree =
-    map f t = with t
-        Leaf x -> Leaf (f x)
-        Node left right -> Node (map f left) (map f right)
-
-impl Show a => Show (Tree a) =
-    show t = with t
-        Leaf x -> "Leaf " ++ show x
-        Node left right -> "Node (" ++ show left ++ ") (" ++ show right ++ ")"
-
-foldM : (Foldable t, Monad m) => (b -> a -> m b) -> b -> t a -> m b
-foldM f acc xs = with xs
-    [] -> pure acc
-    (x::xs) -> do { acc' <- f acc x; foldM f acc' xs }
-
-Parser : Type -> Type
-Parser a = String -> [a * String]
-
-{-# DEPRECATED double "Just don't use it" #-}
-double : Int -> _
-double x = x + x
-
-foo : _ -> _ _ Int
-foo x = (1, x)
-
-idid = ((x : Int) -> x) (x -> _)
-
-bar : Foo.Bar
-bar = Foo.Bar with { bar = "bar" }
-
-trait Bifunctor (f : Type -> Type -> Type) =
-    bimap : (a -> c) -> (b -> d) -> f a b -> f c d
-
-impl Bifunctor (*) =
-    bimap f g (x, y) = (f x, g y)
-
-{-# PRIVATE members #-}
-type Point =
-    x : Int
-    y : Int
-
-myPoint : Point
-myPoint = 
-    Point with
-        x = a + b 
-            where { a = 1; b = 2 }
-        y = 4
-
-originPoint p = with p
-    (Point x y) if x == 0 && y == 0 -> "Origin"
-    _ -> "Not Origin"
-
+main : [String] -> Unit
 main args =
-    world = "World"
-    println "Hello, {world}!"
+    println (greeting args)
+    println ("Arguments: " ++ debug args)

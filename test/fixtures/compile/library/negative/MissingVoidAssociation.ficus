@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN HANDLE Empty #-}
+Empty : Type
+{-# BUILTIN ABSURD bad #-}
+bad : Empty -> a

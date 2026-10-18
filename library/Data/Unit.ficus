@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+unit : Unit
+unit = ()

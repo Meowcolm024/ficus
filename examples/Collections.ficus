@@ -1,0 +1,18 @@
+-- Qualified imports can select a specialized data API alongside Prelude.
+use Data.List as List
+
+describe : [Int] -> String
+describe values =
+    positive = List.filter (value -> value > 0) values
+    doubled = map (value -> value * 2) positive
+    "First values: " ++ show (take 3 doubled)
+
+-- List operations return Maybe rather than failing on an empty list.
+lastOr : a -> [a] -> a
+lastOr fallback values = fromMaybe fallback (List.last values)
+
+main : [String] -> Unit
+main _ =
+    println (describe [-2, 1, 4, 7, 10])
+    println (show (lastOr 0 []))
+    println (show (zip [1, 2, 3] ['a', 'b']))

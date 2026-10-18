@@ -31,8 +31,9 @@ execute a program, require `main`, or write compiled artifacts.
 Diagnostics go to stderr; errors return a nonzero
 exit status, while warnings permit success.
 
-The package bundles the early-development placeholder [Prelude](library/Prelude.ficus),
-copied from the shared fixture. Optional discovery flags are:
+The package bundles the v0 standard-library [Prelude](library/Prelude.ficus),
+with source modules under `Class`, `Data`, `System`, and `Ficus.Builtin`.
+See [the examples](examples/README.md) for complete v0 programs. Optional discovery flags are:
 
 - `--library DIR`: use this standard-library source root instead of the bundled
   directory; repeat to search multiple roots.
@@ -44,7 +45,7 @@ copied from the shared fixture. Optional discovery flags are:
 
 These options are for early development and are **subject to change**. Source
 roots must identify modules unambiguously; their order does not pick a winner.
-The placeholder library's API and layout are also provisional.
+The library layout and selected Prelude API are documented in [PRELUDE.md](docs/PRELUDE.md).
 
 `format [FILE]` writes formatted source to stdout. Omit the file or use `-` to read
 stdin. Input files are never overwritten. Syntax errors go to stderr and return

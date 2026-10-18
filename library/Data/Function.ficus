@@ -1,0 +1,18 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+id : {a} -> a -> a
+id @a (value : a) = value
+const : {a} -> {b} -> a -> b -> a
+const @a @b (value : a) (_ : b) = value
+compose : (b -> c) -> (a -> b) -> a -> c
+compose f g x = f (g x)
+flip : (a -> b -> c) -> b -> a -> c
+flip f y x = f x y
+apply : (a -> b) -> a -> b
+apply f x = f x
+pipe : a -> (a -> b) -> b
+pipe x f = f x
+($) : (a -> b) -> a -> b
+($) f x = apply f x
+(|>) : a -> (a -> b) -> b
+(|>) x f = pipe x f

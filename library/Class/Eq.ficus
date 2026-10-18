@@ -1,0 +1,34 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.Int (..)
+use Ficus.Builtin.Float (..)
+use Ficus.Builtin.Char (..)
+use Ficus.Builtin.String (..)
+use Data.Bool ((&&), not)
+use Data.Ordering (Ordering(..))
+trait Eq a =
+    (==) : a -> a -> Bool
+(/=) : Eq a => a -> a -> Bool
+(/=) x y = not (x == y)
+impl Eq Int =
+    (==) x y = intEq x y
+impl Eq Float =
+    (==) x y = floatEq x y
+impl Eq Char =
+    (==) x y = charEq x y
+impl Eq String =
+    (==) x y = stringEq x y
+impl Eq Bool =
+    (==) x y = with (x, y) { (True, True) -> True; (False, False) -> True; _ -> False }
+impl Eq Unit =
+    (==) () () = True
+impl Eq a => Eq [a] =
+    (==) xs ys = with (xs, ys)
+        ([], []) -> True
+        (x :: rest, y :: more) -> (x == y) && (rest == more)
+        _ -> False
+impl (Eq a, Eq b) => Eq (a * b) =
+    (==) (a, b) (c, d) = (a == c) && (b == d)
+
+impl Eq Ordering =
+    (==) left right = with (left, right) { (Less, Less) -> True; (Equal, Equal) -> True; (Greater, Greater) -> True; _ -> False }

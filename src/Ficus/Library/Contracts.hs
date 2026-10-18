@@ -1,4 +1,4 @@
--- | Contracts for the early-development placeholder library. The resolver and
+-- | Contracts for the bundled v0 standard library. The resolver and
 -- sugar passes accept these independently; neither depends on this inventory.
 module Ficus.Library.Contracts (libraryResolveConfig, librarySugarRegistry) where
 
@@ -13,6 +13,6 @@ libraryResolveConfig :: ResolveConfig
 libraryResolveConfig = ResolveConfig Builtin.builtinKeys
 
 librarySugarRegistry :: SugarRegistry
-librarySugarRegistry = SugarRegistry (Map.fromList [(SugarKey "do.bind", global "bind"), (SugarKey "string.show", global "show"), (SugarKey "string.append", global "stringAppend")])
+librarySugarRegistry = SugarRegistry (Map.fromList [(SugarKey "do.bind", global ("Class" :| ["Bind"]) "bind"), (SugarKey "string.show", global ("Class" :| ["Show"]) "show"), (SugarKey "string.append", global ("Ficus" :| ["Builtin", "String"]) "stringAppend")])
   where
-    global = GlobalId (ModuleId ("Prelude" :| [])) ValueNS
+    global owner = GlobalId (ModuleId owner) ValueNS

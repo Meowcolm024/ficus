@@ -39,6 +39,30 @@ data PrimitiveId
   | StringAppend
   | StringEqual
   | StringLength
+  | IntToFloat
+  | FloatAdd
+  | FloatSubtract
+  | FloatMultiply
+  | FloatDivide
+  | FloatEqual
+  | FloatLess
+  | FloatShow
+  | FloatToInt
+  | CharEqual
+  | CharLess
+  | CharShow
+  | StringLess
+  | StringToChars
+  | CharsToString
+  | Print
+  | Println
+  | ReadLine
+  | Absurd GlobalId
+  | VecFromList GlobalId
+  | VecToList GlobalId
+  | VecLength GlobalId
+  | ByteFromInt GlobalId
+  | ByteToInt GlobalId
   | IntNegate
   | FloatNegate
   deriving (Eq, Ord, Show)

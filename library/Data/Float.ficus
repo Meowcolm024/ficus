@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.Float (floatAdd, floatSub, floatMul, floatDiv, floatEq, floatLt, floatShow, floatToInt) pub

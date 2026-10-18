@@ -3,7 +3,9 @@ module Ficus.CompileSpec (tests) where
 import Data.List (sort)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Text qualified as T
+import Ficus.Builtin.Registry qualified as Builtin
 import Ficus.Compile
 import Ficus.Elaborate (checkedCore)
 import Ficus.Error.Diagnostic qualified as D
@@ -12,10 +14,15 @@ import Ficus.Error.Resolve qualified as R
 import Ficus.Error.Type qualified as E
 import Ficus.Library.Contracts
 import Ficus.Resolve
+import Ficus.Syntax.Abstract qualified as A
+import Ficus.Syntax.Concrete qualified as Concrete
+import Ficus.Syntax.Concrete.Pretty (prettyModule)
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Name
+import Ficus.Syntax.Parser (parseModule)
 import Ficus.Util.Source
-import System.FilePath (takeFileName)
+import System.Directory (doesDirectoryExist, listDirectory)
+import System.FilePath (takeExtension, takeFileName, (</>))
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -29,7 +36,44 @@ tests :: TestTree
 tests =
   testGroup
     "compile driver"
-    [ testCase "placeholder Prelude resolves without a main declaration" $ do
+    [ testCase "every bundled library module and its clients produce validated Core" $ do
+        files <- libraryFiles "library"
+        let client = "test/fixtures/compile/library/Main.ficus"
+        result <- check ((baseOptions client) {inputFiles = client :| files, projectRoots = ["library", "test/fixtures/compile/library"]})
+        assertBool (show (compileDiagnostics result)) (compileSucceeded result)
+        let modules = Map.elems (Map.delete (ModuleId ("Main" :| [])) (frontendModules (compileFrontend result)))
+        mapM_ (\source -> assertBool "library dependencies must be explicit" (not (A.implicitPrelude source))) modules
+        Set.fromList (concatMap (Map.keys . A.builtinAssociations) modules) @?= Builtin.builtinKeys
+        mapM_ checkLibrarySource (Map.toList (compileSources result))
+        mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result))
+        case Map.lookup (ModuleId ("Prelude" :| [])) (frontendModules (compileFrontend result)) of
+          Nothing -> assertFailure "Prelude was not resolved"
+          Just prelude -> do
+            let exports = A.abstractExports prelude
+            fmap entityId (Map.lookup (ValueNS, "bind") exports) @?= Just (GlobalId (ModuleId ("Class" :| ["Bind"])) ValueNS "bind")
+            fmap entityId (Map.lookup (ValueNS, "show") exports) @?= Just (GlobalId (ModuleId ("Class" :| ["Show"])) ValueNS "show")
+            fmap entityId (Map.lookup (ValueNS, "stringAppend") exports) @?= Just (GlobalId (ModuleId ("Ficus" :| ["Builtin", "String"])) ValueNS "stringAppend")
+            mapM_ (\name -> assertBool "low-level types require explicit imports" (Map.notMember (TypeNS, name) exports)) ["Handle", "Vec", "Byte"]
+            mapM_ (\name -> assertBool "primitive helpers stay explicit" (Map.notMember (ValueNS, name) exports)) ["intAdd", "intEq", "floatAdd", "escape"],
+      testCase "all v0 examples compile against the bundled Prelude" $ do
+        files <- libraryFiles "examples"
+        case files of
+          [] -> assertFailure "no example programs"
+          first : rest -> do
+            result <- check ((baseOptions first) {inputFiles = first :| rest})
+            assertBool (show (compileDiagnostics result)) (compileSucceeded result)
+            mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
+      testCase "builtin contracts preserve renamed opaque type identities" $ do
+        result <- check (baseOptions "test/fixtures/compile/library/Renamed.ficus")
+        assertBool (show (compileDiagnostics result)) (compileSucceeded result)
+        mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
+      builtinFailure "WrongScalar" 3,
+      builtinFailure "WrongNominal" 5,
+      builtinFailure "SpecializedAbsurd" 5,
+      builtinFailure "WrongVector" 5,
+      builtinFailure "MissingVoidAssociation" 5,
+      builtinFailure "WrongPolymorphism" 5,
+      testCase "Prelude resolves without a main declaration" $ do
         result <- check (baseOptions "test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus")
         compileSucceeded result @?= True,
       testCase "implicit Prelude is found in the library root" $ do
@@ -40,8 +84,8 @@ tests =
         result <- check ((baseOptions "test/fixtures/semantics/name-resolution/support/Resolve/Left.ficus") {projectRoots = ["test/fixtures/semantics/name-resolution/support"]})
         compileSucceeded result @?= True
         assertBool "Resolve.Left identity" (Map.member (ModuleId ("Resolve" :| ["Left"])) (frontendModules (compileFrontend result))),
-      testCase "Prelude override works without a library search root" $ do
-        result <- check ((baseOptions "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus") {libraryRoots = [], preludeFile = Just "library/Prelude.ficus"})
+      testCase "Prelude override finds its explicit library dependencies" $ do
+        result <- check ((baseOptions "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus") {preludeFile = Just "library/Prelude.ficus"})
         compileSucceeded result @?= True,
       testCase "NO_IMPLICIT_PRELUDE does not require any library" $ do
         result <- check ((baseOptions "test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus") {libraryRoots = []})
@@ -126,3 +170,35 @@ tests =
         let matching = filter ((== E.TypeMismatch) . E.diagnosticCode) (compileTypeDiagnostics result)
         map (\d -> (line (start (E.diagnosticSpan d)), column (start (E.diagnosticSpan d)), column (end (E.diagnosticSpan d)))) matching @?= [(3, 7, 10)]
     ]
+
+libraryFiles :: FilePath -> IO [FilePath]
+libraryFiles directory = do
+  names <- listDirectory directory
+  nested <- mapM visit names
+  pure (concat nested)
+  where
+    visit name = do
+      let path = directory </> name
+      isDirectory <- doesDirectoryExist path
+      if isDirectory then libraryFiles path else pure [path | takeExtension path == ".ficus"]
+
+builtinFailure :: String -> Int -> TestTree
+builtinFailure name expectedLine = testCase ("reject builtin contract " ++ name) $ do
+  result <- check (baseOptions ("test/fixtures/compile/library/negative" </> name ++ ".ficus"))
+  compileSucceeded result @?= False
+  let matching = filter ((== E.BuiltinContractMismatch) . E.diagnosticCode) (compileTypeDiagnostics result)
+  assertBool (show (compileDiagnostics result)) (not (null matching))
+  -- The primary location is the ordinary builtin target name, `bad`.
+  map (\diagnostic -> let origin = E.diagnosticSpan diagnostic in (line (start origin), column (start origin), line (end origin), column (end origin))) matching @?= replicate (length matching) (expectedLine, 1, expectedLine, 3)
+
+checkLibrarySource :: (FilePath, T.Text) -> Assertion
+checkLibrarySource (path, source) = case parseModule path source of
+  Left diagnostic -> assertFailure (show diagnostic)
+  Right original -> do
+    if "/library/Ficus/Builtin/" `T.isInfixOf` T.pack path
+      then Concrete.moduleImports original @?= []
+      else pure ()
+    let formatted = prettyModule original
+    case parseModule path formatted of
+      Left diagnostic -> assertFailure (show diagnostic)
+      Right reparsed -> prettyModule reparsed @?= formatted

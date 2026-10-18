@@ -1,0 +1,8 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Functor (..)
+use Class.Pure (..)
+use Class.Seq (..)
+
+trait (Functor f, Pure f, Seq f) => Applicative f = {}
+impl Applicative [] = {}

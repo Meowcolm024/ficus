@@ -94,7 +94,7 @@ a well-scoped but incompatible annotation is a T error.
 | N0111 | UnknownBuiltin | BUILTIN key, not the target name |
 | N0112 | ConflictingBuiltinAssociation | Later association; earlier association and target declarations |
 | N0120 | PreludeRequired | do keyword or interpolated literal; disabling pragma |
-| N0121 | MissingSugarBinding | Sugar origin; missing/inconsistent compiler-library registry entry (including Prelude.stringAppend) |
+| N0121 | MissingSugarBinding | Sugar origin; missing/inconsistent compiler-library registry entry (including Ficus.Builtin.String.stringAppend re-exported by Prelude) |
 | N0201 | ModuleNotFound | Explicit module path or implicit Prelude header anchor; provider search summary |
 | N0202 | InvalidModuleIdentity | File/module anchor; configured source root and offending path component |
 | N0203 | ImportCycle | Closing import edge; ordered cycle-edge spans |

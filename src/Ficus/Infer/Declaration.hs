@@ -6,6 +6,7 @@ import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Data.Text (Text)
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Kind qualified as K
 import Ficus.Infer.Monad
@@ -35,7 +36,8 @@ data ImplementationDeclaration = ImplementationDeclaration
   deriving (Eq, Show)
 
 data Declarations = Declarations
-  { declarationTypes :: TypeEnvironment,
+  { builtinTypeAssociations :: Map Text GlobalId,
+    declarationTypes :: TypeEnvironment,
     valueSignatures :: Map Reference Signature,
     constructorDeclarations :: Map C.ConstructorId (C.Node (C.ConstructorDescriptor InferType)),
     recordDeclarations :: Map GlobalId (C.Node (C.RecordDescriptor InferType)),
@@ -45,7 +47,7 @@ data Declarations = Declarations
   deriving (Eq, Show)
 
 emptyDeclarations :: Declarations
-emptyDeclarations = Declarations emptyTypes Map.empty Map.empty Map.empty Map.empty Map.empty
+emptyDeclarations = Declarations Map.empty emptyTypes Map.empty Map.empty Map.empty Map.empty Map.empty
 
 prepareDeclarations :: Declarations -> A.AbstractModule -> Infer Declarations
 prepareDeclarations imported tree = do
@@ -75,6 +77,7 @@ prepareDeclarations imported tree = do
           pure environment {aliases = Map.insert ident (Alias quantified ty (A.nodeSpan source)) (aliases environment)}
         _ -> pure environment
     prepare environment source = case A.nodeValue source of
+      A.OpaqueBuiltinType ident key _ -> pure environment {builtinTypeAssociations = Map.insert key ident (builtinTypeAssociations environment)}
       A.ValueDefinition reference annotation _ -> case annotation of
         Nothing -> pure environment
         Just signature -> do

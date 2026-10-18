@@ -1,0 +1,6 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+trait Functor f =
+    map : (a -> b) -> f a -> f b
+impl Functor [] =
+    map f values = with values { [] -> []; x :: xs -> f x :: map f xs }

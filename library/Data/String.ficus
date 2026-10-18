@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.String (stringAppend, stringEq, stringLt, stringLength, stringToChars, charsToString) pub
+(++) : String -> String -> String
+(++) left right = stringAppend left right

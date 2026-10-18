@@ -1,0 +1,31 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Functor (Functor, map) pub
+use Class.Foldable (Foldable, foldr) pub
+use Class.Semigroup (Semigroup, append) pub
+use Class.Add ((+))
+use Class.Sub ((-))
+use Class.Ord ((<=))
+use Data.Maybe (Maybe(..))
+filter : (a -> Bool) -> [a] -> [a]
+filter f values = with values { [] -> []; x :: xs -> if { f x -> x :: filter f xs; _ -> filter f xs } }
+foldl : (b -> a -> b) -> b -> [a] -> b
+foldl f initial values = with values { [] -> initial; x :: xs -> foldl f (f initial x) xs }
+length : [a] -> Int
+length values = foldl (n -> _ -> n + 1) 0 values
+reverse : [a] -> [a]
+reverse values = foldl (rest -> item -> item :: rest) [] values
+concat : [[a]] -> [a]
+concat values = foldr append [] values
+head : [a] -> Maybe a
+head values = with values { [] -> Nothing; x :: _ -> Just x }
+tail : [a] -> Maybe [a]
+tail values = with values { [] -> Nothing; _ :: xs -> Just xs }
+last : [a] -> Maybe a
+last values = with values { [] -> Nothing; x :: xs -> with xs { [] -> Just x; _ :: _ -> last xs } }
+take : Int -> [a] -> [a]
+take n values = if { n <= 0 -> []; _ -> with values { [] -> []; x :: xs -> x :: take (n - 1) xs } }
+drop : Int -> [a] -> [a]
+drop n values = if { n <= 0 -> values; _ -> with values { [] -> []; _ :: xs -> drop (n - 1) xs } }
+zip : [a] -> [b] -> [a * b]
+zip xs ys = with (xs, ys) { (x :: rest, y :: more) -> (x, y) :: zip rest more; _ -> [] }

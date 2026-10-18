@@ -1,0 +1,56 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Eq (..)
+use Class.Ord (..)
+use Class.Show (..)
+use Class.Debug (..)
+use Class.Default (..)
+use Class.Functor (..)
+use Class.Pure (..)
+use Class.Seq (..)
+use Class.Bind (..)
+use Class.Applicative (..)
+use Class.Monad (..)
+use Class.Alternative (..)
+use Class.Foldable (..)
+use Class.Traversable (..)
+use Data.Bool (not, (&&))
+use Data.Ordering (Ordering(..))
+use Ficus.Builtin.String (stringAppend)
+
+type Maybe a = { Nothing; Just a }
+maybe : b -> (a -> b) -> Maybe a -> b
+maybe fallback f value = with value { Nothing -> fallback; Just item -> f item }
+fromMaybe : a -> Maybe a -> a
+fromMaybe fallback value = maybe fallback (x -> x) value
+isJust : Maybe a -> Bool
+isJust value = with value { Nothing -> False; Just _ -> True }
+isNothing : Maybe a -> Bool
+isNothing value = not (isJust value)
+impl Eq a => Eq (Maybe a) =
+    (==) x y = with (x, y) { (Nothing, Nothing) -> True; (Just a, Just b) -> a == b; _ -> False }
+impl Ord a => Ord (Maybe a) =
+    compare x y = with (x, y) { (Nothing, Nothing) -> Equal; (Nothing, Just _) -> Less; (Just _, Nothing) -> Greater; (Just a, Just b) -> compare a b }
+impl Show a => Show (Maybe a) =
+    show value = with value { Nothing -> "Nothing"; Just item -> stringAppend "Just (" (stringAppend (show item) ")") }
+impl Debug a => Debug (Maybe a) =
+    debug value = with value { Nothing -> "Nothing"; Just item -> stringAppend "Just (" (stringAppend (debug item) ")") }
+impl Default (Maybe a) =
+    default = Nothing
+impl Functor Maybe =
+    map f value = with value { Nothing -> Nothing; Just item -> Just (f item) }
+impl Pure Maybe =
+    pure value = Just value
+impl Seq Maybe =
+    seq value next = with value { Nothing -> Nothing; Just f -> map f (next ()) }
+impl Bind Maybe =
+    bind value next = with value { Nothing -> Nothing; Just item -> next item }
+impl Applicative Maybe = {}
+impl Monad Maybe = {}
+impl Alternative Maybe =
+    failure = Nothing
+    orElse value next = with value { Nothing -> next (); Just _ -> value }
+impl Foldable Maybe =
+    foldr f initial value = with value { Nothing -> initial; Just item -> f item initial }
+impl Traversable Maybe =
+    traverse f value = with value { Nothing -> pure Nothing; Just item -> map (x -> Just x) (f item) }

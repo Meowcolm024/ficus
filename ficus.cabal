@@ -21,6 +21,14 @@ extra-source-files:
     docs/SPEC.md
     docs/ERRORS.md
     test/fixtures/compile/invalid/main.ficus
+    test/fixtures/compile/library/Main.ficus
+    test/fixtures/compile/library/negative/MissingVoidAssociation.ficus
+    test/fixtures/compile/library/negative/SpecializedAbsurd.ficus
+    test/fixtures/compile/library/negative/WrongNominal.ficus
+    test/fixtures/compile/library/negative/WrongPolymorphism.ficus
+    test/fixtures/compile/library/negative/WrongScalar.ficus
+    test/fixtures/compile/library/negative/WrongVector.ficus
+    test/fixtures/compile/library/Renamed.ficus
     test/fixtures/compile/typing/Bridge.ficus
     test/fixtures/compile/typing/Definitions.ficus
     test/fixtures/compile/typing/Dependent.ficus
@@ -415,7 +423,57 @@ extra-source-files:
     test/fixtures/support/README.md
     test/fixtures/type-application/README.md
 data-files:
+    library/Class/Add.ficus
+    library/Class/Alternative.ficus
+    library/Class/Applicative.ficus
+    library/Class/Bifunctor.ficus
+    library/Class/Bind.ficus
+    library/Class/Debug.ficus
+    library/Class/Default.ficus
+    library/Class/Div.ficus
+    library/Class/Eq.ficus
+    library/Class/Foldable.ficus
+    library/Class/Functor.ficus
+    library/Class/Monad.ficus
+    library/Class/Monoid.ficus
+    library/Class/Mul.ficus
+    library/Class/Ord.ficus
+    library/Class/Pure.ficus
+    library/Class/Rem.ficus
+    library/Class/Semigroup.ficus
+    library/Class/Seq.ficus
+    library/Class/Show.ficus
+    library/Class/Sub.ficus
+    library/Class/Traversable.ficus
+    library/Data/Bool.ficus
+    library/Data/Byte.ficus
+    library/Data/Char.ficus
+    library/Data/Const.ficus
+    library/Data/Float.ficus
+    library/Data/Function.ficus
+    library/Data/Int.ficus
+    library/Data/List.ficus
+    library/Data/Maybe.ficus
+    library/Data/Ordering.ficus
+    library/Data/Product.ficus
+    library/Data/Result.ficus
+    library/Data/String.ficus
+    library/Data/Unit.ficus
+    library/Data/Vec.ficus
+    library/Data/Void.ficus
+    library/Ficus/Builtin/Bool.ficus
+    library/Ficus/Builtin/Byte.ficus
+    library/Ficus/Builtin/Char.ficus
+    library/Ficus/Builtin/Float.ficus
+    library/Ficus/Builtin/Handle.ficus
+    library/Ficus/Builtin/Int.ficus
+    library/Ficus/Builtin/IO.ficus
+    library/Ficus/Builtin/String.ficus
+    library/Ficus/Builtin/Unit.ficus
+    library/Ficus/Builtin/Vec.ficus
+    library/Ficus/Builtin/Void.ficus
     library/Prelude.ficus
+    library/System/IO.ficus
     library/README.md
 
 source-repository head

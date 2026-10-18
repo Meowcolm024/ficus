@@ -1,0 +1,15 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN VOID Empty #-}
+Empty : Type
+{-# BUILTIN ABSURD eliminate #-}
+eliminate : Empty -> a
+{-# BUILTIN VEC Vector #-}
+Vector : Type -> Type
+{-# BUILTIN VEC_FROM_LIST pack #-}
+pack : [a] -> Vector a
+{-# BUILTIN VEC_TO_LIST unpack #-}
+unpack : Vector a -> [a]
+{-# BUILTIN BYTE Octet #-}
+Octet : Type
+{-# BUILTIN BYTE_FROM_INT octet #-}
+octet : Int -> Octet

@@ -1,0 +1,13 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Applicative (..)
+use Class.Semigroup (..)
+
+trait Applicative f => Alternative f =
+    failure : f a
+    orElse : f a -> (Unit -> f a) -> f a
+(<|>) : Alternative f => f a -> (Unit -> f a) -> f a
+(<|>) value next = orElse value next
+impl Alternative [] =
+    failure = []
+    orElse left next = append left (next ())

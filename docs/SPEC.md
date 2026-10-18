@@ -957,7 +957,7 @@ In v0, `{name}` embeds one variable, and `{Module.name}` embeds one qualified va
 
 Interpolation denotes left-associated concatenation of literal segments and `show` calls. Segments and variable uses evaluate left-to-right. Each embedded variable adds its required `Show` constraint. `Show String` is the identity, so interpolating a `String` does not add quotation marks. A string without interpolation is a plain `String`.
 
-The `Show` method and concatenation operation come from the Prelude. Concatenation uses the canonical `Prelude.stringAppend` value, whose ordinary signature is `String -> String -> String` and whose compiler association is `STRING_APPEND`. Aliases, re-exports, local shadowing, and source spelling do not change the identity used by desugaring. In a `NO_IMPLICIT_PRELUDE` module, an interpolated string is a static error; ordinary string literals remain available.
+The `Show` method and concatenation operation come from the Prelude. Concatenation uses the canonical `Ficus.Builtin.String.stringAppend` value, selectively re-exported by `Prelude`, whose ordinary signature is `String -> String -> String` and whose compiler association is `STRING_APPEND`. Aliases, re-exports, local shadowing, and source spelling do not change the identity used by desugaring. In a `NO_IMPLICIT_PRELUDE` module, an interpolated string is a static error; ordinary string literals remain available.
 
 ## 19. Builtin declarations
 
@@ -971,9 +971,61 @@ intAdd : Int -> Int -> Int
 
 `BUILTIN key name` associates a compiler implementation with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source definition are static errors. Placement and argument checks are semantic, not special parser productions.
 
-`HANDLE` supplies an opaque type of kind `Type`, conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
+`HANDLE`, `VOID`, and `BYTE` supply opaque types of kind `Type`; `VEC` supplies an opaque type of kind `Type -> Type`. Their conventional names are `Handle`, `Void`, `Byte`, and `Vec`. For example, `HANDLE` supplies an opaque type conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
 
 A builtin-supplied type is an opaque nominal constructor with no source constructor; a value is a primitive of its declared type. Keys are metadata, not names in language scope. Targets obey ordinary namespaces, mutual top-level visibility, duplicate-declaration, import/export, and ownership rules. Their identity is their defining module and declared name, not their key. Symbolic targets use their ordinary parenthesized identifier syntax.
+
+The v0 compiler registry additionally includes these value contracts. `Vec`,
+`Byte`, and `Void` below refer to the ordinarily declared types associated with
+`VEC`, `BYTE`, and `VOID`, including when those declarations are renamed or
+imported. Contracts require the complete polymorphic signature, up to bound
+variable renaming; a specialization or additional trait predicate is invalid.
+
+| Keys | Signature |
+| --- | --- |
+| `INT_ADD`, `INT_SUB`, `INT_MUL`, `INT_DIV`, `INT_REM` | `Int -> Int -> Int` |
+| `INT_EQ`, `INT_LT` | `Int -> Int -> Bool` |
+| `INT_SHOW` | `Int -> String` |
+| `INT_TO_FLOAT` | `Int -> Float` |
+| `FLOAT_ADD`, `FLOAT_SUB`, `FLOAT_MUL`, `FLOAT_DIV` | `Float -> Float -> Float` |
+| `FLOAT_EQ`, `FLOAT_LT` | `Float -> Float -> Bool` |
+| `FLOAT_SHOW` | `Float -> String` |
+| `FLOAT_TO_INT` | `Float -> Int` |
+| `CHAR_EQ`, `CHAR_LT` | `Char -> Char -> Bool` |
+| `CHAR_SHOW` | `Char -> String` |
+| `STRING_APPEND` | `String -> String -> String` |
+| `STRING_EQ`, `STRING_LT` | `String -> String -> Bool` |
+| `STRING_LENGTH` | `String -> Int` |
+| `STRING_TO_CHARS` | `String -> [Char]` |
+| `STRING_FROM_CHARS` | `[Char] -> String` |
+| `ABSURD` | `Void -> a` |
+| `VEC_FROM_LIST` | `[a] -> Vec a` |
+| `VEC_TO_LIST` | `Vec a -> [a]` |
+| `VEC_LENGTH` | `Vec a -> Int` |
+| `BYTE_FROM_INT` | `Int -> Byte` |
+| `BYTE_TO_INT` | `Byte -> Int` |
+| `PRINT`, `PRINTLN` | `String -> Unit` |
+| `READ_LINE` | `Unit -> String` |
+
+Integer division truncates toward zero; remainder has the dividend's sign.
+Division or remainder by zero is a primitive failure. The minimum signed integer
+divided by `-1` wraps to the minimum signed integer, with remainder zero.
+Floating arithmetic and comparisons follow IEEE 754 binary64 (including NaN).
+`INT_TO_FLOAT` rounds to nearest, ties to even; `FLOAT_TO_INT` truncates toward
+zero and fails for non-finite or out-of-range results. `INT_SHOW` renders signed
+decimal; `FLOAT_SHOW` renders a shortest round-tripping decimal for finite values
+and `NaN`, `Infinity`, or `-Infinity` otherwise. `CHAR_SHOW` returns a singleton
+string, without quotes. Character ordering uses Unicode code points; string
+ordering is lexicographic by code point. String length counts code points, and
+the list/string conversions preserve them in order.
+
+`BYTE_FROM_INT` reduces modulo 256; `BYTE_TO_INT` returns a value in 0–255.
+Vectors are immutable sequences; list/vector conversions preserve order and
+`VEC_LENGTH` counts elements. `VOID` has no values and `ABSURD` eliminates it.
+`PRINT` writes without a newline; `PRINTLN` appends a newline. `READ_LINE` reads
+one line without its line terminator, returning the empty string at EOF. IO
+failures are primitive failures. `HANDLE` has no constructors or operations in
+this initial interface.
 
 `BUILTIN` does not affect implicit Prelude. Only `NO_IMPLICIT_PRELUDE` disables it. There is no compiler-provided `magic` identifier or module-level `MAGIC` pragma; `magic` remains an ordinary identifier.
 
@@ -981,7 +1033,39 @@ A builtin-supplied type is an opaque nominal constructor with no source construc
 
 The Prelude is a library, not core semantics. It should provide arithmetic traits, `Eq`, `Ord`, `Show`, `Bind`, list and string operations, IO helpers, `Void`, `absurd : Void -> a`, and common combinators, backed where necessary by imports from builtin-backed modules.
 
-The proposed v0 standard library contains builtin-backed modules for the six primitive types plus `Handle`, `Vec`, and `Byte`; `Class` modules for `Debug`, `Show`, `Eq`, `Ord`, `Pure`, `Seq`, `Bind`, `Functor`, `Applicative`, `Monad`, `Alternative`, `Semigroup`, `Monoid`, `Default`, `Bifunctor`, `Foldable`, and `Traversable`; `System.IO`; and `Data` modules for lists, functions, products, `Ordering` (required by `Ord.compare`), `Maybe`, `Result`/`Either`, `Const`, the primitive types, `Vec`, and `Byte`. `Applicative` bundles `Functor`, `Pure`, and `Seq`; `Monad` bundles `Applicative` and `Bind`. `Seq` takes a thunked second operand; `Alternative` extends `Applicative` with `failure : f a` and `orElse : f a -> (Unit -> f a) -> f a`. Other unfinished library contracts remain open; this inventory does not freeze Prelude exports or remove existing numeric and `Void` contracts. `Data.Map` is outside Prelude. No `Control` modules, exceptions, or concurrency are planned for v0. See [PRELUDE.md](PRELUDE.md#proposed-v0-scope) for the scope and remaining choices.
+The bundled v0 library uses `Ficus.Builtin.*` for compiler-key bindings,
+`Class.*` for traits, `Data.*` for ordinary data APIs, and `System.IO` for IO.
+Builtin modules never import the data layer. Every library module explicitly
+disables implicit Prelude and imports its dependencies; Prelude selectively
+re-exports the reviewed API in [PRELUDE.md](PRELUDE.md#1-organization).
+`Handle`, `Vec`, and `Byte` require explicit imports. `Result e a` uses `Err` and
+`Ok`; `Ordering` uses `Less`, `Equal`, and `Greater`. `Void` and `absurd` are
+builtin-backed library definitions re-exported by Prelude.
+
+Control traits are fine-grained: `Applicative` bundles `Functor`, `Pure`, and
+`Seq`; `Monad` bundles `Applicative` and `Bind`. `Seq` takes an explicit thunk as
+its second argument. `Alternative` extends `Applicative` with `failure` and
+thunked `orElse`. `Maybe` and `Result e` skip the argument thunk when the function
+is absent or erroneous. List application is Cartesian, in function-major order;
+it skips the thunk for an empty function list, otherwise invokes it exactly once
+and reuses that resulting list. List choice appends both lists and invokes its
+right thunk exactly once. `Maybe` choice invokes the right thunk only for
+`Nothing`; there is no `Alternative (Result e)` instance. List and `Maybe`/`Result`
+traversal evaluates left-to-right; a missing/error result skips later thunks.
+`and`, `or`, `(&&)`, and `(||)` remain ordinary strict binary functions. Use `if`
+for boolean short-circuiting. List `head`, `tail`, and `last` return `Maybe`.
+`take` and `drop` treat non-positive counts as zero; `zip` stops at the shorter
+list. No `Control` modules, exceptions, concurrency, or `Data.Map` ship in v0.
+
+`Debug.debug : a -> String` is separate from `Show.show`; its scalar instances
+quote characters and strings and escape backslash, quotes, newline, carriage
+return, and tab. Structural instances retain constructor/container structure.
+`Default.default : a` supplies zero for numbers, false for booleans, space for
+characters, and the empty string/list, unit, or `Nothing`; a successful `Result`
+uses its value type's default. `Ord Float` places NaNs after all non-NaNs and
+compares NaNs as `Equal`; IEEE equality still makes NaNs unequal. Positive and
+negative zero compare as `Equal`. These library contracts do not add reserved
+names or alter the language's ownership and scope rules.
 
 The Prelude is imported implicitly unless the module has `NO_IMPLICIT_PRELUDE`. The six reserved primitive types remain in scope either way.
 
@@ -1244,11 +1328,14 @@ v1+ extends string interpolation to expressions inside `{...}`. Its precise deli
 
 #### Expanded libraries
 
-The proposed standard-library layout uses `Ficus.Builtin.*` for builtin-backed primitive and library declarations, `Class.*` for basic traits, `System.*` for IO/environment operations, `Data.*` for collections and function utilities, and `Control.*` for facilities such as exceptions. `Prelude` selectively re-exports definitions from these modules. Examples include `Ficus.Builtin.Int`, `Ficus.Builtin.Handle`, `Class.Show`, `Class.Bind`, `System.IO`, `System.Environment`, `Data.List`, `Data.Map`, `Data.Function`, and `Control.Exception`. These names and availability by version remain proposed; `System.IO` does not imply an `IO` type.
-
-The proposed bootstrap policy gives every standard-library module, including `Prelude`, `NO_IMPLICIT_PRELUDE` and explicit imports. Application modules keep the ordinary implicit import unless they opt out. This is a library source convention, not automatic behavior based on module names or `BUILTIN`; the existing restrictions on Prelude-dependent sugar still apply.
-
-The exact Prelude re-export list remains to be frozen; the proposed organization does not add implicit exports or alter primitive availability, declaration identity, instance ownership, or scope rules. v1+ also plans JSON and regular-expression support. APIs and individual exports remain open; the fine-grained control-trait design is retained. The library sketch is in [PRELUDE.md](PRELUDE.md#1-organization).
+The v0 standard-library layout and selective Prelude API are described in
+Section 20 and [PRELUDE.md](PRELUDE.md#1-organization). Future releases extend
+that layout with modules such as `System.Environment`, `Data.Map`, and
+`Control.Exception`; these modules are unavailable in v0. `System.IO` remains an
+operations module and does not imply an `IO` type. All library modules continue
+to use `NO_IMPLICIT_PRELUDE` and explicit dependencies. Future additions do not
+silently expand Prelude or change declaration identity and instance ownership.
+JSON and regular-expression support are planned; their APIs remain open.
 
 ### 24.6 Existential type abstraction (proposal)
 

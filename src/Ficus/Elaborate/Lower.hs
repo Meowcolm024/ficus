@@ -12,7 +12,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
-import Ficus.Builtin.Registry (primitiveFromKey)
+import Ficus.Builtin.Registry (primitiveFromKey, specializePrimitive)
 import Ficus.Elaborate.Schedule
 import Ficus.Elaborate.Types
 import Ficus.Error.Type qualified as E
@@ -500,7 +500,7 @@ abstractEvidence source binders body = foldM (\inner binder -> makeExpression so
 
 valueBody :: Context -> A.Declaration -> InferType -> Lower (C.Expr InferType)
 valueBody context source ty = case A.nodeValue source of
-  A.ValueDefinition _ _ (A.BuiltinBody key) -> case primitiveFromKey key of
+  A.ValueDefinition _ _ (A.BuiltinBody key) -> case primitiveFromKey key >>= specializePrimitive (builtinTypeAssociations (declarations context)) of
     Nothing -> failure source "builtin has no lowering contract"
     Just builtin -> etaExpand source (length (fst (primitiveSignature builtin))) ty (\arguments result -> makeExpression source result (C.Primitive builtin arguments))
   A.ValueDefinition _ _ (A.ClausesBody _ clauses) -> do

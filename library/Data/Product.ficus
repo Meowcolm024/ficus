@@ -1,0 +1,12 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+fst : (a * b) -> a
+fst (left, _) = left
+snd : (a * b) -> b
+snd (_, right) = right
+curry : ((a * b) -> c) -> a -> b -> c
+curry f left right = f (left, right)
+uncurry : (a -> b -> c) -> (a * b) -> c
+uncurry f (left, right) = f left right
+swap : (a * b) -> (b * a)
+swap (left, right) = (right, left)

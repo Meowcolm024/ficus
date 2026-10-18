@@ -12,7 +12,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Ficus.Builtin.Registry (primitiveFromKey)
+import Ficus.Builtin.Registry (primitiveFromKey, specializePrimitive)
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Coverage
 import Ficus.Infer.Declaration
@@ -25,7 +25,7 @@ import Ficus.Infer.Syntax
 import Ficus.Infer.Type
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Core qualified as C
-import Ficus.Syntax.Core.Intrinsic (constructorSignature, literalType, primitiveSignature)
+import Ficus.Syntax.Core.Intrinsic (constructorSignature, literalType, primitiveScheme)
 import Ficus.Syntax.Name hiding (TypeKind)
 import Ficus.Type
 import Ficus.Type.Substitution qualified as S
@@ -481,14 +481,26 @@ bindingGroup topLevel context group = case schedule group of
 
 valueBody :: Context -> A.Declaration -> InferType -> [InferType] -> Infer Judgement
 valueBody context source expected explicit = case A.nodeValue source of
-  A.ValueDefinition _ annotation (A.BuiltinBody key) -> do
+  A.ValueDefinition reference annotation (A.BuiltinBody key) -> do
     when (maybe True (\scheme -> let (_, _, body) = A.nodeValue scheme in hasHoles body) annotation) (emit (E.diagnostic E.MissingBuiltinSignature (A.nodeSpan source) "builtin values require a complete signature"))
-    case primitiveFromKey key of
+    case primitiveFromKey key >>= specializePrimitive (builtinTypeAssociations (contextDeclarations context)) of
       Nothing -> emit (E.diagnostic E.BuiltinContractMismatch (A.nodeSpan source) "builtin key has no value contract")
       Just builtin -> do
-        let (inputs, output) = primitiveSignature builtin
+        let contract = primitiveScheme builtin
             convert = fmap (\case C.BoundVariable q -> Bound q; C.DiagnosticVariable (C.DiagnosticMetaId n) -> Meta (MetaId n))
-        void (equateWith E.BuiltinContractMismatch (A.nodeSpan source) (convert (foldr function output inputs)) expected)
+        let converted = fmap convert contract
+        forM_ (Map.lookup reference (valueSignatures (contextDeclarations context))) $ \signature -> do
+          let declared = signatureScheme signature
+              expectedQuantifiers = quantifiers converted
+              actualQuantifiers = quantifiers declared
+              mapping = S.fromBindings [(Bound (quantifierId a), Variable (Bound (quantifierId b)) (quantifierKind b)) | (a, b) <- zip expectedQuantifiers actualQuantifiers]
+              compatible =
+                map quantifierKind expectedQuantifiers == map quantifierKind actualQuantifiers
+                  && null (schemePredicates declared)
+                  && S.apply mapping (schemeType converted) == schemeType declared
+          unless compatible (emit (E.diagnostic E.BuiltinContractMismatch (A.nodeSpan source) "builtin signature must match the complete polymorphic contract"))
+        (contractType, _, _) <- instantiate (A.nodeSpan source) converted
+        void (equateWith E.BuiltinContractMismatch (A.nodeSpan source) contractType expected)
     pure (Judgement expected [])
   A.ValueDefinition _ _ (A.ClausesBody arity clauses) -> do
     parameterTypes <- mapM (const (fresh (A.nodeSpan source) TypeKind)) [1 .. arity]

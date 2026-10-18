@@ -1,0 +1,6 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+trait Pure f =
+    pure : a -> f a
+impl Pure [] =
+    pure value = [value]

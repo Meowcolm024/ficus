@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN FLOAT_ADD bad #-}
+bad : Int -> Int -> Int

@@ -1,0 +1,10 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN VEC Vec #-}
+Vec : Type -> Type
+{-# BUILTIN VEC_FROM_LIST listToVec #-}
+listToVec : [a] -> Vec a
+{-# BUILTIN VEC_TO_LIST vecToList #-}
+vecToList : Vec a -> [a]
+{-# BUILTIN VEC_LENGTH vecLength #-}
+vecLength : Vec a -> Int

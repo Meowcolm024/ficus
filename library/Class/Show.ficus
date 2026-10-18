@@ -1,0 +1,32 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.Int (..)
+use Ficus.Builtin.Float (..)
+use Ficus.Builtin.Char (..)
+use Ficus.Builtin.String (..)
+use Data.Ordering (Ordering(..))
+trait Show a =
+    show : a -> String
+impl Show Int =
+    show value = intShow value
+impl Show Float =
+    show value = floatShow value
+impl Show Char =
+    show value = charShow value
+impl Show String =
+    show value = value
+impl Show Bool =
+    show value = with value { True -> "True"; False -> "False" }
+impl Show Unit =
+    show () = "()"
+impl Show a => Show [a] =
+    show values = stringAppend "[" (items values)
+        where
+            items xs = with xs
+                [] -> "]"
+                x :: rest -> stringAppend (show x) (with rest { [] -> "]"; _ :: _ -> stringAppend ", " (items rest) })
+impl (Show a, Show b) => Show (a * b) =
+    show (left, right) = stringAppend "(" (stringAppend (show left) (stringAppend ", " (stringAppend (show right) ")")))
+
+impl Show Ordering =
+    show value = with value { Less -> "Less"; Equal -> "Equal"; Greater -> "Greater" }

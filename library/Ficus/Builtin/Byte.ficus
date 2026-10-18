@@ -1,0 +1,8 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN BYTE Byte #-}
+Byte : Type
+{-# BUILTIN BYTE_FROM_INT intToByte #-}
+intToByte : Int -> Byte
+{-# BUILTIN BYTE_TO_INT byteToInt #-}
+byteToInt : Byte -> Int

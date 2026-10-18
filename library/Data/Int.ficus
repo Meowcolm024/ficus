@@ -1,0 +1,6 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.Int (intAdd, intSub, intMul, intDiv, intRem, intEq, intLt, intShow, intToFloat) pub
+
+negate : Int -> Int
+negate value = -value

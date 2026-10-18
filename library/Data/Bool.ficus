@@ -1,0 +1,12 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+not : Bool -> Bool
+not value = with value { True -> False; False -> True }
+(&&) : Bool -> Bool -> Bool
+(&&) left right = with left { True -> right; False -> False }
+(||) : Bool -> Bool -> Bool
+(||) left right = with left { True -> True; False -> right }
+and : Bool -> Bool -> Bool
+and left right = left && right
+or : Bool -> Bool -> Bool
+or left right = left || right

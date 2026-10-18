@@ -1,0 +1,8 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN PRINT print #-}
+print : String -> Unit
+{-# BUILTIN PRINTLN println #-}
+println : String -> Unit
+{-# BUILTIN READ_LINE readLine #-}
+readLine : Unit -> String

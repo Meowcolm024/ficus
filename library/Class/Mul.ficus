@@ -1,0 +1,12 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.Int as I
+use Ficus.Builtin.Float as F
+
+trait Mul a =
+    (*) : a -> a -> a
+
+impl Mul Int =
+    (*) x y = I.intMul x y
+impl Mul Float =
+    (*) x y = F.floatMul x y

@@ -1,0 +1,18 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN FLOAT_ADD floatAdd #-}
+floatAdd : Float -> Float -> Float
+{-# BUILTIN FLOAT_SUB floatSub #-}
+floatSub : Float -> Float -> Float
+{-# BUILTIN FLOAT_MUL floatMul #-}
+floatMul : Float -> Float -> Float
+{-# BUILTIN FLOAT_DIV floatDiv #-}
+floatDiv : Float -> Float -> Float
+{-# BUILTIN FLOAT_EQ floatEq #-}
+floatEq : Float -> Float -> Bool
+{-# BUILTIN FLOAT_LT floatLt #-}
+floatLt : Float -> Float -> Bool
+{-# BUILTIN FLOAT_SHOW floatShow #-}
+floatShow : Float -> String
+{-# BUILTIN FLOAT_TO_INT floatToInt #-}
+floatToInt : Float -> Int

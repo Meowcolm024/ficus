@@ -472,6 +472,9 @@ Elaboration must preserve the specification's evaluation order. The Core AST val
 
 ## 4. Runtime AST
 
+The proposed module layout, AST, lowering steps, evaluator, and delivery sequence
+are recorded in [the Runtime implementation plan](RUNTIME.md).
+
 Runtime lowering must check the entire input Core module for expression holes before erasure or optimization, including unused bindings, lambda bodies, dictionary methods, and unselected branches. Encountering a hole returns a structured error at its original span and prevents Runtime output, even if elaboration or completeness validation was bypassed. The lowering traversal also explicitly rejects the hole constructor; no runtime stub or delayed failure is generated.
 
 Runtime AST has no expression-hole constructor. It erases static types, type arguments, schemes, trait predicates, and source names not needed for diagnostics. Dictionaries remain only when their fields are used at runtime.

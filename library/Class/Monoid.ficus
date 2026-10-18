@@ -1,0 +1,10 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Semigroup (..) pub
+
+trait Semigroup a => Monoid a =
+    empty : a
+impl Monoid String =
+    empty = ""
+impl Monoid [a] =
+    empty = []

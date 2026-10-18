@@ -1,0 +1,16 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Functor (..)
+use Class.Foldable (..)
+use Class.Applicative (..)
+use Class.Pure (pure)
+use Class.Seq (seq)
+
+trait (Functor t, Foldable t) => Traversable t =
+    traverse : Applicative f => (a -> f b) -> t a -> f (t b)
+sequence : (Traversable t, Applicative f) => t (f a) -> f (t a)
+sequence values = traverse (value -> value) values
+impl Traversable [] =
+    traverse f values = with values
+        [] -> pure []
+        x :: xs -> seq (map (item -> rest -> item :: rest) (f x)) (_ -> traverse f xs)

@@ -1,0 +1,10 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Class.Monoid (..)
+
+trait Foldable t =
+    foldr : (a -> b -> b) -> b -> t a -> b
+foldMap : (Foldable t, Monoid m) => (a -> m) -> t a -> m
+foldMap f values = foldr (item -> rest -> append (f item) rest) empty values
+impl Foldable [] =
+    foldr f initial values = with values { [] -> initial; x :: xs -> f x (foldr f initial xs) }

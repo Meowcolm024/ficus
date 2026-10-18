@@ -1,0 +1,14 @@
+-- Byte and Vec stay outside the implicit Prelude. Public data modules
+-- re-export their compiler-backed declarations with the same identity.
+use Data.Byte as Byte
+use Data.Vec as Vec
+use Ficus.Builtin.Int as Primitive
+
+main : [String] -> Unit
+main _ =
+    values = Vec.listToVec [1, 2, 3]
+    octet = Byte.intToByte 257
+    println ("Vector length: " ++ show (Vec.vecLength values))
+    println ("Vector values: " ++ show (Vec.vecToList values))
+    println ("Wrapped byte: " ++ show (Byte.byteToInt octet))
+    println ("Direct primitive: " ++ show (Primitive.intAdd 2 3))

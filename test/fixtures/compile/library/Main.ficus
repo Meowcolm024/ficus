@@ -1,0 +1,27 @@
+use Data.List as List
+use Data.Result (Result(..), mapError)
+use Data.Vec as Vec
+use Ficus.Builtin.Handle (Handle)
+
+functions : [Int] -> [Int]
+functions xs = reverse (filter (x -> x > 0) (map (x -> x + 1) xs))
+choice : Maybe Int -> Maybe Int
+choice value = value <|> (_ -> Just 2)
+application : Maybe Int -> Maybe Int
+application value = Just (x -> x + 1) <*> (_ -> value)
+walk : [Maybe Int] -> Maybe [Int]
+walk values = sequence values
+resultValue : Result String Int
+resultValue = Ok 1
+render : Int -> String
+render number = "number {number}"
+monadic : Maybe Int -> Maybe Int
+monadic value = do { x <- value; pure (x + 1) }
+safeHead : [Int] -> Maybe Int
+safeHead values = List.head values
+vectorLength : Vec.Vec Int -> Int
+vectorLength values = Vec.vecLength values
+orderingDisplay : Int -> String
+orderingDisplay value = show (compare value 0)
+constantTraversal : Const String (Maybe Int) -> Maybe (Const String Int)
+constantTraversal value = sequence value

@@ -1,0 +1,12 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+use Ficus.Builtin.Int as I
+use Ficus.Builtin.Float as F
+
+trait Div a =
+    (/) : a -> a -> a
+
+impl Div Int =
+    (/) x y = I.intDiv x y
+impl Div Float =
+    (/) x y = F.floatDiv x y

@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.38.1.
+-- This file has been generated from package.yaml by hpack version 0.39.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -255,6 +255,7 @@ extra-source-files:
     test/fixtures/semantics/type-checking/negative/AmbiguousQualifiedSignature.ficus
     test/fixtures/semantics/type-checking/negative/AnnotationMismatch.ficus
     test/fixtures/semantics/type-checking/negative/ApplicationMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/BuiltinHandleKind.ficus
     test/fixtures/semantics/type-checking/negative/ConstructorArgumentMismatch.ficus
     test/fixtures/semantics/type-checking/negative/CovariantExpansivePolymorphism.ficus
     test/fixtures/semantics/type-checking/negative/DeferredProjectionUnresolved.ficus
@@ -304,6 +305,7 @@ extra-source-files:
     test/fixtures/semantics/type-checking/negative/UnsignedConstrainedPolymorphism.ficus
     test/fixtures/semantics/type-checking/negative/UnsignedPolymorphicRecursion.ficus
     test/fixtures/semantics/type-checking/negative/WeakAliasPolymorphism.ficus
+    test/fixtures/semantics/type-checking/positive/BuiltinHandle.ficus
     test/fixtures/semantics/type-checking/positive/CompletedSignatureHole.ficus
     test/fixtures/semantics/type-checking/positive/ConstrainedFunction.ficus
     test/fixtures/semantics/type-checking/positive/ConstructorValuePolymorphism.ficus
@@ -422,6 +424,7 @@ source-repository head
 
 library
   exposed-modules:
+      Ficus.Builtin.Registry
       Ficus.Compile
       Ficus.Desugar.Registry
       Ficus.Elaborate
@@ -545,6 +548,7 @@ test-suite ficus-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Ficus.Builtin.RegistrySpec
       Ficus.CompileSpec
       Ficus.Core.Spec
       Ficus.Error.ParserSpec

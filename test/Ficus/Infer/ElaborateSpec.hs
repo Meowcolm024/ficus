@@ -32,7 +32,9 @@ tests :: TestTree
 tests =
   testGroup
     "source elaboration"
-    [ testCase "polymorphic constructor values lower to unary closures" $
+    [ testCase "builtin Handle elaborates through checked Core" $
+        accepted "{-# BUILTIN HANDLE Handle #-}\nHandle : Type\nidentity : Handle -> Handle\nidentity handle = handle\n",
+      testCase "polymorphic constructor values lower to unary closures" $
         accepted "type Box a = Box a\nbox = Box\ncheck () = (box 1, box True)\n",
       testCase "local destructuring preserves independent polymorphic uses" $
         accepted "check () = { (identity, other) = (x -> x, y -> y); (identity 1, identity True, other 2) }\n",

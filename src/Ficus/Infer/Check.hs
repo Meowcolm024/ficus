@@ -12,6 +12,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Ficus.Builtin.Registry (primitiveFromKey)
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Coverage
 import Ficus.Infer.Declaration
@@ -24,7 +25,7 @@ import Ficus.Infer.Syntax
 import Ficus.Infer.Type
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Core qualified as C
-import Ficus.Syntax.Core.Intrinsic (constructorSignature, literalType, primitiveFromKey, primitiveSignature)
+import Ficus.Syntax.Core.Intrinsic (constructorSignature, literalType, primitiveSignature)
 import Ficus.Syntax.Name hiding (TypeKind)
 import Ficus.Type
 import Ficus.Type.Substitution qualified as S

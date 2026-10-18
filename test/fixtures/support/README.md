@@ -26,8 +26,10 @@ into each project or substitute a separate dummy library. Isolated module-graph
 cases explicitly override this configuration: their malformed/bootstrap Prelude
 files are graph inputs, and missing-Prelude projects must have no shared fallback.
 
-The future fixture primitive registry must recognize exactly these keys/contracts
-for this library; unknown keys elsewhere remain errors:
+Fixture resolution uses the compiler registry in `Ficus.Builtin.Registry`.
+This library uses the following value contracts; the registry also provides
+`HANDLE` for an ordinary opaque type declaration of kind `Type`. Unknown keys
+remain errors:
 
 | Keys | Ordinary target signature |
 | --- | --- |

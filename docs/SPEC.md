@@ -971,6 +971,8 @@ intAdd : Int -> Int -> Int
 
 `BUILTIN key name` associates a compiler implementation with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source definition are static errors. Placement and argument checks are semantic, not special parser productions.
 
+`HANDLE` supplies an opaque type of kind `Type`, conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
+
 A builtin-supplied type is an opaque nominal constructor with no source constructor; a value is a primitive of its declared type. Keys are metadata, not names in language scope. Targets obey ordinary namespaces, mutual top-level visibility, duplicate-declaration, import/export, and ownership rules. Their identity is their defining module and declared name, not their key. Symbolic targets use their ordinary parenthesized identifier syntax.
 
 `BUILTIN` does not affect implicit Prelude. Only `NO_IMPLICIT_PRELUDE` disables it. There is no compiler-provided `magic` identifier or module-level `MAGIC` pragma; `magic` remains an ordinary identifier.

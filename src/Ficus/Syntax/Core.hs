@@ -1,6 +1,6 @@
 -- | Typed, unary Core. This stage owns its syntax and diagnostic placeholders;
 -- it imports neither Abstract syntax nor inference's solver variables.
-module Ficus.Syntax.Core where
+module Ficus.Syntax.Core (module Ficus.Syntax.Core, PrimitiveId (..)) where
 
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
@@ -34,22 +34,6 @@ data TypedExpr ty = TypedExpr {expressionType :: ty, expressionForm :: ExprF ty}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 data ConstructorId = DataConstructor GlobalId | PairConstructor | UnitConstructor deriving (Eq, Ord, Show)
-
-data PrimitiveId
-  = IntAdd
-  | IntSubtract
-  | IntMultiply
-  | IntDivide
-  | IntRemainder
-  | IntEqual
-  | IntLess
-  | IntShow
-  | StringAppend
-  | StringEqual
-  | StringLength
-  | IntNegate
-  | FloatNegate
-  deriving (Eq, Ord, Show)
 
 data FieldId = FieldId GlobalId Int deriving (Eq, Ord, Show)
 

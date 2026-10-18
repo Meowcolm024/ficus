@@ -8,6 +8,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Ficus.Builtin.Registry (typeKindFromKey)
 import Ficus.Error.Type qualified as E
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Name hiding (TypeKind)
@@ -137,8 +138,16 @@ collect source = case A.nodeValue source of
   A.AliasDefinition ident parameters annotation _ -> header ident parameters annotation =<< fresh (A.nodeSpan source) False
   A.DataDefinition ident parameters annotation _ -> header ident parameters annotation Star
   A.RecordDefinition ident parameters annotation _ _ -> header ident parameters annotation Star
-  A.OpaqueBuiltinType ident _ annotation -> do
+  A.OpaqueBuiltinType ident key annotation -> do
     kind <- kindSyntax annotation
+    case typeKindFromKey key of
+      Nothing -> emit E.BuiltinContractMismatch (A.nodeSpan annotation) "builtin key has no type contract"
+      Just expected -> do
+        state <- gets id
+        let actual = lowerKind (resolve state kind)
+        if actual == expected
+          then unify (A.nodeSpan annotation) kind (liftKind expected)
+          else emit E.BuiltinContractMismatch (A.nodeSpan annotation) "builtin type has an incompatible kind"
     modify' (\s -> s {globals = Map.insert ident kind (globals s)})
   A.TraitDefinition ident parameter _ _ -> header ident [parameter] Nothing Star
   _ -> pure ()

@@ -4,13 +4,13 @@ module Ficus.Library.Contracts (libraryResolveConfig, librarySugarRegistry) wher
 
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
+import Ficus.Builtin.Registry qualified as Builtin
 import Ficus.Desugar.Registry
 import Ficus.Resolve.Desugar (ResolveConfig (..))
 import Ficus.Syntax.Name
 
 libraryResolveConfig :: ResolveConfig
-libraryResolveConfig = ResolveConfig (Set.fromList ["INT_ADD", "INT_SUB", "INT_MUL", "INT_DIV", "INT_REM", "INT_EQ", "INT_LT", "INT_SHOW", "STRING_APPEND", "STRING_EQ", "STRING_LENGTH"])
+libraryResolveConfig = ResolveConfig Builtin.builtinKeys
 
 librarySugarRegistry :: SugarRegistry
 librarySugarRegistry = SugarRegistry (Map.fromList [(SugarKey "do.bind", global "bind"), (SugarKey "string.show", global "show"), (SugarKey "string.append", global "stringAppend")])

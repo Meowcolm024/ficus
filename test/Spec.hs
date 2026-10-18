@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Ficus.Builtin.RegistrySpec qualified as Builtin
 import Ficus.CompileSpec qualified as Compile
 import Ficus.Core.Spec qualified as Core
 import Ficus.Error.ParserSpec qualified as ErrorParser
@@ -22,4 +23,4 @@ main = do
   parser <- Parser.tests
   resolution <- Resolve.tests
   corpus <- Corpus.tests
-  defaultMain (testGroup "Ficus" [parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests])
+  defaultMain (testGroup "Ficus" [Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests])

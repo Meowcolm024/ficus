@@ -12,6 +12,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Ficus.Builtin.Registry (primitiveFromKey)
 import Ficus.Elaborate.Schedule
 import Ficus.Elaborate.Types
 import Ficus.Error.Type qualified as E
@@ -26,7 +27,7 @@ import Ficus.Infer.Type
 import Ficus.Infer.Unify qualified as U
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Core qualified as C
-import Ficus.Syntax.Core.Intrinsic
+import Ficus.Syntax.Core.Intrinsic hiding (primitiveFromKey)
 import Ficus.Syntax.Literal qualified as L
 import Ficus.Syntax.Name hiding (TypeKind)
 import Ficus.Type

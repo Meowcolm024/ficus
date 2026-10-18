@@ -33,7 +33,15 @@ tests :: TestTree
 tests =
   testGroup
     "declaration kinds"
-    [ testCase "ADT parameters infer ordinary kinds" $
+    [ testCase "builtin opaque types retain the declared nominal identity" $
+        check "{-# BUILTIN HANDLE Resource #-}\nResource : Type\n" $ \result -> do
+          Map.lookup (named "Resource") (constructorKinds result) @?= Just TypeKind
+          kindDiagnostics result @?= [],
+      testCase "value builtins cannot supply opaque type contracts" $
+        check "{-# BUILTIN INT_ADD Resource #-}\nResource : Type\n" $ \result -> do
+          map E.diagnosticCode (kindDiagnostics result) @?= [E.BuiltinContractMismatch]
+          map (\d -> let s = E.diagnosticSpan d in (line (start s), column (start s), column (end s))) (kindDiagnostics result) @?= [(3, 12, 15)],
+      testCase "ADT parameters infer ordinary kinds" $
         check "type Maybe a = { Nothing; Just a }\n" $ \result -> do
           Map.lookup (named "Maybe") (constructorKinds result) @?= Just (KindArrow TypeKind TypeKind)
           kindDiagnostics result @?= [],

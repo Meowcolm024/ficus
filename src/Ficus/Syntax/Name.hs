@@ -27,6 +27,22 @@ data Role = ValueRole | AliasRole | DataRole | RecordRole | RecordConstructorRol
 
 data Primitive = IntType | FloatType | BoolType | CharType | StringType | UnitType | ListType | ProductType | FunctionType | TypeKind | TrueConstructor | FalseConstructor | ConsConstructor | NilConstructor deriving (Eq, Ord, Show)
 
+data PrimitiveId
+  = IntAdd
+  | IntSubtract
+  | IntMultiply
+  | IntDivide
+  | IntRemainder
+  | IntEqual
+  | IntLess
+  | IntShow
+  | StringAppend
+  | StringEqual
+  | StringLength
+  | IntNegate
+  | FloatNegate
+  deriving (Eq, Ord, Show)
+
 data GlobalId = GlobalId ModuleId Namespace Text | IntrinsicId Primitive deriving (Eq, Ord, Show)
 
 data Reference = LocalRef LocalId | GlobalRef GlobalId deriving (Eq, Ord, Show)

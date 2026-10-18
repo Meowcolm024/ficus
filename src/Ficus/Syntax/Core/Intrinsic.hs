@@ -1,27 +1,10 @@
 module Ficus.Syntax.Core.Intrinsic (constructorSignature, primitiveSignature, primitiveFromKey, literalType) where
 
-import Data.Text (Text)
-import Ficus.Syntax.Core (ConstructorId (..), CoreType, CoreVariable (..), PrimitiveId (..))
+import Ficus.Builtin.Registry (primitiveFromKey)
+import Ficus.Syntax.Core (ConstructorId (..), CoreType, CoreVariable (..))
 import Ficus.Syntax.Literal qualified as L
 import Ficus.Syntax.Name hiding (TypeKind)
 import Ficus.Type
-
-primitiveFromKey :: Text -> Maybe PrimitiveId
-primitiveFromKey key =
-  lookup
-    key
-    [ ("INT_ADD", IntAdd),
-      ("INT_SUB", IntSubtract),
-      ("INT_MUL", IntMultiply),
-      ("INT_DIV", IntDivide),
-      ("INT_REM", IntRemainder),
-      ("INT_EQ", IntEqual),
-      ("INT_LT", IntLess),
-      ("INT_SHOW", IntShow),
-      ("STRING_APPEND", StringAppend),
-      ("STRING_EQ", StringEqual),
-      ("STRING_LENGTH", StringLength)
-    ]
 
 constructorSignature :: ConstructorId -> Maybe (Scheme CoreType, Int)
 constructorSignature constructor = case constructor of

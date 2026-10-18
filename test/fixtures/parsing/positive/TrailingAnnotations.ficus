@@ -1,0 +1,9 @@
+x = 2 : Int
+sum x y = x + y : Int
+local () = { value = 2 : Int; value }
+layout () =
+    value = 2 : Int
+    value
+lambdaBody = x -> x : Int
+functionType f = f : (Int -> Int)
+attached x = x : Int where { unused = 0 }

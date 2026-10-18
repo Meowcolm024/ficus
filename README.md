@@ -54,7 +54,8 @@ ficus> vecLength (listToVec [1, 2, 3])
 | Command | Short form | Purpose |
 | --- | --- | --- |
 | `:load FILE` | `:l FILE` | Load or reload a file and its dependencies |
-| `:type NAME` | `:t NAME` | Inspect a value or constructor's inferred type |
+| `:type NAME` | `:t NAME` | Inspect a value or constructor's type, or a type or trait's kind; traits also show their declaration |
+| `:help` | `:h` | Show commands and usage |
 | `:quit` | `:q` | Exit; end of input also exits |
 
 Loading a file brings its exports into scope without invoking `main`. A

@@ -695,10 +695,12 @@ retain their normal restrictions. No source pragma activates this mode.
 Rebindings receive fresh module-owned identities. Constructor reuse is checked
 against the owner of the type being replaced; omitted constructors are hidden
 from both the retained name scope and ordinary imports such as implicit Prelude.
-`:type` resolves a name
-against the current source scope and reads its stored scheme without executing
-it. Expressions are compiled inside a Unit thunk and formatted with qualified
-`Class.Debug.debug`. Successful loads/imports/declarations replace the session
+`:type` resolves a name against the current source scope, trying the type
+namespace before terms. It reads stored kinds and trait declaration text, or a
+value's stored scheme, without executing it. This display metadata retains no
+Core AST. `:help` lists commands and aliases. Expressions are compiled inside a
+Unit thunk and formatted with qualified `Class.Debug.debug`. Successful
+loads/imports/declarations replace the session
 transactionally; failed operations preserve the previous snapshots and retained values.
 Runtime errors are reported without leaving the REPL loop. Source snapshots
 remain stable until an explicit successful reload. Object output paths remain

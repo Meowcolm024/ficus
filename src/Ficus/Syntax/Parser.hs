@@ -454,7 +454,23 @@ qualifiedUpper = do
         else pure [n]
 
 expression :: Parser Expr
-expression = lambda <|> nonLambda
+expression = do
+  body <- unannotatedExpression
+  annotation <- optional $ try $ do
+    void (text ":")
+    ty <- typeExpression
+    -- Bare arrows remain clause/lambda delimiters. A function or qualified
+    -- type must be parenthesized here, or the whole annotation delimited.
+    case concrete ty of
+      ArrowT {} -> empty
+      ConstrainedT {} -> empty
+      _ -> pure ty
+  pure $ case annotation of
+    Nothing -> body
+    Just ty -> at ((location body) {end = end (location ty)}) (Annotated body ty)
+
+unannotatedExpression :: Parser Expr
+unannotatedExpression = lambda <|> nonLambda
 
 lambda :: Parser Expr
 lambda = do
@@ -519,13 +535,20 @@ doExpression = located $ do
   intro <- text "do"
   Do <$> block False False intro doStatement
   where
-    doStatement = doBind <|> located (DoDeclaration <$> localValue) <|> located (DoExpression <$> expression)
+    doStatement = doBind <|> located (DoDeclaration <$> localValue) <|> located (DoExpression <$> doItemExpression)
     localValue =
       ( do
           void (lookAhead (try (valueName *> many typeBinder *> many binderPattern *> text "=")))
           namedValue
       )
         <|> patternDeclaration
+    doItemExpression = do
+      signatureHead <- optional (try (lookAhead ((valueName <|> upperName) <* text ":")))
+      case signatureHead of
+        Just _ -> do
+          void (valueName <|> upperName)
+          failHere InvalidSyntax "signatures are not permitted in do blocks; parenthesize an expression annotation"
+        Nothing -> expression
     doBind = do
       void (lookAhead (try (patternParser <* text "<-")))
       located $ do
@@ -592,7 +615,7 @@ atom =
     <|> located (Lit <$> literal)
     <|> located (Ident <$> try operatorName)
     <|> located (List <$> unrestricted (text "[" *> (expression `sepBy` text ",") <* text "]"))
-    <|> parentheses expression typeExpression Unit Product Paren Annotated
+    <|> parentheses unannotatedExpression typeExpression Unit Product Paren Annotated
 
 literal :: Parser Literal
 literal = do

@@ -145,6 +145,7 @@ replLoop session = handleInterrupt (outputStrLn "Interrupted." >> replLoop sessi
     Nothing -> pure ()
     Just line -> case Repl.parseCommand (T.pack line) of
       Repl.Quit -> pure ()
+      Repl.Help -> outputStrLn (T.unpack Repl.helpText) >> replLoop session
       Repl.InvalidCommand message -> outputStrLn (T.unpack message) >> replLoop session
       Repl.Load file -> do
         result <- liftIO (Repl.loadSession session file)

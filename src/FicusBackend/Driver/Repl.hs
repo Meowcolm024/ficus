@@ -5,6 +5,7 @@ module FicusBackend.Driver.Repl
     Session,
     ReplCommand (..),
     parseCommand,
+    helpText,
     newSession,
     loadSession,
     submit,
@@ -56,11 +57,25 @@ data Session = Session
     sessionNext :: Int,
     sessionImports :: [Text],
     sessionTypes :: Map GlobalId (Scheme Core.CoreType),
+    sessionTypeInfo :: Map GlobalId TypeInfo,
     sessionValues :: Map (ModuleId, Reference) R.Value,
     sessionLayouts :: Maybe RuntimeLayouts
   }
 
-data ReplCommand = Load FilePath | TypeOf Text | Quit | Submit Text | InvalidCommand Text deriving (Eq, Show)
+-- Only compact display metadata survives compilation, alongside value schemes.
+data TypeInfo = TypeInfo Kind (Maybe Text)
+
+data ReplCommand = Load FilePath | TypeOf Text | Help | Quit | Submit Text | InvalidCommand Text deriving (Eq, Show)
+
+helpText :: Text
+helpText =
+  T.unlines
+    [ ":help, :h          Show this help",
+      ":load FILE, :l FILE  Load or reload a file and its dependencies",
+      ":type NAME, :t NAME  Inspect a value, constructor, type, or trait",
+      ":quit, :q          Exit the REPL",
+      "Enter expressions or declarations; use/import declarations bring modules into scope."
+    ]
 
 parseCommand :: Text -> ReplCommand
 parseCommand input = case T.words stripped of
@@ -71,16 +86,20 @@ parseCommand input = case T.words stripped of
          in case command of
               ":q" -> quit arguments
               ":quit" -> quit arguments
+              ":h" -> help arguments
+              ":help" -> help arguments
               ":l" -> load argument
               ":load" -> load argument
               ":t" -> typeOf argument
               ":type" -> typeOf argument
-              _ -> InvalidCommand "unknown command; use :load FILE, :type NAME, or :quit"
+              _ -> InvalidCommand "unknown command; use :help for available commands"
   _ -> Submit stripped
   where
     stripped = T.strip input
     quit [] = Quit
     quit _ = InvalidCommand ":quit takes no arguments"
+    help [] = Help
+    help _ = InvalidCommand ":help takes no arguments"
     load argument
       | T.null argument = InvalidCommand ":load requires a file"
       | otherwise = Load (T.unpack (unquote argument))
@@ -106,7 +125,7 @@ newSession options = do
   libraries <- mapM makeAbsolute (replLibraries options)
   prelude <- traverse makeAbsolute (replPrelude options)
   let config = P.ProviderConfig (nub (roots ++ libraries)) (maybe P.PreludeFromRoots P.PreludeFile prelude)
-      session = Session options config Map.empty Map.empty Map.empty 0 [] Map.empty Map.empty Nothing
+      session = Session options config Map.empty Map.empty Map.empty 0 [] Map.empty Map.empty Map.empty Nothing
   compileSession session "" >>= install R.ioEffects session
 
 loadSession :: Session -> FilePath -> IO (Either [D.Diagnostic] Session)
@@ -132,6 +151,7 @@ loadSession session file = do
                     sessionNext = 0,
                     sessionImports = [],
                     sessionTypes = Map.empty,
+                    sessionTypeInfo = Map.empty,
                     sessionValues = Map.empty,
                     sessionLayouts = Nothing
                   }
@@ -178,6 +198,21 @@ types result =
       let core = validatedModule (checkedCore checked)
     ]
 
+typeInfo :: C.CompileResult -> Map GlobalId TypeInfo
+typeInfo result = Map.mapWithKey describe kinds
+  where
+    kinds = Map.unions [Core.coreKinds (validatedModule (checkedCore checked)) | checked <- Map.elems (C.compileModules result)]
+    traits =
+      Map.fromList
+        [ (ident, T.strip (T.take (offset (end site) - offset (start site) + 1) (T.drop (offset (start site)) source)))
+        | tree <- Map.elems (frontendModules (C.compileFrontend result)),
+          declaration <- A.declarations (A.abstractDeclarations tree),
+          A.TraitDefinition ident _ _ _ <- [A.nodeValue declaration],
+          let site = A.nodeSpan declaration,
+          Just source <- [Map.lookup (sourceFile site) (C.compileSources result)]
+        ]
+    describe ident kind = TypeInfo kind (Map.lookup ident traits)
+
 lowerSession :: Session -> C.CompileResult -> Either [D.Diagnostic] LoweredProgram
 lowerSession session result
   | not (C.compileSucceeded result) = Left (C.compileDiagnostics result)
@@ -218,6 +253,7 @@ install effects session result = case prepare of
                 sessionVisible = visible,
                 sessionNext = sessionNext session + 1,
                 sessionTypes = types result `Map.union` sessionTypes session,
+                sessionTypeInfo = typeInfo result `Map.union` sessionTypeInfo session,
                 sessionValues = Map.fromList stored `Map.union` sessionValues session,
                 sessionLayouts = Just (loweredLayouts lowered)
               }
@@ -291,23 +327,36 @@ submit effects session input
 
 inspectType :: Session -> Text -> IO (Either [D.Diagnostic] Text)
 inspectType session name = do
-  let queryName = freshName session "ficusReplInspect"
-      suffix = queryName <> " () = " <> name
-      source = sourceText session suffix
-      queryLine = length (T.lines source)
-  graph <- discoverModules (provider session source) [replOwner session]
-  let resolved = resolveGraphWithNames (scopes session) libraryResolveConfig librarySugarRegistry graph
-  let errors = filter ((== D.Error) . D.diagnosticSeverity) (map D.toDiagnostic (frontendDiagnostics resolved))
-  pure $
-    if not (null errors)
-      then Left errors
-      else case Map.lookup (replOwner session) (frontendModules resolved) of
-        Nothing -> Left [message "type query did not resolve"]
-        Just tree -> case [A.occurrenceReference occurrence | occurrence <- A.abstractOccurrences tree, line (start (A.occurrenceSpan occurrence)) == queryLine, A.occurrenceSpelling occurrence /= queryName] of
-          [GlobalRef ident] -> case Map.lookup ident (sessionTypes session) of
-            Just scheme -> Right (name <> " : " <> renderScheme scheme)
-            Nothing -> Left [message "no inferred value type is available for this name"]
-          _ -> Left [message ":type expects one value or constructor name"]
+  typeReference <- resolveQuery (freshName session "FicusReplInspect") " = "
+  case typeReference >>= lookupTypeInfo of
+    Right (TypeInfo kind declaration) -> pure (Right (name <> " : " <> renderKind kind <> maybe "" ("\n" <>) declaration))
+    Left _ -> do
+      valueReference <- resolveQuery (freshName session "ficusReplInspect") " () = "
+      pure $ do
+        ident <- valueReference
+        case Map.lookup ident (sessionTypes session) of
+          Just scheme -> Right (name <> " : " <> renderScheme scheme)
+          Nothing -> Left [message "no inferred value type is available for this name"]
+  where
+    lookupTypeInfo ident = case Map.lookup ident (sessionTypeInfo session) of
+      Just info -> Right info
+      Nothing -> case ident of
+        IntrinsicId intrinsic -> Right (TypeInfo (primitiveKind intrinsic) Nothing)
+        _ -> Left [message "no inferred kind is available for this name"]
+    resolveQuery queryName separator = do
+      let source = sourceText session (queryName <> separator <> name)
+          queryLine = length (T.lines source)
+      graph <- discoverModules (provider session source) [replOwner session]
+      let resolved = resolveGraphWithNames (scopes session) libraryResolveConfig librarySugarRegistry graph
+          errors = filter ((== D.Error) . D.diagnosticSeverity) (map D.toDiagnostic (frontendDiagnostics resolved))
+      pure $
+        if not (null errors)
+          then Left errors
+          else case Map.lookup (replOwner session) (frontendModules resolved) of
+            Nothing -> Left [message "type query did not resolve"]
+            Just tree -> case [A.occurrenceReference occurrence | occurrence <- A.abstractOccurrences tree, line (start (A.occurrenceSpan occurrence)) == queryLine, A.occurrenceSpelling occurrence /= queryName] of
+              [GlobalRef ident] -> Right ident
+              _ -> Left [message ":type expects one value, constructor, type, or trait name"]
 
 freshName :: Session -> Text -> Text
 freshName session = choose

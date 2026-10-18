@@ -104,7 +104,18 @@ structuralTests :: TestTree
 structuralTests =
   testGroup
     "Concrete structure"
-    [ testCase "ordinary identifiers stay ordinary" $
+    [ testCase "trailing RHS annotation wraps the full expression and retains spans" $
+        parsed "x = 2 + 3 : Int" $ \m -> case rhs m of
+          [e] -> do
+            spanCoordinates (location e) @?= [1, 5, 1, 15]
+            case concrete e of
+              Annotated body ty -> do
+                spanCoordinates (location body) @?= [1, 5, 1, 9]
+                spanCoordinates (location ty) @?= [1, 13, 1, 15]
+                case concrete body of OpApp {} -> pure (); other -> assertFailure (show other)
+              other -> assertFailure (show other)
+          other -> assertFailure (show other),
+      testCase "ordinary identifiers stay ordinary" $
         oneRhs "f = (_, Type, True, False)" $ \case
           Product es -> [nameText n | e <- es, Ident n <- [concrete e]] @?= ["_", "Type", "True", "False"]
           other -> assertFailure (show other),

@@ -95,10 +95,40 @@ tests =
         "repl"
         [ testCase "command aliases and arguments" $ do
             map Repl.parseCommand [":q", ":quit"] @?= replicate 2 Repl.Quit
+            map Repl.parseCommand [":h", ":help"] @?= replicate 2 Repl.Help
+            Repl.parseCommand ":h extra" @?= Repl.InvalidCommand ":help takes no arguments"
+            assertBool "help lists commands" (all (`T.isInfixOf` Repl.helpText) [":load", ":type", ":quit", ":help"])
             map Repl.parseCommand [":l Foo.ficus", ":load Foo.ficus"] @?= replicate 2 (Repl.Load "Foo.ficus")
             map Repl.parseCommand [":t id", ":type id"] @?= replicate 2 (Repl.TypeOf "id")
             Repl.parseCommand ":load \"some folder/Foo.ficus\"" @?= Repl.Load "some folder/Foo.ficus",
+          testCase "type inspection includes kinds and trait declarations" $ do
+            current <- session
+            Repl.inspectType current "Int" >>= (@?= Right "Int : Type")
+            Repl.inspectType current "Maybe" >>= (@?= Right "Maybe : Type -> Type")
+            shown <- Repl.inspectType current "Show" >>= requireRight
+            assertBool "trait kind" ("Show : Type -> Type\n" `T.isPrefixOf` shown)
+            assertBool "trait method" ("show : a -> String" `T.isInfixOf` shown)
+            ordered <- Repl.inspectType current "Ord" >>= requireRight
+            assertBool "superclass" ("trait Eq a => Ord a" `T.isInfixOf` ordered)
+            (next, _) <- Repl.submit quiet current "use Class.Show as S" >>= requireRight
+            qualified <- Repl.inspectType next "S.Show" >>= requireRight
+            assertBool "qualified trait" ("S.Show : Type -> Type\n" `T.isPrefixOf` qualified),
+          testCase "type inspection follows type rebinding and namespace precedence" $ do
+            current <- session
+            (first, _) <- Repl.submit quiet current "type Box a = Box a" >>= requireRight
+            Repl.inspectType first "Box" >>= (@?= Right "Box : Type -> Type")
+            (second, _) <- Repl.submit quiet first "type Box = Box Int" >>= requireRight
+            Repl.inspectType second "Box" >>= (@?= Right "Box : Type")
+            (third, _) <- Repl.submit quiet second "Alias = Box" >>= requireRight
+            Repl.inspectType third "Alias" >>= (@?= Right "Alias : Type")
+            constructor <- Repl.inspectType third "Just" >>= requireRight
+            assertBool "constructors still show schemes" ("a -> Maybe a" `T.isInfixOf` constructor),
           testCase "expressions execute without a main" $ session >>= \current -> result current "1 + 2" "3",
+          testCase "bindings accept trailing type annotations" $ do
+            current <- session
+            (next, _) <- Repl.submit quiet current "x = 2 : Int" >>= requireRight
+            Repl.inspectType next "x" >>= (@?= Right "x : Int")
+            result next "x" "2",
           testCase "division by zero leaves the session usable" $ do
             current <- session
             Repl.submit quiet current "1 / 0" >>= \case

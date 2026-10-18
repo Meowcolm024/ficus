@@ -196,6 +196,7 @@ extra-source-files:
     test/fixtures/parsing/positive/RecordWith.ficus
     test/fixtures/parsing/positive/RefutabilityIsSemantic.ficus
     test/fixtures/parsing/positive/SharedPrefixes.ficus
+    test/fixtures/parsing/positive/TrailingAnnotations.ficus
     test/fixtures/parsing/positive/TypeBinders.ficus
     test/fixtures/record-patterns/DuplicateTypeMemberV1.ficus
     test/fixtures/record-patterns/MissingFieldEqualsV1.ficus

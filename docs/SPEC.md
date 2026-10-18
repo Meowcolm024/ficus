@@ -491,7 +491,18 @@ Literals are not type or kind expressions, including type arguments: `T 1`, `T '
 
 A signature names exactly one identifier or parenthesized operator name before `:`. This applies to value, kind, and trait-member signatures. `ident1, ident2 : T` and `ident1 ident2 : T` are invalid; write separate signatures. Parameters belong on definitions, not before the colon in a signature.
 
-Signatures constrain inferred types. An annotation `(e : T)` constrains `e`; it does not pass a runtime type argument.
+Signatures constrain inferred types. An annotation `(e : T)` constrains `e`;
+it does not pass a runtime type argument. Expressions also accept a trailing
+annotation without outer parentheses, as in `x = 2 : Int` and
+`sum x y = x + y : Int`. The annotation binds less tightly than application and
+all expression operators, so the latter constrains the whole `x + y` expression.
+A bare trailing annotation cannot have an outer function arrow or constraint:
+write `f : (Int -> Int)` or `(f : Int -> Int)`, and parenthesize constrained types
+likewise. This keeps bare lambda and clause arrows unambiguous. Annotated
+binders and patterns still require parentheses. In an expression block,
+`x : Int` at the start of an item remains a local signature; use `(x : Int)`
+when the item is an annotated expression. In a `do` block, a bare name followed
+by `:` is still an invalid signature item; parenthesize the annotation there.
 
 Patterns may carry parenthesized type annotations wherever patterns or binder patterns are accepted, including function and lambda arguments, constructor arguments, nested product/list patterns, match clauses, local pattern declarations, and `do` bindings:
 
@@ -1159,9 +1170,14 @@ provided by implicit Prelude. Values of the old type remain usable through
 previously defined functions. Ordinary source files retain their existing
 name, constructor ownership, and top-level initialization rules.
 
-The commands `:load FILE` / `:l FILE`, `:type NAME` / `:t NAME`, and `:quit` /
-`:q` load or reload a file, inspect a value or constructor's inferred scheme,
-and exit. End of input also exits. A successful load replaces interactive
+The commands `:load FILE` / `:l FILE`, `:type NAME` / `:t NAME`, `:help` / `:h`,
+and `:quit` / `:q` load or reload a file, inspect a name, show command help,
+and exit. Type inspection shows a type or trait's inferred kind, together with
+the source declaration for a trait (including superclasses and method signatures).
+Otherwise it shows a value or constructor's inferred scheme. Type names take
+precedence over constructor names when both are visible with the same spelling.
+Qualified names follow ordinary resolution rules. Inspection does not evaluate
+the named entity. End of input also exits. A successful load replaces interactive
 imports and declarations and brings the module's exported names into scope.
 Loading rereads the selected file and its dependencies. Failed loads, imports,
 declarations, type queries, and expression evaluation leave the last successful

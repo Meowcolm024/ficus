@@ -1,11 +1,19 @@
-# Staged type inference, elaboration, and Core proposal
+# Staged type inference, elaboration, and Core
 
 This is a non-normative engineering proposal refining M3–M5 in [PLAN.md](PLAN.md)
 and Sections 2–3 of [IMPL.md](IMPL.md). [SPEC.md](SPEC.md), especially Sections
 7, 10–16, and 19, remains authoritative. Expression-hole diagnostic behavior is
 specified in SPEC §7.4; this proposal implements it without allowing incomplete
-programs to execute. All steps below are future work: the current compile driver ends
-at validated Abstract syntax, and the repository has no inference or Core modules.
+programs to execute. The compile driver now checks dependency interfaces, infers
+source kinds and qualified types, and elaborates validated Abstract into typed
+Core. Implemented checks include value/monomorphism restrictions, weak variables,
+signed recursion, aliases and regular ADTs, records, typed coverage, traits and
+implementation evidence, builtin contracts, and initialization safety before and
+after dictionary insertion. Finalization preserves diagnostic holes but publishes
+Core and interfaces only after independent acceptance validation. The semantic
+fixture runner checks positive schemes and negative diagnostic kinds/spans.
+Runtime lowering, execution, and the corresponding differential evaluator tests
+remain future work; the milestones below describe that larger target too.
 
 ## 1. Reference and implementation shape
 
@@ -197,7 +205,10 @@ components. Annotations and static type abstraction/application are transparent.
 Recognize direct constructor applications by canonical identity; ordinary calls
 through a constructor-valued variable still use the function-application rule.
 General calls (including partial applications), primitives, projections, updates,
-matches, conditionals, blocks, and do work are expansive, regardless of purity.
+matches, conditionals, blocks with declarations or multiple expressions, and do
+work are expansive, regardless of purity. A block with exactly one expression and
+no declarations inherits its expression's classification (SPEC §15), including
+the single-expression `do` case.
 
 For named definitions, classify the actual initialization schedule: written value
 parameters protect the attached where group and body. With zero written value
@@ -333,8 +344,11 @@ the source dependency/source-order schedule for member initializers using lets
 before packing fields.
 
 Evidence abstraction is allowed only after source generalization eligibility is
-settled. Keep immediate where initialization outside generated evidence lambdas
-if moving it would delay or duplicate work; store shared results explicitly.
+settled. SPEC §16 permits initialization of qualified bindings, including their
+immediate where groups, to wait for dictionary arguments. Keep that work after
+the evidence parameters and before the source value-parameter boundary; do not
+move it through a source value lambda. Repeated evidence applications perform
+that initialization again, without implicit memoization.
 Do not hoist dictionary construction, method initialization, or evidence builder
 calls across a source value application without a checked justification. The
 post-evidence safety checker understands generated evidence operations and their
@@ -544,17 +558,16 @@ are fresh, and zonking is idempotent. Test Core validation independently with
 malformed binding, type, dictionary, and origin cases. Continue running the
 existing parse/pretty round-trip and formatter-idempotence properties.
 
-Use the proposed [T registry](ERRORS.md#type-checking-and-elaboration-diagnostics-t-proposed)
+Use the [T registry](ERRORS.md#type-checking-and-elaboration-diagnostics-t)
 for kind/type/coverage/initialization errors, leaving lexical/scope failures in N.
-The existing table lacks dedicated entries for some declaration errors (alias
-cycles, ADT regularity, superclass cycles) and T0403 still groups implementation
-failures. Assign explicit dedicated codes with their implementing step and
-fixtures; do not repurpose a published code or hide these under T0099.
+Dedicated declaration and implementation codes are implemented in
+`Ficus.Error.Type`, including alias cycles, ADT regularity, superclass cycles,
+overlap, and orphan implementations. Assign new codes with their implementing
+step and fixtures; do not repurpose a published code or hide these under T0099.
 
 For implementation changes, inspect `package.yaml` before extensions/dependencies,
 run targeted Stack tests during iteration, format changed Haskell with `ormolu`,
-and run `stack build` and the relevant full tests before finishing. This proposal
-adds no Haskell API, dependency, or golden expectation. The contextual hole
+and run `stack build` and the relevant full tests before finishing. The contextual hole
 diagnostic contract is recorded in SPEC §7.4. Numeric
 edge behavior and primitive contracts needed by T6 still require the existing
 B9/B19 decisions; v1 ETA/STANDALONE, existentials, lazy arrows and representation

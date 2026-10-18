@@ -2,13 +2,15 @@
 
 These are independent library modules, not selected executable entries. Load each
 with the shared `../../support/Prelude.ficus`; no `main` is required. SPEC is the
-source of truth. The compiler currently stops after resolution, so these files
-record future inference/elaboration assertions, not passing Ficus type checks.
+source of truth. `Ficus.Infer.CorpusSpec` infers these modules, compares the
+authored positive schemes modulo variable renaming, checks negative diagnostic
+kinds and primary spans, and independently validates elaborated positive Core.
 
 The parser suite automatically discovers both positive and negative `.ficus`
-files. All 50 newly added cases also pass the current compiler's name resolution
-and Abstract validator. A negative must reach its intended type-checking phase;
-rejecting its syntax or names would not satisfy its expectation.
+files. The typechecking runner validates Abstract before inference. The existing
+`NamedPatternAnnotation` fixture is rejected by the resolver for an out-of-scope
+type variable and remains covered there. Other negatives must reach their
+intended typechecking phase; rejecting syntax or names does not satisfy them.
 
 ## Authored expectations
 

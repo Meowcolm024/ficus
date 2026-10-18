@@ -1,0 +1,6 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Bridge (..)
+type Wrap a = Wrap a
+impl Pick (Wrap a) = { pick box value = value }
+extract (Box value) = value
+check () = (identity 1, identity True, pick (Wrap 1) True, extract (Box 2))

@@ -24,7 +24,7 @@ data ExprF
   | Literal Literal
   | Hole HoleId
   | Apply Expr Expr
-  | TypeApply Expr [TypeSyntax]
+  | TypeApply Expr [TypeArgument]
   | Annotated Expr [TypeBinder] TypeSyntax
   | Lambda Binder Expr
   | TypeLambda [TypeBinder] Expr
@@ -58,6 +58,9 @@ type Pattern = Node PatternF
 data PatternF = Bind Binder | Wildcard | ConstructorPattern GlobalId [Pattern] | LiteralPattern Literal | ProductPattern [Pattern] | ListPattern [Pattern] | UnitPattern | AnnotatedPattern Pattern TypeSyntax | NegatedPattern Pattern deriving (Eq, Show)
 
 type TypeSyntax = Node TypeF
+
+-- Retain the @-argument site separately from the enclosed type's location.
+type TypeArgument = Node TypeSyntax
 
 data TypeF = TypeVariable TypeVarId | TypeConstructor GlobalId | TypeApplication TypeSyntax TypeSyntax | ArrowType TypeSyntax TypeSyntax | QualifiedType [Predicate] TypeSyntax | TypeHole HoleId deriving (Eq, Show)
 

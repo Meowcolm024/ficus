@@ -115,7 +115,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       Literal _ -> pure ()
       Hole _ -> pure () -- inference owns expression-hole rejection
       Apply a b -> expr a >> expr b
-      TypeApply e ts -> nonempty ts >> expr e >> mapM_ ty ts
+      TypeApply e ts -> nonempty ts >> expr e >> mapM_ (onNode ty) ts
       Annotated e bs t -> expr e >> binders bs (ty t)
       Lambda b e -> binder b >> withValues (Set.singleton (fst (nodeValue b))) (expr e)
       TypeLambda bs e -> nonempty bs >> binders bs (expr e)

@@ -6,7 +6,10 @@ The v0 Megaparsec frontend exposes `Ficus.Syntax.Parser.parseModule`, returning 
 structured diagnostic or an Agda-style typed Concrete AST with source spans,
 provenance, comments, and explicit/layout block metadata. The independent resolver
 translates Concrete syntax to validated Abstract syntax with canonical names and
-source provenance. See [SPEC](docs/SPEC.md) for the language and
+source provenance. The elaborator checks kinds, qualified Hindley–Milner types,
+records, patterns, and initialization safety, then produces independently
+validated typed Core and closed interfaces for dependent modules.
+See [SPEC](docs/SPEC.md) for the language and
 [parsing fixtures](test/fixtures/parsing/README.md) for test coverage.
 
 Build and run the fixture suite with `stack build` and `stack test`.
@@ -21,9 +24,11 @@ stack exec ficus -- format test/fixtures/parsing/positive/LayoutBraces.ficus
 stack exec ficus -- format < test/fixtures/parsing/positive/LayoutBraces.ficus
 ```
 
-`compile FILE...` currently checks parsing and name resolution and returns
-success when they pass. It does not type-check, execute a program, require `main`,
-or write compiled artifacts. Diagnostics go to stderr; errors return a nonzero
+`compile FILE...` parses, resolves, typechecks, and elaborates modules in dependency
+order. Type errors and expression holes fail compilation; successful modules
+produce validated Core through the `Ficus.Compile` API. The command does not
+execute a program, require `main`, or write compiled artifacts.
+Diagnostics go to stderr; errors return a nonzero
 exit status, while warnings permit success.
 
 The package bundles the early-development placeholder [Prelude](library/Prelude.ficus),

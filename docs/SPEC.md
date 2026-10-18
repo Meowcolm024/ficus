@@ -544,7 +544,7 @@ In an application, `@T` supplies one type atom. Compound types require parenthes
 
 The enclosing syntax determines the role of a shared prefix. `foo @a bar = body` is a named definition; `@a bar -> body` is a lambda; `foo @a bar` is an application. As a standalone expression, `foo @a bar -> body` is invalid: a lambda cannot put a type binder after the value binder `foo`. In `if { foo @a bar -> body; _ -> fallback }`, however, `foo @a bar` is the non-lambda condition and the arrow starts its clause body. The same rule applies to match guards. Arrows inside parenthesized type arguments or kind annotations do not delimit the enclosing clause or lambda.
 
-Type binders and applications are static and do not add runtime parameters, evaluate arguments, or delay work. Non-expansiveness classifies their underlying term, so a type-only application of a non-expansive value remains non-expansive. They do not provide lambda protection for recursive initialization or make an expansive initializer non-expansive. Written-parameter counts for `where` timing count only value parameters. Polymorphic type abstractions remain subject to ordinary rank-1 generalization, value, and monomorphism restrictions; they cannot be passed as polymorphic function arguments in v0.
+Type binders and applications are static and do not add runtime parameters, evaluate arguments, or delay work. Non-expansiveness classifies their underlying term, so a type-only application of a non-expansive value remains non-expansive. They do not provide lambda protection for recursive initialization or make an expansive initializer non-expansive. Written-parameter counts for `where` timing count only value parameters. Trait dictionary parameters have the separate initialization rule in Section 16. Polymorphic type abstractions remain subject to ordinary rank-1 generalization, value, and monomorphism restrictions; they cannot be passed as polymorphic function arguments in v0.
 
 v0 permits quantifiers only in the outermost value-signature prefix. Nested quantifiers are rejected, including the higher-rank signature `foo : ({a} -> a -> a) -> (b * c) -> (b * c)`. Higher-rank checking remains future work; retaining `{a}` in signatures does not enable it.
 
@@ -605,7 +605,7 @@ Evaluation is strict, call-by-value, deterministic, and left-to-right.
 
 Application is curried and binds tighter than infix operators. `f a b` evaluates `f`, then `a`, applies, then evaluates `b` and applies again. Written parameters are nested lambdas; attached `where` initialization follows Section 12. Lambdas capture lexical scope. A failed parameter pattern raises a runtime match error.
 
-An expression block evaluates items in order and returns its last expression. A local named declaration evaluates its right side immediately and binds the name; a local pattern declaration evaluates its right side once, matches the non-infix head pattern, then binds its variables for later items. A failed local pattern is a runtime match error. Sequential shadowing is permitted with a warning as specified in Section 6.
+An expression block evaluates items in order and returns its last expression. A block containing exactly one expression and no declarations is equivalent to that expression, including for initialization and generalization restrictions (Sections 12, 15–16). A local named declaration evaluates its right side immediately and binds the name; a local pattern declaration evaluates its right side once, matches the non-infix head pattern, then binds its variables for later items. A failed local pattern is a runtime match error. Sequential shadowing is permitted with a warning as specified in Section 6.
 
 ```text
 swap pair =
@@ -686,7 +686,7 @@ computed = 40 + 2           -- invalid: expansive top-level initializer
 
 A recursive group is a cycle of initialization dependencies. Every initializer in a cycle must be non-expansive (Section 16), and every reference within the cycle must occur beneath a lambda in its initializer; written value parameters count as lambdas. Other cycles are static errors. Right-hand sides within a cycle evaluate in source order. A direct initializer `x = y` is unprotected even if a later use of `x` occurs under a lambda.
 
-For `f x y = body where ...`, the `where` group runs after both written parameters have been supplied, immediately before `body`. For `f x = y -> body where ...`, it runs after `x` has been supplied, before the returned lambda is created. A declaration with no written value parameters runs its `where` group before its right-hand side is evaluated. These positions are observable and must be preserved by optimizations.
+For `f x y = body where ...`, the `where` group runs after both written parameters have been supplied, immediately before `body`. For `f x = y -> body where ...`, it runs after `x` has been supplied, before the returned lambda is created. A declaration with no written value parameters runs its `where` group before its right-hand side is evaluated. For a binding requiring dictionary parameters, initialization may wait until that evidence is supplied, as specified in Section 16; within that initialization, the same `where` positions and dependency order apply. These positions are observable and must be preserved by optimizations.
 
 Within a recursive group, signed bindings may be used polymorphically at their declared types; unsigned bindings have one monotype. Both obey the cyclic-initializer rules.
 
@@ -774,7 +774,7 @@ Ficus uses Hindley–Milner inference with qualified types.
 
 Inference covers the complete module. Accepted unconstrained definitions have principal types, subject to trait ambiguity.
 
-At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a value lambda (including a definition with written value parameters), literal, variable, constructor, or aggregate of non-expansive values. Value applications, including partial applications, projections, record updates, conditionals, matches, `do`, and expression blocks are expansive. Their result variables remain monomorphic. A signature cannot override this restriction; in particular, a local `inc = (+) 1` cannot acquire a polymorphic type merely by adding one. Such an initializer is rejected outright at top level unless the v1+ `STANDALONE` exception applies; the value restriction still applies there.
+At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a value lambda (including a definition with written value parameters), literal, variable, constructor, or aggregate of non-expansive values. Value applications, including partial applications, projections, record updates, conditionals, matches, `do`, and expression blocks are expansive, with one exception: an expression or `do` block containing exactly one expression and no declarations inherits that expression's classification. Thus `{ 1 }` and `{ x -> x }` are non-expansive, while `{ f x }` and `{ 1; 2 }` are expansive. Expansive result variables remain monomorphic. A signature cannot override this restriction; in particular, a local `inc = (+) 1` cannot acquire a polymorphic type merely by adding one. Such an initializer is rejected outright at top level unless the v1+ `STANDALONE` exception applies; the value restriction still applies there.
 
 The v0 monomorphism restriction further keeps an **unsigned**, constrained binding monomorphic when it has no written value parameters or outer value lambda, even if its initializer is non-expansive. A complete signature may override this extra restriction when the value restriction permits generalization and the definition checks against it; a signature with holes cannot. Otherwise, unresolved trait predicates must be solved for the binding's one monotype. This restriction concerns constrained bindings only; it does not prevent generalizing an unconstrained non-expansive value.
 
@@ -832,6 +832,10 @@ trait Applicative f => Alternative f =
 ```
 
 Qualified types place predicates before `=>`. An `impl` supplies every method exactly once.
+
+Qualified bindings receive their required trait dictionaries before ordinary value arguments. Their initialization, including an attached immediate `where` group, may wait until that evidence is supplied. This permits a binding such as `choose : C a => a -> a` with `choose = x -> y where { Just y = get }`, when `C a` declares `get : Maybe a`: the pattern match runs after the `C a` dictionary is supplied and before the returned value lambda is created. Such initialization runs for each evidence application; it is not implicitly memoized. Bindings without dictionary parameters retain the ordinary initialization timing in Section 12.
+
+This delay does not relax source restrictions. Source initializers must still satisfy the value restriction and the top-level or implementation-member non-expansiveness rules. Generated dictionary parameters do not count as written value parameters and do not provide protection for recursive initialization reads. Dictionary construction and member initialization must also satisfy the cycle checks after evidence dependencies are inserted.
 
 Method signatures may constrain additional variables: `Traversable t` may declare `traverse : Applicative f => (a -> f b) -> t a -> f (t b)`. Method uses require both method-level and trait constraints. Every method's value type must mention the trait parameter; `trait C a = { foo : Int }` is invalid.
 
@@ -914,9 +918,10 @@ By default, every top-level value initializer must be non-expansive, whether sig
 - value lambdas (static type-only abstractions are classified by their body);
 - products, lists, and records whose components are non-expansive;
 - constructor applications whose arguments are non-expansive;
-- annotations around non-expansive expressions.
+- annotations around non-expansive expressions;
+- expression or `do` blocks containing exactly one non-expansive expression and no declarations.
 
-General function application, blocks, conditionals, matching, `do`, projection, record update, and primitive calls are expansive. They are rejected as immediate top-level initializers except for the v1+ `STANDALONE` case, and as implementation-member initializers, although they may appear inside a function or member's lambda body.
+General function application, blocks with declarations or multiple expressions, conditionals, matching, `do` with declarations or multiple statements, projection, record update, and primitive calls are expansive. A single-expression block retains its expression's classification, as specified in Section 15. Expansive initializers are rejected as immediate top-level initializers except for the v1+ `STANDALONE` case, and as implementation-member initializers, although they may appear inside a function or member's lambda body.
 
 ```text
 impl Show Person =

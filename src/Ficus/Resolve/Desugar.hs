@@ -334,7 +334,11 @@ expr e = case C.concrete e of
   C.Lit (C.StringLiteralText raw) -> stringExpr e raw
   C.Lit l -> sourceNode e . A.Literal =<< plainLiteral l
   C.App f x -> do a <- expr f; b <- expr x; sourceNode e (A.Apply a b)
-  C.StaticApp f ts -> do a <- expr f; args <- mapM (\(C.Located _ _ (C.TypeArgument t)) -> typeNode False t) ts; sourceNode e (A.TypeApply a args)
+  C.StaticApp f ts -> do
+    a <- expr f
+    args <- forM ts $ \argument -> case C.concrete argument of
+      C.TypeArgument t -> sourceNode argument =<< typeNode False t
+    sourceNode e (A.TypeApply a args)
   C.OpApp a op b -> do
     f <- valueRef op
     x <- expr a
@@ -348,7 +352,7 @@ expr e = case C.concrete e of
       result <- local (\env -> env {envValues = bindings `Map.union` envValues env}) (expr body)
       pure (patterns, result)
     value <- foldM (\body' pat -> normalizeLambda A.WarningCoverage pat body') result (reverse patterns)
-    if null types then pure value else sourceNode e (A.TypeLambda types value)
+    sourceNode e (if null types then A.nodeValue value else A.TypeLambda types value)
   C.If b -> sourceNode e . A.Conditional =<< mapM ifClause (C.blockItems b)
   C.With scrutinee b -> do
     value <- expr scrutinee
@@ -555,7 +559,10 @@ localBindings ds = do
       C.PatternBinding p _ _ -> patternNames p
       _ -> []
     add table n | Map.member (C.nameText n) table = pure table
-    add table n = do i <- LocalId <$> newId; pure (Map.insert (C.nameText n) (LocalRef i) table)
+    add table n = do
+      i <- LocalId <$> newId
+      recordOccurrence n (LocalRef i) []
+      pure (Map.insert (C.nameText n) (LocalRef i) table)
 
 declarations :: Bool -> [C.Declaration] -> Resolve A.BindingGroup
 declarations recursive ds = declarationsWith recursive Map.empty ds

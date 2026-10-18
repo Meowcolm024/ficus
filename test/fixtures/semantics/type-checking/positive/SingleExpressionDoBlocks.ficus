@@ -1,0 +1,3 @@
+value = do { 1 }
+identity = do { x -> x }
+check () = (identity 1, identity True)

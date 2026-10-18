@@ -112,14 +112,14 @@ Do not emit N0004 for an unused opened-import conflict. Repeated module qualifie
 warn with N0902; qualified uses select by exported terminal name and namespace
 and report N0002 only for distinct surviving identities.
 
-## Type checking and elaboration diagnostics (T, proposed)
+## Type checking and elaboration diagnostics (T)
 
 Inference, typed coverage, initialization safety, builtin contracts, and Core
 validation own these errors. A well-resolved field label can still fail typed
 selection; a well-scoped annotation can still fail unification. The staged
-ownership and proposed Core checks are in [TYPECHECKING.md](TYPECHECKING.md).
+ownership and Core checks are in [TYPECHECKING.md](TYPECHECKING.md).
 
-| Code | Proposed constructor / meaning | Primary location; related locations |
+| Code | Constructor / meaning | Primary location; related locations |
 | --- | --- | --- |
 | T0001 | TypeMismatch | Incompatible use/initializer; expected signature or originating constraint |
 | T0002 | InfiniteType | Occurs-check origin; binding/use that introduced the cyclic equation |
@@ -127,6 +127,10 @@ ownership and proposed Core checks are in [TYPECHECKING.md](TYPECHECKING.md).
 | T0004 | InvalidAnnotation | Well-scoped invalid type/signature annotation; its constrained pattern/expression |
 | T0005 | ExcessTypeArguments | First excess @ argument; explicit quantifier declaration |
 | T0006 | TypeBinderMismatch | Definition/lambda binder; corresponding signature binder list |
+| T0007 | InvalidPatternAnnotation | Type variable not scoped by an explicit type binder |
+| T0008 | CyclicAlias | Alias declaration or use participating in an alias cycle |
+| T0009 | UnsaturatedAlias | Alias occurrence missing a declared parameter |
+| T0010 | NonRegularData | Recursive type occurrence changing its declared parameters |
 | T0099 | InvalidCoreTree | Invalid generated/source origin; internal boundary failure |
 | T0101 | ExpressionHole | Hole occurrence; zonked expected/inferred type, relevant lexical bindings and their types, blocking constraints and their origins; emitted after continuing inference/elaboration |
 | T0102 | UnresolvedWeakType | Binding/receiver origin; uses keeping it unresolved |
@@ -140,7 +144,12 @@ ownership and proposed Core checks are in [TYPECHECKING.md](TYPECHECKING.md).
 | T0304 | MissingField | Constructor occurrence; missing nominal field declarations |
 | T0401 | UnsatisfiedConstraint | Constrained use; trait/context declaration |
 | T0402 | AmbiguousConstraint | Binding/signature; unresolved predicates and variable origins |
-| T0403 | InvalidImplementation | Impl header or offending member; ownership/overlap/missing-member evidence (split into dedicated codes when implementing M5) |
+| T0403 | InvalidImplementation | Impl header or offending member; head/context or missing-member evidence |
+| T0404 | InvalidTrait | Invalid supertrait argument or method signature missing its owning parameter |
+| T0405 | CyclicSupertraits | Trait declaration; cyclic superclass requirements |
+| T0406 | OverlappingImplementations | Implementation declaration; other visible overlapping implementation |
+| T0407 | RecursiveEvidence | Constrained use; cyclic implementation resolution |
+| T0408 | OrphanImplementation | Implementation head; defining module owns neither trait nor type constructor |
 | T0501 | BuiltinContractMismatch | Declared signature/kind; BUILTIN key contract and association |
 | T0502 | MissingBuiltinSignature | BUILTIN target; absent/incomplete ordinary signature |
 | T0503 | UnexpectedBuiltinDefinition | Extra source body; signature-backed builtin association |

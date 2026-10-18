@@ -1,6 +1,6 @@
--- | Early-development compile driver: discover, parse, and resolve only.
+-- | Discover, resolve, infer and elaborate modules in dependency order.
 -- Configuration and source caching belong here, outside the individual passes.
-module Ficus.Compile (CompileOptions (..), CompileResult (..), compileFiles, compileSucceeded) where
+module Ficus.Compile (CompileOptions (..), CompileResult (..), compileFiles, compileSucceeded, compileDiagnostics) where
 
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (modify', runStateT)
@@ -12,11 +12,14 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Ficus.Desugar.Registry (SugarRegistry)
+import Ficus.Elaborate qualified as Elaborate
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Resolve qualified as R
+import Ficus.Error.Type qualified as E
 import Ficus.Resolve
 import Ficus.Resolve.Desugar (ResolveConfig)
 import Ficus.Resolve.Discovery
+import Ficus.Resolve.Header (edgeTarget, headerEdges)
 import Ficus.Resolve.Provider qualified as Provider
 import Ficus.Syntax.Name (ModuleId)
 import Ficus.Util.Source
@@ -33,12 +36,17 @@ data CompileOptions = CompileOptions
 
 data CompileResult = CompileResult
   { compileFrontend :: FrontendResult,
-    compileSources :: Map FilePath Text
+    compileSources :: Map FilePath Text,
+    compileModules :: Map ModuleId Elaborate.CheckedModule,
+    compileTypeDiagnostics :: [E.Diagnostic]
   }
   deriving (Eq, Show)
 
 compileSucceeded :: CompileResult -> Bool
-compileSucceeded = all ((/= D.Error) . D.diagnosticSeverity . D.toDiagnostic) . frontendDiagnostics . compileFrontend
+compileSucceeded = all ((/= D.Error) . D.diagnosticSeverity) . compileDiagnostics
+
+compileDiagnostics :: CompileResult -> [D.Diagnostic]
+compileDiagnostics result = map D.toDiagnostic (frontendDiagnostics (compileFrontend result)) ++ map D.toDiagnostic (compileTypeDiagnostics result)
 
 compileFiles :: ResolveConfig -> SugarRegistry -> CompileOptions -> IO CompileResult
 compileFiles resolver sugar options = do
@@ -58,9 +66,21 @@ compileFiles resolver sugar options = do
         pure result
   (graph, sources) <- runStateT (discoverModulesAt provider entries) Map.empty
   let frontend = resolveGraph resolver sugar graph
-  pure (CompileResult (frontend {frontendDiagnostics = entryErrors ++ frontendDiagnostics frontend}) sources)
+      (checked, diagnostics) = foldl (checkModule graph frontend) (Map.empty, []) (dependencyOrder graph)
+  pure (CompileResult (frontend {frontendDiagnostics = entryErrors ++ frontendDiagnostics frontend}) sources checked diagnostics)
   where
     absolute path = normalise <$> makeAbsolute path
+
+checkModule :: ModuleGraph -> FrontendResult -> (Map ModuleId Elaborate.CheckedModule, [E.Diagnostic]) -> ModuleId -> (Map ModuleId Elaborate.CheckedModule, [E.Diagnostic])
+checkModule graph frontend previous@(checked, diagnostics) owner = case (Map.lookup owner (frontendModules frontend), Map.lookup owner (graphModules graph)) of
+  (Just source, Just discovered) ->
+    let dependencies = map edgeTarget (headerEdges (discoveredHeader discovered))
+     in case traverse (`Map.lookup` checked) dependencies of
+          Nothing -> previous
+          Just imports -> case Elaborate.elaborateModule (map Elaborate.checkedInterface imports) source of
+            Elaborate.Incomplete _ errors -> (checked, diagnostics ++ errors)
+            Elaborate.Complete result warnings -> (Map.insert owner result checked, diagnostics ++ warnings)
+  _ -> previous
 
 entryIdentity :: [FilePath] -> FilePath -> IO (Either R.Diagnostic ModuleId)
 entryIdentity roots file = do

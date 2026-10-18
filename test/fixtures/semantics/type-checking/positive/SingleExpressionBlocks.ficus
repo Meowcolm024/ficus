@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+identity = { x -> x }
+value = { 1 }
+nested = { { True } }
+check () = (identity 1, identity True)

@@ -9,7 +9,6 @@ import Ficus.Compile qualified as Compile
 import Ficus.Error.Diagnostic qualified as Diagnostic
 import Ficus.Error.Pretty (prettyDiagnosticRelativeTo, prettyDiagnosticWithOptionalSourceRelativeTo)
 import Ficus.Library.Contracts
-import Ficus.Resolve (frontendDiagnostics)
 import Ficus.Syntax.Concrete.Pretty (prettyModule)
 import Ficus.Syntax.Parser (parseModule)
 import Ficus.Util.Source (sourceFile)
@@ -30,7 +29,7 @@ main = do
       libraries <- if null (Compile.libraryRoots options) then pure <$> Paths.getDataFileName "library" else pure (Compile.libraryRoots options)
       result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry (options {Compile.libraryRoots = libraries})
       directory <- getCurrentDirectory
-      mapM_ (printDiagnostic directory (Compile.compileSources result)) (frontendDiagnostics (Compile.compileFrontend result))
+      mapM_ (printDiagnostic directory (Compile.compileSources result)) (Compile.compileDiagnostics result)
       if Compile.compileSucceeded result then pure () else exitFailure
     Format path -> do
       let sourceName = case path of Nothing -> "<stdin>"; Just "-" -> "<stdin>"; Just file -> file
@@ -61,7 +60,7 @@ commandInfo =
     commands =
       hsubparser
         ( command "format" (info formatCommand (progDesc "Pretty-print a source file or stdin to stdout"))
-            <> command "compile" (info compileCommand (progDesc "Check parsing and name resolution; emit no artifacts" <> footer "Library discovery options are for early development and are subject to change."))
+            <> command "compile" (info compileCommand (progDesc "Typecheck and elaborate source modules; emit no artifacts" <> footer "Library discovery options are for early development and are subject to change."))
         )
     formatCommand = Format <$> optional (strArgument (metavar "FILE" <> help "Source file; omit or use - for stdin")) <**> helper
     -- some rejects empty input and renders one repeated-argument help entry;

@@ -79,7 +79,7 @@ expression e = case nodeValue e of
   Literal _ -> mempty
   Hole _ -> mempty
   Apply a b -> expression a <> expression b
-  TypeApply a ts -> expression a <> foldMap ty ts
+  TypeApply a ts -> expression a <> foldMap (ty . nodeValue) ts
   Annotated a _ t -> expression a <> ty t
   Lambda _ a -> expression a
   TypeLambda _ a -> expression a

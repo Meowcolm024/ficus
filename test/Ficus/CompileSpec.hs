@@ -5,11 +5,14 @@ import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Ficus.Compile
+import Ficus.Elaborate (checkedCore)
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Pretty (prettyDiagnosticWithOptionalSourceRelativeTo)
 import Ficus.Error.Resolve qualified as R
+import Ficus.Error.Type qualified as E
 import Ficus.Library.Contracts
 import Ficus.Resolve
+import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Name
 import Ficus.Util.Source
 import System.FilePath (takeFileName)
@@ -91,5 +94,35 @@ tests =
       testCase "warnings do not fail compilation" $ do
         result <- check (baseOptions "test/fixtures/semantics/name-resolution/positive/SequentialDifferentArities.ficus")
         compileSucceeded result @?= True
-        assertBool "shadowing warning" (any ((== D.Warning) . D.diagnosticSeverity . D.toDiagnostic) (frontendDiagnostics (compileFrontend result)))
+        assertBool "shadowing warning" (any ((== D.Warning) . D.diagnosticSeverity . D.toDiagnostic) (frontendDiagnostics (compileFrontend result))),
+      testCase "successful compilation returns validated typed Core" $ do
+        result <- check (baseOptions "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus")
+        compileSucceeded result @?= True
+        assertBool "checked modules returned" (not (Map.null (compileModules result)))
+        mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
+      testCase "a resolved type error fails compilation at its source span" $ do
+        result <- check (baseOptions "test/fixtures/semantics/type-checking/negative/ApplicationMismatch.ficus")
+        compileSucceeded result @?= False
+        let matching = filter ((== E.TypeMismatch) . E.diagnosticCode) (compileTypeDiagnostics result)
+        map (\d -> (line (start (E.diagnosticSpan d)), column (start (E.diagnosticSpan d)), column (end (E.diagnosticSpan d)))) matching @?= [(1, 14, 14)]
+        Map.member (ModuleId ("ApplicationMismatch" :| [])) (compileModules result) @?= False,
+      testCase "a fully typed hole fails compilation and publishes no interface" $ do
+        result <- check (baseOptions "test/fixtures/semantics/type-checking/negative/TypedExpressionHole.ficus")
+        compileSucceeded result @?= False
+        let matching = filter ((== E.ExpressionHole) . E.diagnosticCode) (compileTypeDiagnostics result)
+        map (\d -> (line (start (E.diagnosticSpan d)), column (start (E.diagnosticSpan d)))) matching @?= [(2, 9)]
+        Map.member (ModuleId ("TypedExpressionHole" :| [])) (compileModules result) @?= False,
+      testCase "checked interfaces retain reexported polymorphism and trait kinds" $ do
+        result <- check ((baseOptions "test/fixtures/compile/typing/Main.ficus") {libraryRoots = []})
+        assertBool (show (compileDiagnostics result)) (compileSucceeded result)
+        Map.size (compileModules result) @?= 3
+        mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
+      testCase "failed dependencies publish no interface while independent modules continue" $ do
+        result <- check ((baseOptions "test/fixtures/compile/typing/Dependent.ficus") {inputFiles = "test/fixtures/compile/typing/Dependent.ficus" :| ["test/fixtures/compile/typing/Main.ficus"], libraryRoots = []})
+        compileSucceeded result @?= False
+        Map.member (ModuleId ("Failure" :| [])) (compileModules result) @?= False
+        Map.member (ModuleId ("Dependent" :| [])) (compileModules result) @?= False
+        Map.member (ModuleId ("Main" :| [])) (compileModules result) @?= True
+        let matching = filter ((== E.TypeMismatch) . E.diagnosticCode) (compileTypeDiagnostics result)
+        map (\d -> (line (start (E.diagnosticSpan d)), column (start (E.diagnosticSpan d)), column (end (E.diagnosticSpan d)))) matching @?= [(3, 7, 10)]
     ]

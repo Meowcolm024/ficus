@@ -1,4 +1,5 @@
 {
+  "negative/MultiExpressionBlockInitializer.ficus": {"kind": "ExpansiveInitializer", "code": "T0201", "span": [2, 9, 2, 16], "source": "{ 1; 2 }", "rule": "SPEC §§15–16 only single-expression blocks inherit their expression's classification"},
   "negative/AliasHole.ficus": {"kind": "InvalidTypeHole", "span": [1, 9, 1, 9]},
   "negative/ExpansiveImpl.ficus": {"kind": "ExpansiveInitializer", "span": [2, 25, 2, 31]},
   "negative/ExpressionHole.ficus": {"kind": "ExpressionHole", "span": [1, 8, 1, 8]},

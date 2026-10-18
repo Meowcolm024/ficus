@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+type Box a = Box a
+trait Pick a = { pick : a -> b -> b }
+identity x = x

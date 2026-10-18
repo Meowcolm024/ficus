@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.39.1.
+-- This file has been generated from package.yaml by hpack version 0.38.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -21,6 +21,11 @@ extra-source-files:
     docs/SPEC.md
     docs/ERRORS.md
     test/fixtures/compile/invalid/main.ficus
+    test/fixtures/compile/typing/Bridge.ficus
+    test/fixtures/compile/typing/Definitions.ficus
+    test/fixtures/compile/typing/Dependent.ficus
+    test/fixtures/compile/typing/Failure.ficus
+    test/fixtures/compile/typing/Main.ficus
     test/fixtures/desugaring/pattern-lambdas/DoBindingsV0.ficus
     test/fixtures/desugaring/pattern-lambdas/RecordV1.ficus
     test/fixtures/desugaring/pattern-lambdas/SourcesV0.ficus
@@ -270,6 +275,7 @@ extra-source-files:
     test/fixtures/semantics/type-checking/negative/ListElementMismatch.ficus
     test/fixtures/semantics/type-checking/negative/LocalExpansivePolymorphism.ficus
     test/fixtures/semantics/type-checking/negative/MatchBranchesMismatch.ficus
+    test/fixtures/semantics/type-checking/negative/MultiExpressionBlockInitializer.ficus
     test/fixtures/semantics/type-checking/negative/MultipleExpressionHoles.ficus
     test/fixtures/semantics/type-checking/negative/NamedPatternAnnotation.ficus
     test/fixtures/semantics/type-checking/negative/RecordWithDuplicateLabel.ficus
@@ -316,6 +322,8 @@ extra-source-files:
     test/fixtures/semantics/type-checking/positive/SignatureSpecialization.ficus
     test/fixtures/semantics/type-checking/positive/SignedConstrainedAlias.ficus
     test/fixtures/semantics/type-checking/positive/SignedPolymorphicRecursion.ficus
+    test/fixtures/semantics/type-checking/positive/SingleExpressionBlocks.ficus
+    test/fixtures/semantics/type-checking/positive/SingleExpressionDoBlocks.ficus
     test/fixtures/semantics/type-checking/positive/SuperclassEvidence.ficus
     test/fixtures/semantics/type-checking/positive/TypeApplicationHole.ficus
     test/fixtures/semantics/type-checking/positive/WeakAliasSolved.ficus
@@ -416,10 +424,28 @@ library
   exposed-modules:
       Ficus.Compile
       Ficus.Desugar.Registry
+      Ficus.Elaborate
+      Ficus.Elaborate.Finalize
+      Ficus.Elaborate.Lower
+      Ficus.Elaborate.Schedule
+      Ficus.Elaborate.Types
       Ficus.Error.Diagnostic
       Ficus.Error.Parser
       Ficus.Error.Pretty
       Ficus.Error.Resolve
+      Ficus.Error.Type
+      Ficus.Infer.Check
+      Ficus.Infer.Coverage
+      Ficus.Infer.Declaration
+      Ficus.Infer.Evidence
+      Ficus.Infer.Goal
+      Ficus.Infer.Initialization
+      Ficus.Infer.Kind
+      Ficus.Infer.Monad
+      Ficus.Infer.Restriction
+      Ficus.Infer.Syntax
+      Ficus.Infer.Type
+      Ficus.Infer.Unify
       Ficus.Library.Contracts
       Ficus.Resolve
       Ficus.Resolve.Desugar
@@ -433,12 +459,17 @@ library
       Ficus.Syntax.Abstract.Validate
       Ficus.Syntax.Concrete
       Ficus.Syntax.Concrete.Pretty
+      Ficus.Syntax.Core
+      Ficus.Syntax.Core.Intrinsic
+      Ficus.Syntax.Core.Validate
       Ficus.Syntax.Literal
       Ficus.Syntax.Name
       Ficus.Syntax.Parser
       Ficus.Syntax.Parser.Lexer
       Ficus.Syntax.Pragma
       Ficus.Syntax.Token
+      Ficus.Type
+      Ficus.Type.Substitution
       Ficus.Util.Source
   other-modules:
       Paths_ficus
@@ -515,8 +546,17 @@ test-suite ficus-test
   main-is: Spec.hs
   other-modules:
       Ficus.CompileSpec
+      Ficus.Core.Spec
       Ficus.Error.ParserSpec
       Ficus.Error.PrettySpec
+      Ficus.Infer.CheckSpec
+      Ficus.Infer.CorpusSpec
+      Ficus.Infer.DeclarationSpec
+      Ficus.Infer.ElaborateSpec
+      Ficus.Infer.FinalizeSpec
+      Ficus.Infer.KindSpec
+      Ficus.Infer.RestrictionSpec
+      Ficus.Infer.TypeSpec
       Ficus.Parser.PrettySpec
       Ficus.Parser.Spec
       Ficus.Resolve.Spec

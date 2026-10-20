@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN VEC Vector #-}
+Vector : Type -> Type
+{-# BUILTIN VEC_FROM_LIST bad #-}
+bad : [Int] -> Vector Int

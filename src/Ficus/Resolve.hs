@@ -13,6 +13,7 @@ import Ficus.Resolve.Provider
 import Ficus.Resolve.Scope
 import Ficus.Syntax.Abstract
 import Ficus.Syntax.Name
+import Ficus.Syntax.Pragma (standaloneEnabled)
 import Ficus.Util.Source (sourceFile)
 
 -- Valid independent modules remain available even when another module fails.
@@ -46,7 +47,7 @@ resolveGraphWithNames scopes config registry graph =
       Just (DiscoveredModule header input) ->
         let dependencies = Map.restrictKeys (frontendInterfaces result) (Map.keysSet (Map.fromList [(edgeTarget edge, ()) | edge <- headerEdges header]))
             resolution = resolveModuleWithNames (Map.findWithDefault Map.empty owner scopes) config registry header input dependencies
-            dependencyFailed = any (\edge -> Map.notMember (edgeTarget edge) (frontendModules result)) (headerEdges header)
+            dependencyFailed = any (\edge -> Map.notMember (edgeTarget edge) (frontendModules result) || maybe False (standaloneEnabled . headerOptions . discoveredHeader) (Map.lookup (edgeTarget edge) (graphModules graph))) (headerEdges header)
             valid = if dependencyFailed then Nothing else resolvedModule resolution
          in result
               { frontendModules = maybe (frontendModules result) (\tree -> Map.insert owner tree (frontendModules result)) valid,

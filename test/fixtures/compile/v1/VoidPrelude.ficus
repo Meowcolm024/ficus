@@ -1,0 +1,2 @@
+eliminate : Void -> a
+eliminate x = with x {}

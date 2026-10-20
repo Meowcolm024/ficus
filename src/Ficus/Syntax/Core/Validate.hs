@@ -58,7 +58,7 @@ validateCore tree =
           visible = case group of NonRecursive _ -> environment; Recursive _ -> extended
           cycleErrors = case group of NonRecursive _ -> []; Recursive bs -> checkRecursion (NE.toList bs)
           duplicateErrors = concatMap (\binding -> require (nodeSpan binding) (Map.notMember (bindingReference (nodeValue binding)) environment) "duplicate Core binding") bindings
-          topLevelErrors = if coreInitialization tree == InteractiveInitialization then [] else concatMap (\binding -> maybe [] (\origin -> invalid origin "expansive top-level initializer") (expansiveOrigin (bindingFacts (nodeValue binding)))) bindings
+          topLevelErrors = if coreInitialization tree /= OrdinaryInitialization then [] else concatMap (\binding -> maybe [] (\origin -> invalid origin "expansive top-level initializer") (expansiveOrigin (bindingFacts (nodeValue binding)))) bindings
        in (extended, errors ++ duplicateErrors ++ topLevelErrors ++ cycleErrors ++ concatMap (checkBinding tree visible Map.empty) bindings)
     checkGoal (ident, goal) = checkNode goal ++ require (nodeSpan goal) (ident == goalIdentity (nodeValue goal)) "hole goal key disagrees with its identity"
 

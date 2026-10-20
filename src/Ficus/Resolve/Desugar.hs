@@ -82,7 +82,7 @@ resolveModuleWithNames interactive config registry header input interfaces =
       entities = Map.unions (Map.fromList [(A.entityId e, e) | e <- Map.elems own] : map allEntities (Map.elems interfaces))
       visible = nub (implementations final ++ concatMap interfaceImplementations (Map.elems interfaces))
       fields = Map.unions (collectFields (headerId header) input : map interfaceFields (Map.elems interfaces))
-      iface = Interface exports entities visible fields (associations final)
+      iface = Interface exports entities visible fields (associations final) (headerOptions header)
       candidate = case result of
         Right group | not (any ((== Error) . severity) ds) -> Just (A.AbstractModule (headerId header) (C.moduleLocation input) (C.moduleOrigin input) (headerOptions header) (headerPrelude header) group exports entities fields visible (reverse (occurrences final)) (associations final))
         _ -> Nothing

@@ -74,9 +74,9 @@ tests =
       builtinFailure "WrongScalar" 3,
       builtinFailure "WrongHandle" 5,
       builtinFailure "WrongNominal" 5,
-      builtinFailure "SpecializedAbsurd" 5,
+      builtinFailure "SpecializedVector" 5,
       builtinFailure "WrongVector" 5,
-      builtinFailure "MissingVoidAssociation" 5,
+      builtinFailure "MissingVectorAssociation" 5,
       builtinFailure "WrongPolymorphism" 5,
       testCase "Prelude resolves without a main declaration" $ do
         result <- check (baseOptions "test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus")

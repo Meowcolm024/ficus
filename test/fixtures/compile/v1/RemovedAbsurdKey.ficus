@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN ABSURD eliminate #-}
+eliminate : a -> b

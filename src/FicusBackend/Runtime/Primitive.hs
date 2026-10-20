@@ -74,7 +74,6 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
   (VecLength (), [VectorValue values]) -> integer (fromIntegral (V.length values))
   (ByteFromInt (), [LiteralValue (Integer value)]) -> pure (ByteValue (fromIntegral value))
   (ByteToInt (), [ByteValue value]) -> integer (fromIntegral value)
-  (Absurd (), [_]) -> failure "ABSURD received a value of the uninhabited type"
   (HandleStdin (), []) -> pure (HandleValue StandardInput)
   (HandleStdout (), []) -> pure (HandleValue StandardOutput)
   (HandleStderr (), []) -> pure (HandleValue StandardError)

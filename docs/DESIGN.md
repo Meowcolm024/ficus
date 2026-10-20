@@ -533,14 +533,13 @@ decode input = do
 
 In v0, `<-` accepts only patterns proved irrefutable by type-directed coverage checking after resolution and inference. Parsing admits every supported pattern form. A single-constructor pattern can pass when its fields cover their types; notation and annotations do not decide refutability. Refutable patterns fail semantic validation, not parsing.
 
-The v0 Prelude re-exports `Void` and `absurd`. Until empty declarations and matches exist, an explicit builtin-backed module supplies:
+Prelude re-exports the source-defined `Void` and `absurd` from `Data.Void`:
 
 ```text
-{-# BUILTIN VOID Void #-}
-Void : Type
+type Void = {}
 
-{-# BUILTIN ABSURD absurd #-}
 absurd : Void -> a
+absurd x = with x {}
 ```
 
 The byte and vector types are named `Byte` and `Vec a`, replacing `U8` and `Array a`.

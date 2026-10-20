@@ -114,14 +114,18 @@ tests =
         let value = expr 2 int (Literal (L.IntegerLiteral "1"))
             bad = expr 1 int (If [node 3 (expr 4 int (Literal (L.IntegerLiteral "0")), value)] Nothing)
         assertInvalid (moduleWith (monomorphic int) bad),
-      testCase "interactive initialization permits expansive values but not cycles" $ do
+      testCase "standalone and interactive initialization permit expansive values but not cycles" $ do
         let body = expr 1 int (Primitive IntNegate [expr 2 int (Literal (L.IntegerLiteral "1"))])
             binding = node 0 (Binding global (monomorphic int) body (BindingFacts 0 (Just origin)))
             ordinary = (moduleWith (monomorphic int) body) {coreBindings = [NonRecursive binding]}
-            interactive = ordinary {coreInitialization = InteractiveInitialization}
         assertInvalid ordinary
-        validateCore interactive @?= []
-        assertInvalid (interactive {coreBindings = [Recursive (binding :| [])]}),
+        mapM_
+          ( \mode -> do
+              let relaxed = ordinary {coreInitialization = mode}
+              validateCore relaxed @?= []
+              assertInvalid (relaxed {coreBindings = [Recursive (binding :| [])]})
+          )
+          [StandaloneInitialization, InteractiveInitialization],
       testCase "unbound values fail" $
         assertInvalid (moduleWith (monomorphic int) (expr 1 int (Var (LocalRef (LocalId 4)) []))),
       testCase "application types are checked independently" $ do

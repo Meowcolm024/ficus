@@ -119,7 +119,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       Annotated e bs t -> expr e >> binders bs (ty t)
       Lambda b e -> binder b >> withValues (Set.singleton (fst (nodeValue b))) (expr e)
       TypeLambda bs e -> nonempty bs >> binders bs (expr e)
-      Match _ e cs -> nonempty cs >> expr e >> mapM_ matchClause cs
+      Match _ e cs -> expr e >> mapM_ matchClause cs
       Conditional cs -> nonempty cs >> mapM_ (onNode (\(c, e) -> mapM_ expr c >> expr e)) cs
       Sequence ss e -> statements ss (expr e)
       Where p g e -> do

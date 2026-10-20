@@ -1,0 +1,5 @@
+{-# STANDALONE #-}
+{-# NO_IMPLICIT_PRELUDE #-}
+trait Identity a = { identity : a -> a }
+impl Identity Int = { identity = apply (x -> x) }
+apply f = f

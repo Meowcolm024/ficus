@@ -28,6 +28,7 @@ import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Intrinsic (constructorSignature, literalType, primitiveScheme)
 import Ficus.Syntax.Name hiding (TypeKind)
+import Ficus.Syntax.Pragma (standaloneEnabled)
 import Ficus.Type
 import Ficus.Type.Substitution qualified as S
 import Ficus.Util.Source
@@ -53,7 +54,7 @@ data Context = Context
 data Judgement = Judgement {judgementType :: InferType, judgementWanteds :: [Wanted]}
 
 inferModule :: Declarations -> A.AbstractModule -> Inference
-inferModule = inferModuleWithMode OrdinaryInitialization
+inferModule environment tree = inferModuleWithMode (if standaloneEnabled (A.abstractOptions tree) then StandaloneInitialization else OrdinaryInitialization) environment tree
 
 inferModuleWithMode :: InitializationMode -> Declarations -> A.AbstractModule -> Inference
 inferModuleWithMode mode imported tree =

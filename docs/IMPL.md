@@ -89,7 +89,7 @@ The inspiration is Agda's distinction between local variables, global definition
 
 - Derive the canonical module path relative to the configured root; never silently rename an entry file to Main. Resolve imports through a module provider. Source-root precedence and duplicate-file selection are configuration decisions still to specify, not an implicit first-file-wins rule.
 - Scan generic pragma nodes before traversing imports or bodies. Classify supported names by language version, argument shape, target class, and placement. Unknown/unsupported/invalid directives produce semantic N-codes; lexer/parser failures keep their existing P-codes.
-- Extract header-only `NO_IMPLICIT_PRELUDE`. Declaration pragmas elsewhere cannot retroactively alter imports. `BUILTIN` stays declaration metadata and does not change module mode. Future `STANDALONE` is discovered here for importability checks; future ETA remains attached to one definition and is not a module option.
+- Extract header-only `NO_IMPLICIT_PRELUDE`. Declaration pragmas elsewhere cannot retroactively alter imports. `BUILTIN` stays declaration metadata and does not change module mode. `STANDALONE` is discovered here for importability checks; future ETA remains attached to one definition and is not a module option.
 - Keep the original directive span and each argument span. Duplicate/conflicting BUILTIN associations have their specified validation; do not invent a duplicate-module-flag policy where the spec has not selected one.
 
 Output: `ModuleHeader { moduleId, languageVersion, mode, explicitImports, pendingDeclarationPragmas }`.
@@ -101,7 +101,7 @@ Output: `ModuleHeader { moduleId, languageVersion, mode, explicitImports, pendin
 - Discover every dependency's header before resolving the importing body. Include implicit edges in cycle detection. Bootstrap Prelude and its dependencies with explicit `NO_IMPLICIT_PRELUDE`; do not silently exempt the Prelude file or BUILTIN modules.
 - Detect import cycles with a DFS stack or module SCCs. Report the closing explicit import (or implicit edge anchor) and related spans for the cycle path. Module imports are eager dependencies even if every imported name is unused.
 - Load each module once by canonical identity. Preserve written import order as edge metadata; resolution order and map iteration must not become runtime initialization order. Place the proposed implicit Prelude edge before explicit dependencies for internal scheduling, but retain this as an engineering proposal pending any observable implicit-edge ordering contract.
-- Future: reject every edge to a STANDALONE module, including implicit edges, aliases, and re-exports, using header metadata before executing or resolving initialization.
+- Reject every edge to a STANDALONE module, including implicit edges, aliases, and re-exports, using header metadata before executing or resolving initialization.
 
 Output: an acyclic module graph with dependency/source-order metadata. Source-root/library distribution and observable ordering of implicit versus explicit imports remain explicit configuration/design questions.
 
@@ -724,9 +724,9 @@ v2+ adds concurrency primitives, lazy arrows, a simple JavaScript backend with t
 
 The feature designs and their settled or draft status are grouped in SPEC.md, Sections 24–26. This section records their implementation requirements.
 
-### 10.1 Empty types and matching
+### 10.1 Empty types and matching (implemented)
 
-For v1+, extend parsing to accept empty type bodies and empty `with` blocks. Empty record and empty ADT bodies share `type T = {}`: both grammar alternatives can accept the same empty braces, and there is no field or constructor token to distinguish them. Handle this shared empty-body case explicitly so parser alternative ordering does not assign different meanings or synthesize a nullary record constructor. An empty type body is uninhabited and introduces no constructor at either source or runtime level. Reject `Void with {}` during constructor resolution/elaboration because `type Void = {}` provides no record constructor. Include positive fixtures for the declaration and `with x {}` elimination and a negative semantic fixture for `Void with {}`. Exhaustiveness checking must recognize an empty match on such a type as exhaustive and distinguish it from an empty match on a potentially inhabited type. Core validation and runtime lowering must support elimination with no alternatives; do not introduce a synthetic value or constructor for `Void`. This replaces the v0 builtin bindings for `Void` and `absurd`.
+Parsing accepts explicit empty type bodies and empty `with` blocks. Empty record and empty ADT bodies share `type T = {}`: both grammar alternatives can accept the same empty braces, and there is no field or constructor token to distinguish them. Handle this shared empty-body case explicitly so parser alternative ordering does not assign different meanings or synthesize a nullary record constructor. An empty type body is uninhabited and introduces no constructor at either source or runtime level. Reject constructing `Void` because `type Void = {}` provides no constructor; postfix field blocks still require at least one field, so `Void with {}` is rejected by the parser. Include positive fixtures for the declaration and `with x {}` elimination and negative fixtures for named and positional construction of the empty type. Exhaustiveness checking must recognize an empty match on such a type as exhaustive and distinguish it from an empty match on a potentially inhabited type. Core validation and runtime lowering must support elimination with no alternatives; do not introduce a synthetic value or constructor for `Void`. This replaces the v0 builtin bindings for `Void` and `absurd`.
 
 An optional warning for an empty type body may explain that it has no values and suggest `type Token = { Token }` if a unit-like type was intended. Keep this advisory; do not reject intentional empty types or replace them automatically.
 
@@ -758,7 +758,7 @@ For `PRIVATE member`, retain the public type but exclude its ADT constructors or
 
 After generic pragma parsing, require `DERIVE` to have no arguments and attach it to the following top-level declaration, which must be an implementation. Read trait, type, and constraints from the ordinary implementation header. Reject any nonempty source body before generating members, including partially supplied methods; do not fill missing members or add fallback method behavior. Initially generate structural Show/Eq members, then run ordinary implementation validation, ownership/overlap checks, superclass resolution, and type checking against the written context without adding constraints. Preserve pragma, implementation, and type-declaration provenance on generated nodes. Generation rules remain open. Planned fixtures cover empty derived implementations, explicit contexts, and separate traits; negative fixtures cover pragma arguments, invalid targets, unsupported derivations, insufficient contexts, and partially or fully handwritten bodies, with diagnostic kinds and primary spans. Editor highlighting retains the generic known-directive rule.
 
-### 10.7 Standalone module initialization
+### 10.7 Standalone module initialization (implemented)
 
 Interpret argument-free `STANDALONE` after generic pragma parsing and require module-level placement before imports. Record the module flag in source metadata and compiled interfaces. Check it on every import edge, including aliases, selective imports, re-exports, and implicit Prelude dependencies, and reject imports targeting standalone modules before their initialization. A standalone module may import ordinary dependencies; the pragma neither disables Prelude nor selects an entry.
 
@@ -789,7 +789,7 @@ before compiling an entire graph. Inference owns typed safety and coverage check
 
 Module directives are classified by a semantic pragma table, and retained in
 ModuleOptions. Extending the table and option interpretation does not require
-parser branches. STANDALONE and OPTIONS remain unavailable until their versioned
+parser branches. OPTIONS remains unavailable until its versioned
 semantics are implemented. `Ficus.Error.Diagnostic.ToDiagnostic` adapts typed
 phase diagnostics to a shared envelope; prettyDiagnostic handles any such value,
 including warning severity and related source labels, without file IO.

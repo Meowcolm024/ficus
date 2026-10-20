@@ -30,6 +30,7 @@ data ResolveCode
   | ImportCycle
   | MissingExport
   | InvalidImportSelection
+  | ModuleNotImportable
   | AmbiguousReexport
   | Shadowing
   | RepeatedModuleQualifier
@@ -66,6 +67,7 @@ renderResolveCode = \case
   ImportCycle -> "N0203"
   MissingExport -> "N0204"
   InvalidImportSelection -> "N0205"
+  ModuleNotImportable -> "N0207"
   AmbiguousReexport -> "N0206"
   Shadowing -> "N0901"
   RepeatedModuleQualifier -> "N0902"

@@ -1,4 +1,4 @@
--- | Explicit initialization policy, selected by the driver rather than syntax.
+-- | Explicit initialization policy, selected by module metadata or the driver.
 module Ficus.Initialization (InitializationMode (..)) where
 
-data InitializationMode = OrdinaryInitialization | InteractiveInitialization deriving (Eq, Show)
+data InitializationMode = OrdinaryInitialization | StandaloneInitialization | InteractiveInitialization deriving (Eq, Show)

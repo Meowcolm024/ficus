@@ -30,6 +30,7 @@ import Ficus.Syntax.Abstract.Validate
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Name
+import Ficus.Syntax.Pragma (standaloneEnabled)
 import Ficus.Type
 
 data Elaboration = Complete CheckedModule [E.Diagnostic] | Incomplete (Maybe (C.CoreModule C.CoreType)) [E.Diagnostic] deriving (Eq, Show)
@@ -47,7 +48,7 @@ data CheckedModule = CheckedModule
 newtype CheckedInterface = CheckedInterface Declarations deriving (Eq, Show)
 
 elaborateModule :: [CheckedInterface] -> A.AbstractModule -> Elaboration
-elaborateModule = elaborateWithMode OrdinaryInitialization
+elaborateModule imports source = elaborateWithMode (if standaloneEnabled (A.abstractOptions source) then StandaloneInitialization else OrdinaryInitialization) imports source
 
 elaborateInteractiveModule :: [CheckedInterface] -> A.AbstractModule -> Elaboration
 elaborateInteractiveModule = elaborateWithMode InteractiveInitialization
@@ -94,6 +95,7 @@ mergeInterfaces interfaces =
             aliasNames = Set.unions (map (aliasNames . declarationTypes) entries)
           },
       valueSignatures = Map.unions (map valueSignatures entries),
+      uninhabitedTypes = Set.unions (map uninhabitedTypes entries),
       constructorDeclarations = Map.unions (map constructorDeclarations entries),
       recordDeclarations = Map.unions (map recordDeclarations entries),
       traitDeclarations = Map.unions (map traitDeclarations entries),

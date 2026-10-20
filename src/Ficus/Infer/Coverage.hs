@@ -4,6 +4,7 @@ module Ficus.Infer.Coverage (checkCoverage, patternTotal) where
 
 import Control.Monad (foldM, forM, unless, when)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Declaration
 import Ficus.Infer.Monad
@@ -21,6 +22,12 @@ import Ficus.Util.Source
 data Pattern = Any | Tagged C.ConstructorId [Pattern] | Literal L.Literal deriving (Eq, Show)
 
 checkCoverage :: Declarations -> Span -> [InferType] -> [([A.Pattern], Bool, Span)] -> Infer ()
+checkCoverage environment origin [ty] [] = do
+  receiver <- zonk ty
+  let emptyType (Constructor ident _) = Set.member ident (uninhabitedTypes environment)
+      emptyType (Application f _) = emptyType f
+      emptyType (Variable _ _) = False
+  unless (emptyType receiver) (emit (E.diagnostic E.NonExhaustiveMatch origin "patterns do not cover every possible value"))
 checkCoverage environment origin types clauses = do
   matrix <- foldM add [] clauses
   incomplete <- useful environment origin types matrix (replicate (length types) Any)

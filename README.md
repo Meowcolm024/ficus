@@ -140,5 +140,5 @@ For interpreter embedding, use `FicusBackend.Lower.Runtime` and
 `FicusBackend.Runtime` to lower dependency-ordered Core modules, select an
 address, and execute with supplied effects. See [the Runtime API](docs/RUNTIME.md#7-embedding-api).
 
-[Specification](docs/SPEC.md) · [Implementation](docs/IMPL.md) ·
+[Feature checklist](docs/TODO.md) · [Specification](docs/SPEC.md) · [Implementation](docs/IMPL.md) ·
 [Runtime design](docs/RUNTIME.md) · [Tests](test/fixtures/parsing/README.md)

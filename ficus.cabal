@@ -34,8 +34,8 @@ extra-source-files:
     test/fixtures/compile/invalid/main.ficus
     test/fixtures/compile/library/Handles.ficus
     test/fixtures/compile/library/Main.ficus
-    test/fixtures/compile/library/negative/MissingVoidAssociation.ficus
-    test/fixtures/compile/library/negative/SpecializedAbsurd.ficus
+    test/fixtures/compile/library/negative/MissingVectorAssociation.ficus
+    test/fixtures/compile/library/negative/SpecializedVector.ficus
     test/fixtures/compile/library/negative/WrongHandle.ficus
     test/fixtures/compile/library/negative/WrongNominal.ficus
     test/fixtures/compile/library/negative/WrongPolymorphism.ficus
@@ -47,6 +47,29 @@ extra-source-files:
     test/fixtures/compile/typing/Dependent.ficus
     test/fixtures/compile/typing/Failure.ficus
     test/fixtures/compile/typing/Main.ficus
+    test/fixtures/compile/v1/ConstructEmpty.ficus
+    test/fixtures/compile/v1/ConstructEmptyValue.ficus
+    test/fixtures/compile/v1/Dependency.ficus
+    test/fixtures/compile/v1/Empty.ficus
+    test/fixtures/compile/v1/EmptyClient.ficus
+    test/fixtures/compile/v1/implicit/Implicit.ficus
+    test/fixtures/compile/v1/implicit/Prelude.ficus
+    test/fixtures/compile/v1/ImportAlias.ficus
+    test/fixtures/compile/v1/ImportBare.ficus
+    test/fixtures/compile/v1/ImportReexport.ficus
+    test/fixtures/compile/v1/ImportSelective.ficus
+    test/fixtures/compile/v1/Inhabited.ficus
+    test/fixtures/compile/v1/RemovedAbsurdKey.ficus
+    test/fixtures/compile/v1/RemovedVoidKey.ficus
+    test/fixtures/compile/v1/Standalone.ficus
+    test/fixtures/compile/v1/StandaloneArgument.ficus
+    test/fixtures/compile/v1/StandaloneCycle.ficus
+    test/fixtures/compile/v1/StandaloneDependency.ficus
+    test/fixtures/compile/v1/StandaloneMain.ficus
+    test/fixtures/compile/v1/StandaloneMember.ficus
+    test/fixtures/compile/v1/StandalonePlacement.ficus
+    test/fixtures/compile/v1/StandaloneRestriction.ficus
+    test/fixtures/compile/v1/VoidPrelude.ficus
     test/fixtures/desugaring/pattern-lambdas/DoBindingsV0.ficus
     test/fixtures/desugaring/pattern-lambdas/RecordV1.ficus
     test/fixtures/desugaring/pattern-lambdas/SourcesV0.ficus
@@ -76,9 +99,7 @@ extra-source-files:
     test/fixtures/parsing/negative/EmptyExpressionBlock.ficus
     test/fixtures/parsing/negative/EmptyIf.ficus
     test/fixtures/parsing/negative/EmptyImportList.ficus
-    test/fixtures/parsing/negative/EmptyMatch.ficus
     test/fixtures/parsing/negative/EmptyRecordWith.ficus
-    test/fixtures/parsing/negative/EmptyType.ficus
     test/fixtures/parsing/negative/EmptyWhere.ficus
     test/fixtures/parsing/negative/ExpressionNotIndented.ficus
     test/fixtures/parsing/negative/HardKeywordBinding.ficus
@@ -184,7 +205,9 @@ extra-source-files:
     test/fixtures/parsing/negative/WhereNotIndented.ficus
     test/fixtures/parsing/positive/ControlInteraction.ficus
     test/fixtures/parsing/positive/DeclarationsTypes.ficus
+    test/fixtures/parsing/positive/EmptyMatch.ficus
     test/fixtures/parsing/positive/EmptyModule.ficus
+    test/fixtures/parsing/positive/EmptyType.ficus
     test/fixtures/parsing/positive/ExpressionIntroducers.ficus
     test/fixtures/parsing/positive/FourColumnTabs.ficus
     test/fixtures/parsing/positive/ImportsPragmas.ficus
@@ -484,7 +507,6 @@ data-files:
     library/Ficus/Builtin/String.ficus
     library/Ficus/Builtin/Unit.ficus
     library/Ficus/Builtin/Vec.ficus
-    library/Ficus/Builtin/Void.ficus
     library/Prelude.ficus
     library/System/IO.ficus
     library/README.md
@@ -660,6 +682,7 @@ test-suite ficus-test
       Ficus.Resolve.Spec
       Ficus.Resolve.Support
       Ficus.Resolve.WildcardSpec
+      Ficus.V1Spec
       FicusBackend.DriverSpec
       FicusBackend.Runtime.Direct
       FicusBackend.Runtime.Spec

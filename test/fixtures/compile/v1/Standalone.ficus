@@ -1,0 +1,4 @@
+{-# STANDALONE #-}
+answer = 40 + 2
+identity x = x
+value = identity 7 where { immediate = identity 1 }

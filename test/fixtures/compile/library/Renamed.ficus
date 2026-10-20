@@ -1,8 +1,7 @@
 {-# NO_IMPLICIT_PRELUDE #-}
-{-# BUILTIN VOID Empty #-}
-Empty : Type
-{-# BUILTIN ABSURD eliminate #-}
+type Empty = {}
 eliminate : Empty -> a
+eliminate x = with x {}
 {-# BUILTIN VEC Vector #-}
 Vector : Type -> Type
 {-# BUILTIN VEC_FROM_LIST pack #-}

@@ -101,7 +101,6 @@ primitiveContext source primitive = case primitive of
   P.IntDivide -> errorContext source
   P.IntRemainder -> errorContext source
   P.FloatToInt -> errorContext source
-  P.Absurd _ -> errorContext source
   P.HandleRead _ -> errorContext source
   P.HandleWrite _ -> errorContext source
   _ -> ""

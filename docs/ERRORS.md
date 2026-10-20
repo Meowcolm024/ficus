@@ -108,7 +108,7 @@ a well-scoped but incompatible annotation is a T error.
 | N0204 | MissingExport | Selected member or qualified terminal; supplying import/export module |
 | N0205 | InvalidImportSelection | Invalid constructor/record member selection; owning type declaration |
 | N0206 | AmbiguousReexport | Conflicting later pub token; earlier public declaration/re-export and candidate identities |
-| N0207 | ModuleNotImportable | Import edge to a future STANDALONE module; its header pragma |
+| N0207 | ModuleNotImportable | Import edge to a STANDALONE module; its header pragma |
 | N0901 | Shadowing (warning) | New sequential binder; hidden binder |
 | N0902 | RepeatedModuleQualifier (warning) | Repeated qualifier import; earlier bindings; distinct modules are checked at use sites |
 

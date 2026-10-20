@@ -16,6 +16,7 @@ import Ficus.Infer.TypeSpec qualified as InferType
 import Ficus.Parser.Spec qualified as Parser
 import Ficus.Resolve.Spec qualified as Resolve
 import Ficus.Resolve.WildcardSpec qualified as Wildcard
+import Ficus.V1Spec qualified as V1
 import FicusBackend.DriverSpec qualified as Driver
 import FicusBackend.Runtime.Spec qualified as Runtime
 import FicusLsp.Spec qualified as Lsp
@@ -26,4 +27,4 @@ main = do
   parser <- Parser.tests
   resolution <- Resolve.tests
   corpus <- Corpus.tests
-  defaultMain (testGroup "Ficus" [Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests, Runtime.tests, Driver.tests, Lsp.tests])
+  defaultMain (testGroup "Ficus" [V1.tests, Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests, Runtime.tests, Driver.tests, Lsp.tests])

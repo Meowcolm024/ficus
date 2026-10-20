@@ -1,0 +1,5 @@
+{-# STANDALONE #-}
+use System.IO (println)
+value = { println "initialize"; 42 }
+main : [String] -> Unit
+main args = println (show value)

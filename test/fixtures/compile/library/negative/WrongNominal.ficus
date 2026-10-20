@@ -1,5 +1,5 @@
 {-# NO_IMPLICIT_PRELUDE #-}
-{-# BUILTIN VOID Empty #-}
-Empty : Type
-{-# BUILTIN ABSURD bad #-}
-bad : Int -> a
+{-# BUILTIN BYTE Octet #-}
+Octet : Type
+{-# BUILTIN BYTE_TO_INT bad #-}
+bad : Int -> Int

@@ -1,3 +1,6 @@
 {-# NO_IMPLICIT_PRELUDE #-}
 
-use Ficus.Builtin.Void (Void, absurd) pub
+type Void = {}
+
+absurd : Void -> a
+absurd x = with x {}

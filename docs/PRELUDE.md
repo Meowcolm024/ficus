@@ -68,7 +68,7 @@ Modules marked `NO_IMPLICIT_PRELUDE` receive none of these declarations. The res
 
 | Area | Modules or traits |
 | --- | --- |
-| Builtin-backed declarations | `Ficus.Builtin.Int`, `.Float`, `.Char`, `.String`, `.Handle`, `.Vec`, `.Byte`, `.Void`; `.Bool` and `.Unit` document compiler-reserved declarations without imports or new keys |
+| Builtin-backed declarations | `Ficus.Builtin.Int`, `.Float`, `.Char`, `.String`, `.Handle`, `.Vec`, `.Byte`; `.Bool` and `.Unit` document compiler-reserved declarations without imports or new keys |
 | Basic classes | `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Debug`, `Show`, `Eq`, `Ord`, `Pure`, `Seq`, `Bind`, `Functor`, `Applicative`, `Monad`, `Alternative`, `Semigroup`, `Monoid`, `Default`, `Bifunctor`, `Foldable`, `Traversable`, each under `Class` |
 | System | `System.IO` |
 | Data | `Data.List`, `.Function`, `.Product`, `.Ordering`, `.Maybe`, `.Result`, `.Const`, `.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Vec`, `.Byte`, `.Void` |
@@ -81,7 +81,7 @@ The composites are `Applicative = Functor + Pure + Seq` and `Monad = Applicative
 The inventory defines v0 scope, while the selective table defines the implicit
 API. `Data.Map`, `System.Environment`, exceptions, and concurrency are later work.
 `Data.Ordering` supports `Ord.compare`. `Result` is retained for compatibility
-with the entry-point contract. The numeric traits and `Void` bootstrap remain
+with the entry-point contract. The numeric traits and source-defined `Void` remain
 part of the library. `Data.Const` defines a separate `Const a b` type constructor.
 
 ## 2. Basic data types
@@ -103,19 +103,7 @@ type Ordering =
 
 `Bool`, `Unit`, products, and lists are built in and are not redeclared by Prelude.
 
-The initial Prelude also re-exports the empty type `Void` and its eliminator `absurd : Void -> a`. Until empty data declarations and empty matching are supported, an explicit builtin-backed module supplies:
-
-```text
-{-# BUILTIN VOID Void #-}
-Void : Type
-
-{-# BUILTIN ABSURD absurd #-}
-absurd : Void -> a
-```
-
-`Void` has no values; `absurd` eliminates an impossible value. These are library declarations, not additional reserved primitive types.
-
-In v1+, empty type bodies and empty matching replace those builtin bindings with ordinary source definitions:
+Prelude re-exports the empty type `Void` and its eliminator from `Data.Void`, defined entirely in source:
 
 ```text
 type Void = {}

@@ -1,6 +1,0 @@
-{-# NO_IMPLICIT_PRELUDE #-}
-
-{-# BUILTIN VOID Void #-}
-Void : Type
-{-# BUILTIN ABSURD absurd #-}
-absurd : Void -> a

@@ -1,0 +1,5 @@
+{-# STANDALONE #-}
+{-# NO_IMPLICIT_PRELUDE #-}
+identity x = x
+value = identity identity
+check () = (value 1, value True)

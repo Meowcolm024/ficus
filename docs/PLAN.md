@@ -1,6 +1,6 @@
 # Ficus implementation plan
 
-This document is non-normative. [SPEC.md](SPEC.md) defines language behavior and versioned feature designs; [IMPL.md](IMPL.md) records compiler architecture and engineering choices. This plan tracks implementation order, conformance checks, and unresolved decisions. Milestones are planned work, not claims of completed implementation.
+For current completion status, use the [feature checklist](TODO.md). This document is non-normative. [SPEC.md](SPEC.md) defines language behavior and versioned feature designs; [IMPL.md](IMPL.md) records compiler architecture and engineering choices. This plan tracks implementation order, conformance checks, and unresolved decisions. Milestones are planned work, not claims of completed implementation.
 
 ## 1. Approach
 
@@ -93,7 +93,7 @@ M6 work may use validated Core fixtures once M3 stabilizes its interfaces, while
 
 ## 3. v1+, v2+, and v3+ roadmap
 
-These are dependency groups, not committed minor-version releases. [SPEC.md, Section 24](SPEC.md#24-planned-v1-language-features-and-libraries) groups the source-language plans; [IMPL.md, Sections 7–10](IMPL.md#7-entry-points-and-compiler-artifacts) describes their engineering work.
+These are dependency groups, not committed minor-version releases. Empty types/matches and `STANDALONE` are implemented; the [feature checklist](TODO.md) tracks completion within each group. [SPEC.md, Section 24](SPEC.md#24-v1-language-features-and-libraries) groups the source-language plans; [IMPL.md, Sections 7–10](IMPL.md#7-entry-points-and-compiler-artifacts) describes their engineering work.
 
 | Work group | Scope | Dependencies and acceptance |
 | --- | --- | --- |
@@ -122,7 +122,7 @@ Existing IDs are retained for traceability. “Before” is the last implementat
 | A2 | Ordinary record updates settled; existential-record updates open | SPEC §7.2/27; IMPL §2 | M1/M4/M6 implement postfix updates with type preservation and receiver-once/source-order evaluation; defer existential updates |
 | A3 | Record punning excluded | SPEC §7.2/24.1 | M1 and V1-P reject punned construction, update, and pattern fields; explicit field bindings required |
 | A4 | Higher-rank checking | SPEC §7.3; IMPL §2 | Future work; v0 accepts only outermost quantification, with settled @ binders/applications |
-| A5 | Uninhabited types inside other patterns and diagnostic policy | SPEC §24.1 | V1-P exhaustiveness extension; preserve the settled empty-type/empty-match case |
+| A5 | Uninhabited types inside other patterns (direct empty-match warning policy settled) | SPEC §24.1 | V1-P exhaustiveness extension; preserve the settled empty-type/empty-match case |
 | A6 | Artifact schemas, extensions, versioning, compatibility, linking, paths | IMPL §7 | V1-T serialization and artifact consumers; document a concrete schema rather than assuming an ABI hash |
 | A7 | REPL optional-file loading and formatter I/O | IMPL §8 | V1-T commands; `-f FILE` does not yet imply in-place editing |
 | A8 | `DEPRECATED` targeting, placement, and warning policy | SPEC §24.4; IMPL §9 | V1-G metadata and diagnostics; preserve identifier targets and message |

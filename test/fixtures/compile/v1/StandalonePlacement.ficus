@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+x = 1
+{-# STANDALONE #-}

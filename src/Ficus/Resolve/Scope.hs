@@ -9,13 +9,14 @@ import Ficus.Error.Resolve
 import Ficus.Resolve.Header
 import Ficus.Syntax.Concrete qualified as C
 import Ficus.Syntax.Name
+import Ficus.Syntax.Pragma (ModuleOptions)
 import Ficus.Util.Source
 
 data Candidate = Candidate {candidateEntity :: Entity, candidateRoutes :: [Span]} deriving (Eq, Show)
 
 type Candidates = Map (Namespace, Text) [Candidate]
 
-data Interface = Interface {publicNames :: NameSummary, allEntities :: Map GlobalId Entity, interfaceImplementations :: [ImplementationId], interfaceFields :: Map (GlobalId, Text) FieldDescriptor, interfaceBuiltins :: Map Text GlobalId} deriving (Eq, Show)
+data Interface = Interface {publicNames :: NameSummary, allEntities :: Map GlobalId Entity, interfaceImplementations :: [ImplementationId], interfaceFields :: Map (GlobalId, Text) FieldDescriptor, interfaceBuiltins :: Map Text GlobalId, interfaceOptions :: ModuleOptions} deriving (Eq, Show)
 
 data Scope = Scope {openedNames :: Candidates, moduleQualifiers :: Map [Text] [(ModuleId, Span)], scopeInterfaces :: Map ModuleId Interface} deriving (Eq, Show)
 

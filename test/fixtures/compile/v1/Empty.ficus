@@ -1,0 +1,8 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+type Empty = {}
+type Never a = {}
+Alias = Never Int
+absurd : Empty -> a
+absurd x = with x {}
+eliminate : Alias -> a
+eliminate x = with x {}

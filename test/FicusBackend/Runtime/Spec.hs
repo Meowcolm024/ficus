@@ -130,7 +130,15 @@ tests =
     "runtime"
     [ testGroup
         "source lowering"
-        [ testCase "captures survive nested frames and shadowing" $
+        [ testCase "empty matches evaluate their scrutinee once before failing" $ do
+            (result, trace) <- sourceResult (printing <> "check () = with (print \"scrutinee\") {}\n")
+            trace @?= ["scrutinee"]
+            assertBool "empty match must fail" (case result of Left _ -> True; Right _ -> False),
+          testCase "empty types and polymorphic eliminators lower without constructors" $
+            expectSource "type Empty = {}\nabsurd : Empty -> a\nabsurd x = with x {}\ncheck () = 42\n" (int 42) [],
+          testCase "standalone initialization preserves dependency and source order" $
+            expectSource ("{-# STANDALONE #-}\n" <> printing <> "second = { print \"second\"; first }\nfirst = { print \"first\"; 1 }\ncheck () = second\n") (int 1) ["first", "second"],
+          testCase "captures survive nested frames and shadowing" $
             expectSource (arithmetic <> "make x = y -> { x = add x 1; z -> add (add x y) z }\ncheck () = { saved = make 10 2; saved 3 }\n") (int 16) [],
           testCase "partial and extra application preserve function results" $
             expectSource (arithmetic <> "combine x y = z -> add (add x y) z\ncheck () = { partial = combine 1; partial 2 3 }\n") (int 6) [],

@@ -19,9 +19,10 @@ pragmaRules :: Map Text PragmaRule
 pragmaRules =
   Map.fromList
     [ ("NO_IMPLICIT_PRELUDE", PragmaRule ModuleDirective NoArguments True),
-      ("BUILTIN", PragmaRule DeclarationDirective BuiltinArguments True)
+      ("BUILTIN", PragmaRule DeclarationDirective BuiltinArguments True),
+      ("STANDALONE", PragmaRule ModuleDirective NoArguments True)
     ]
-    `Map.union` Map.fromList [(name, PragmaRule placement NoArguments False) | (name, placement) <- [("STANDALONE", ModuleDirective), ("OPTIONS", ModuleDirective), ("PRIVATE", DeclarationDirective), ("DEPRECATED", DeclarationDirective), ("DERIVE", DeclarationDirective), ("ETA", DeclarationDirective), ("FOREIGN", DeclarationDirective)]]
+    `Map.union` Map.fromList [(name, PragmaRule placement NoArguments False) | (name, placement) <- [("OPTIONS", ModuleDirective), ("PRIVATE", DeclarationDirective), ("DEPRECATED", DeclarationDirective), ("DERIVE", DeclarationDirective), ("ETA", DeclarationDirective), ("FOREIGN", DeclarationDirective)]]
 
 validatePragma :: Placement -> C.Pragma -> Either Diagnostic Directive
 validatePragma placement p = case C.concrete p of

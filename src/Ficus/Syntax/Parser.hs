@@ -333,7 +333,7 @@ typeDeclaration = located $ do
   ps <- many typeParameter
   intro <- text "="
   -- Select the body category once; later items cannot switch categories.
-  body <- block False True intro (fieldMember <|> constructorMember)
+  body <- block True True intro (fieldMember <|> constructorMember)
   typedBody <- case blockItems body of
     Left _ : _ -> Fields <$> traverseBlock fieldOnly body
     _ -> Constructors <$> traverseBlock constructorOnly body
@@ -523,7 +523,7 @@ matchExpression = located $ do
   intro <- text "with"
   let introLine = line (start (tokenSpan intro))
   scrutinee <- local (\e -> e {singleLine = Just introLine}) expression
-  b <- block False False intro $ located $ do
+  b <- block True False intro $ located $ do
     p <- patternParser
     g <- optional (text "if" *> nonLambda)
     arrow <- text "->"

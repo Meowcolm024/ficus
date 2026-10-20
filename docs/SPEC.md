@@ -65,7 +65,7 @@ Imports are initialized once, in source order, before the importing module. Impo
 
 All top-level declarations are public in v0. Private pragmas are planned in Section 24.4.
 
-Pragmas occur only at global declaration level in v0. v1+ extends declaration-level placement to implementation members, `where` groups, and local definitions; each directive retains its own target and placement requirements. Each block contains an ALL_CAPITAL name followed by whitespace-separated identifiers or strings. Every pragma uses the same syntax; its arguments, placement, and meaning are checked semantically. Module pragmas appear before imports; declaration pragmas appear among top-level declarations. `NO_IMPLICIT_PRELUDE` disables implicit Prelude and its dependent sugar. `BUILTIN` does not disable Prelude (Section 19). Private/deprecation pragmas are planned in Section 24.4; `FOREIGN` is planned in Section 25.
+Pragmas occur only at global declaration level in v0. v1+ extends declaration-level placement to implementation members, `where` groups, and local definitions; each directive retains its own target and placement requirements. Each block contains an ALL_CAPITAL name followed by whitespace-separated identifiers or strings. Every pragma uses the same syntax; its arguments, placement, and meaning are checked semantically. `STANDALONE` permits acyclic expansive module initialization and prevents importing that module (Section 24.4). Module pragmas appear before imports; declaration pragmas appear among top-level declarations. `NO_IMPLICIT_PRELUDE` disables implicit Prelude and its dependent sugar. `BUILTIN` does not disable Prelude (Section 19). Private/deprecation pragmas are planned in Section 24.4; `FOREIGN` is planned in Section 25.
 
 ## 3. Lexical structure
 
@@ -171,7 +171,7 @@ type_decl       = "type", upper_name, { type_param }, "=", type_body ;
 type_param      = lower_ident | "(", lower_ident, ":", kind_expr, ")" ;
 kind_expr       = kind_atom, [ "->", kind_expr ] ;
 kind_atom       = upper_name | qualified_type | lower_ident | "(", kind_expr, ")" ;
-type_body       = block1(constructor_decl) | block1(field_decl) ;
+type_body       = block(constructor_decl) | block1(field_decl) ;
 constructor_decl= upper_name, { type_atom } ;
 field_decl      = lower_ident, ":", type_expr ;
 
@@ -198,7 +198,7 @@ postfix_expr    = atom, { ".", ident | "with", block1(record_field) } ;
 
 if_expr         = "if", block1(if_clause) ;
 if_clause       = non_lambda_expr, "->", expr ;
-with_expr       = "with", expr, block1(match_clause) ;
+with_expr       = "with", expr, block(match_clause) ;
 match_clause    = pattern, [ "if", non_lambda_expr ], "->", expr ;
 do_expr         = "do", block1(do_stmt) ;
 do_stmt         = pattern, "<-", expr | value_decl | pattern_decl | expr ;
@@ -289,7 +289,7 @@ Shared syntactic prefixes have the following meanings at the current nesting and
 - In an expression block, `:` selects a local signature, `=` selects a named or pattern declaration, and the absence of either selects an expression.
 - At top level, an upper name followed directly by `:` introduces a kind signature; an upper name followed by optional type parameters and `=` introduces a type alias.
 - At the start of an expression, binder patterns followed by `->` form a lambda; otherwise the expression follows the operator-expression grammar.
-- Prefix `with expr block1(match_clause)` is pattern matching. Postfix `with block1(record_field)` is named construction when its receiver resolves to a bare or module-qualified record constructor, and record update when its receiver has a nominal record type. Field completeness does not select between these meanings.
+- Prefix `with expr block(match_clause)` is pattern matching. Postfix `with block1(record_field)` is named construction when its receiver resolves to a bare or module-qualified record constructor, and record update when its receiver has a nominal record type. Field completeness does not select between these meanings.
 
 Delimiters inside nested blocks do not classify an outer item: `Person with` followed by an indented `name = "x"` is one record expression, not an outer declaration.
 
@@ -376,7 +376,7 @@ impl Functor ((->) r) = ...
 
 ### 7.1 Algebraic data types
 
-`type` introduces a nominal type and constructors:
+`type` introduces a nominal type and zero or more constructors. An explicit empty body, `type T = {}`, defines an uninhabited type with no constructor; see Section 24.1. Layout-controlled bodies remain nonempty:
 
 ```text
 type Maybe a =
@@ -666,7 +666,7 @@ People.Person name age -> ...
 
 After a pattern matches, its optional guard runs. A false guard continues with the next clause. If none succeeds, evaluation raises a match error.
 
-Implementations should warn about detectable non-exhaustive or redundant matches, but neither is a static error.
+Implementations should warn about detectable non-exhaustive or redundant matches, but neither is a static error. Empty matches use the same policy: `with e {}` may have any result type, evaluates `e` once, and raises a match error if evaluation produces a value. It is exhaustive when the scrutinee is a nominal type declared with an empty body, including through type aliases and imports; otherwise it produces a non-exhaustiveness warning. Empty matching requires explicit braces.
 
 ## 11. Conditionals and guards
 
@@ -687,7 +687,7 @@ Ordinary expression-block and `do` `=` bindings are sequential and non-recursive
 
 `where` introduces mutually visible declarations. Initialization follows dependency order, breaking ties by source order; the enclosing body runs after all required declarations are initialized. Top-level declarations and `impl` members follow the same rules.
 
-In v0, every top-level value initializer must be non-expansive (Section 16), including acyclic definitions and definitions with complete signatures. Interactive submissions have the separate rules in Section 22.1. v1+ retains this default, with an exception for acyclic top-level definitions in a `STANDALONE` module (Section 24.4). Written value parameters count as surrounding lambdas, so effects may run when a function is called, but not while loading its module. The check includes any attached `where` group that runs during initialization: a definition without written value parameters cannot hide an expansive initializer there, even if its right-hand side is a lambda. Local bindings may still be expansive, subject to the existing value restriction and cyclic-initializer checks.
+By default, every top-level value initializer must be non-expansive (Section 16), including acyclic definitions and definitions with complete signatures. Interactive submissions have the separate rules in Section 22.1. The implemented v1 extension makes an exception for acyclic top-level definitions in a `STANDALONE` module (Section 24.4). Written value parameters count as surrounding lambdas, so effects may run when a function is called, but not while loading its module. The check includes any attached `where` group that runs during initialization: a definition without written value parameters cannot hide an expansive initializer there, even if its right-hand side is a lambda. Local bindings may still be expansive, subject to the existing value restriction and cyclic-initializer checks.
 
 ```text
 answer = 42                 -- allowed
@@ -785,7 +785,7 @@ Ficus uses Hindley–Milner inference with qualified types.
 
 Inference covers the complete module. Accepted unconstrained definitions have principal types, subject to trait ambiguity.
 
-At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a value lambda (including a definition with written value parameters), literal, variable, constructor, or aggregate of non-expansive values. Value applications, including partial applications, projections, record updates, conditionals, matches, `do`, and expression blocks are expansive, with one exception: an expression or `do` block containing exactly one expression and no declarations inherits that expression's classification. Thus `{ 1 }` and `{ x -> x }` are non-expansive, while `{ f x }` and `{ 1; 2 }` are expansive. Expansive result variables remain monomorphic. A signature cannot override this restriction; in particular, a local `inc = (+) 1` cannot acquire a polymorphic type merely by adding one. In source files, such an initializer is rejected outright at top level unless the v1+ `STANDALONE` exception applies; the value restriction still applies there.
+At each binding-group boundary, the v0 value restriction generalizes variables not free in the environment only when the initializer is non-expansive: a value lambda (including a definition with written value parameters), literal, variable, constructor, or aggregate of non-expansive values. Value applications, including partial applications, projections, record updates, conditionals, matches, `do`, and expression blocks are expansive, with one exception: an expression or `do` block containing exactly one expression and no declarations inherits that expression's classification. Thus `{ 1 }` and `{ x -> x }` are non-expansive, while `{ f x }` and `{ 1; 2 }` are expansive. Expansive result variables remain monomorphic. A signature cannot override this restriction; in particular, a local `inc = (+) 1` cannot acquire a polymorphic type merely by adding one. In source files, such an initializer is rejected outright at top level unless the `STANDALONE` exception applies; the value restriction still applies there.
 
 The v0 monomorphism restriction further keeps an **unsigned**, constrained binding monomorphic when it has no written value parameters or outer value lambda, even if its initializer is non-expansive. A complete signature may override this extra restriction when the value restriction permits generalization and the definition checks against it; a signature with holes cannot. Otherwise, unresolved trait predicates must be solved for the binding's one monotype. This restriction concerns constrained bindings only; it does not prevent generalizing an unconstrained non-expansive value.
 
@@ -923,7 +923,7 @@ Operations that would be default instance methods in Haskell are instead ordinar
 
 A trait or implementation may use an explicit empty block `{}`. This supports marker traits that bundle only supertrait requirements, such as Prelude's `Applicative` and `Monad`. Layout-controlled trait and implementation blocks remain nonempty.
 
-In source files, every top-level value initializer must be non-expansive by default, whether signed, recursive, or acyclic; v1+ `STANDALONE` relaxes this only for acyclic top-level definitions. Every `impl` member initializer must still be non-expansive. Written value parameters count as surrounding lambdas; type binders do not. Non-expansive forms are:
+In source files, every top-level value initializer must be non-expansive by default, whether signed, recursive, or acyclic; `STANDALONE` relaxes this only for acyclic top-level definitions. Every `impl` member initializer must still be non-expansive. Written value parameters count as surrounding lambdas; type binders do not. Non-expansive forms are:
 
 - variables, literals, and constructors;
 - value lambdas (static type-only abstractions are classified by their body);
@@ -932,7 +932,7 @@ In source files, every top-level value initializer must be non-expansive by defa
 - annotations around non-expansive expressions;
 - expression or `do` blocks containing exactly one non-expansive expression and no declarations.
 
-General function application, blocks with declarations or multiple expressions, conditionals, matching, `do` with declarations or multiple statements, projection, record update, and primitive calls are expansive. A single-expression block retains its expression's classification, as specified in Section 15. In source files, expansive initializers are rejected as immediate top-level initializers except for the v1+ `STANDALONE` case, and as implementation-member initializers, although they may appear inside a function or member's lambda body.
+General function application, blocks with declarations or multiple expressions, conditionals, matching, `do` with declarations or multiple statements, projection, record update, and primitive calls are expansive. A single-expression block retains its expression's classification, as specified in Section 15. In source files, expansive initializers are rejected as immediate top-level initializers except for the `STANDALONE` case, and as implementation-member initializers, although they may appear inside a function or member's lambda body.
 
 ```text
 impl Show Person =
@@ -982,13 +982,13 @@ intAdd : Int -> Int -> Int
 
 `BUILTIN key name` associates a compiler implementation with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source definition are static errors. Placement and argument checks are semantic, not special parser productions.
 
-`HANDLE`, `VOID`, and `BYTE` supply opaque types of kind `Type`; `VEC` supplies an opaque type of kind `Type -> Type`. Their conventional names are `Handle`, `Void`, `Byte`, and `Vec`. For example, `HANDLE` supplies an opaque type conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
+`HANDLE` and `BYTE` supply opaque types of kind `Type`; `VEC` supplies an opaque type of kind `Type -> Type`. Their conventional names are `Handle`, `Byte`, and `Vec`. `Void` and `absurd` are ordinary source definitions; there are no `VOID` or `ABSURD` compiler keys. For example, `HANDLE` supplies an opaque type conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
 
 A builtin-supplied type is an opaque nominal constructor with no source constructor; a value is a primitive of its declared type. Keys are metadata, not names in language scope. Targets obey ordinary namespaces, mutual top-level visibility, duplicate-declaration, import/export, and ownership rules. Their identity is their defining module and declared name, not their key. Symbolic targets use their ordinary parenthesized identifier syntax.
 
-The v0 compiler registry additionally includes these value contracts. `Vec`,
-`Byte`, and `Void` below refer to the ordinarily declared types associated with
-`VEC`, `BYTE`, and `VOID`, including when those declarations are renamed or
+The compiler registry additionally includes these value contracts. `Vec` and
+`Byte` below refer to the ordinarily declared types associated with
+`VEC` and `BYTE`, including when those declarations are renamed or
 imported. Contracts require the complete polymorphic signature, up to bound
 variable renaming; a specialization or additional trait predicate is invalid.
 
@@ -1009,7 +1009,6 @@ variable renaming; a specialization or additional trait predicate is invalid.
 | `STRING_LENGTH` | `String -> Int` |
 | `STRING_TO_CHARS` | `String -> [Char]` |
 | `STRING_FROM_CHARS` | `[Char] -> String` |
-| `ABSURD` | `Void -> a` |
 | `VEC_FROM_LIST` | `[a] -> Vec a` |
 | `VEC_TO_LIST` | `Vec a -> [a]` |
 | `VEC_LENGTH` | `Vec a -> Int` |
@@ -1033,7 +1032,7 @@ the list/string conversions preserve them in order.
 
 `BYTE_FROM_INT` reduces modulo 256; `BYTE_TO_INT` returns a value in 0–255.
 Vectors are immutable sequences; list/vector conversions preserve order and
-`VEC_LENGTH` counts elements. `VOID` has no values and `ABSURD` eliminates it.
+`VEC_LENGTH` counts elements.
 The three standard handle bindings are stable opaque values for standard input,
 standard output, and standard error. They do not perform IO during module
 initialization. `HANDLE_READ` reads at most the requested number of Unicode code
@@ -1065,7 +1064,7 @@ disables implicit Prelude and imports its dependencies; Prelude selectively
 re-exports the reviewed API in [PRELUDE.md](PRELUDE.md#1-organization).
 `Handle`, `Vec`, and `Byte` require explicit imports. `Result e a` uses `Err` and
 `Ok`; `Ordering` uses `Less`, `Equal`, and `Greater`. `Void` and `absurd` are
-builtin-backed library definitions re-exported by Prelude.
+source-defined in `Data.Void` and re-exported by Prelude.
 
 Control traits are fine-grained: `Applicative` bundles `Functor`, `Pure`, and
 `Seq`; `Monad` bundles `Applicative` and `Bind`. `Seq` takes an explicit thunk as
@@ -1159,7 +1158,7 @@ results are displayed through the library's `Debug` contract, so a result needs
 a visible `Debug` instance. Single-line top-level declarations may be added using
 ordinary declaration syntax. Acyclic interactive bindings may have expansive
 right-hand sides, which evaluate when the submission is accepted. This is an
-interactive initialization policy, not support for the v1+ `STANDALONE` pragma
+interactive initialization policy, independent of the `STANDALONE` pragma
 in source files. Value and monomorphism restrictions still apply; signatures
 cannot generalize expansive expressions. Cyclic initializers and implementation
 members retain their ordinary non-expansiveness and recursive-read checks.
@@ -1220,7 +1219,6 @@ The initial language excludes:
 - expression interpolation beyond a variable or qualified variable;
 - comma-style record literals and record punning;
 - record patterns;
-- empty type bodies and empty `with` matches;
 - the `forall` keyword and higher-rank quantified signatures;
 - deriving, including the reserved `DERIVE` pragma;
 - lazy arrows `~>`, which replace the earlier prefix-`~` proposal;
@@ -1231,17 +1229,17 @@ The initial language excludes:
 - effect systems, concurrency, and async syntax;
 - macros, ownership types, and custom memory management.
 
-The exclusions do not settle future syntax or semantics. Planned v1+ designs are grouped in Section 24; later work is listed in Section 25.
+Empty type bodies, empty matches, and `STANDALONE` are implemented v1 extensions to this baseline. The remaining exclusions do not settle future syntax or semantics. Planned v1+ designs are grouped in Section 24; later work is listed in Section 25.
 
-## 24. Planned v1+ language features and libraries
+## 24. v1+ language features and libraries
 
-These features are excluded from v0. “Settled” means a selected design; draft proposals may change. Unspecified details remain open.
+Empty types, empty matching, and standalone modules are implemented. Other features in this section remain planned. “Settled” means a selected design; draft proposals may change. Unspecified details remain open.
 
 ### 24.1 Types and patterns
 
-#### Empty types and empty matching
+#### Empty types and empty matching (implemented)
 
-v1+ accepts empty record/type bodies and empty `with` blocks:
+The implemented v1 extension accepts empty record/type bodies and empty `with` blocks:
 
 ```text
 type Void = {}
@@ -1258,7 +1256,7 @@ An optional warning may suggest `type Token = { Token }` for a unit-like type; i
 
 An empty `with` eliminates an impossible scrutinee and may have any result type. These source definitions replace the v0 builtin-backed `Void` and `absurd` while preserving their Prelude API.
 
-An empty match is exhaustive only for an uninhabited scrutinee type. Treatment of uninhabited types inside other patterns and diagnostic policy remain open. v1+ extends the nonempty v0 type-body and match-block productions to admit `{}`.
+An empty match is exhaustive for a nominal type declared with an empty body, including aliases and imports. Other scrutinee types receive the ordinary non-exhaustiveness warning, not a static error. Propagating uninhabitedness through other types and subpatterns remains future work. The grammar admits explicit `{}` for empty type bodies and match blocks; layout blocks remain nonempty.
 
 #### Record patterns
 
@@ -1385,9 +1383,9 @@ Here `ident+` denotes one or more identifier arguments. The final string supplie
 
 Detailed name-targeting, placement, and warning-policy rules remain to be specified.
 
-#### Standalone modules
+#### Standalone modules (implemented)
 
-v1+ adds an argument-free module pragma, placed before imports:
+The implemented v1 extension adds an argument-free module pragma, placed before imports:
 
 ```text
 {-# STANDALONE #-}
@@ -1398,7 +1396,7 @@ A standalone module may have expansive initializers for acyclic top-level defini
 
 No other module may import a standalone module, whether through a bare, aliased, selective, re-exporting, or implicit import. A standalone module may import ordinary modules. This keeps its potentially effectful initialization out of other modules' import graphs.
 
-`STANDALONE` neither selects an entry module nor requires a `main` declaration. Compilation may accept a standalone module without `main`; if it is explicitly selected for program execution, the ordinary entry-point requirements still apply. It does not disable implicit Prelude. Pragma arguments and placement are checked semantically under the generic pragma grammar. The pragma is unavailable in v0.
+`STANDALONE` neither selects an entry module nor requires a `main` declaration. Compilation may accept a standalone module without `main`; if it is explicitly selected for program execution, the ordinary entry-point requirements still apply. It does not disable implicit Prelude. Pragma arguments and placement are checked semantically under the generic pragma grammar. The pragma is supported in source files.
 
 #### Module compiler-options pragma
 

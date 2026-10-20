@@ -1,0 +1,4 @@
+{-# STANDALONE #-}
+{-# NO_IMPLICIT_PRELUDE #-}
+use Dependency (identity)
+answer = identity 42

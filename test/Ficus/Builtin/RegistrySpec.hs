@@ -37,8 +37,7 @@ tests =
           P.primitiveCatalog,
       testCase "shared erasure preserves operations while removing nominal identities" $ do
         P.erasePrimitive (P.HandleRead renamed) @?= P.HandleRead ()
-        P.erasePrimitive (P.VecFromList renamed) @?= P.VecFromList ()
-        P.erasePrimitive (P.Absurd renamed) @?= P.Absurd (),
+        P.erasePrimitive (P.VecFromList renamed) @?= P.VecFromList (),
       testCase "type and value contracts have distinct lookups" $
         mapM_ check (Map.toList builtinRegistry),
       testCase "all registered value signatures pass the independent primitive checker" $
@@ -57,6 +56,14 @@ tests =
               assertBool "derived IO key removed" (Set.notMember key builtinKeys)
           )
           ["PRINT", "PRINTLN", "READ_LINE"],
+      testCase "empty-type elimination needs no compiler keys" $
+        mapM_
+          ( \key -> do
+              primitiveFromKey key @?= Nothing
+              typeKindFromKey key @?= Nothing
+              assertBool "empty-type key removed" (Set.notMember key builtinKeys)
+          )
+          ["VOID", "ABSURD"],
       testCase "unregistered keys have no contracts" $ do
         primitiveFromKey "UNKNOWN" @?= Nothing
         typeKindFromKey "UNKNOWN" @?= Nothing

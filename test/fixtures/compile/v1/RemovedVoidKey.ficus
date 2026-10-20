@@ -1,5 +1,3 @@
 {-# NO_IMPLICIT_PRELUDE #-}
 {-# BUILTIN VOID Empty #-}
 Empty : Type
-{-# BUILTIN ABSURD bad #-}
-bad : Empty -> Int

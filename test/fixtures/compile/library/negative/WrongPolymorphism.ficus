@@ -1,5 +1,5 @@
 {-# NO_IMPLICIT_PRELUDE #-}
-{-# BUILTIN VOID Empty #-}
-Empty : Type
-{-# BUILTIN ABSURD bad #-}
-bad : Empty -> [a]
+{-# BUILTIN VEC Vector #-}
+Vector : Type -> Type
+{-# BUILTIN VEC_FROM_LIST bad #-}
+bad : [a] -> Vector [a]

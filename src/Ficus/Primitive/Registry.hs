@@ -56,7 +56,6 @@ data Primitive nominal
   | HandleStderr nominal
   | HandleRead nominal
   | HandleWrite nominal
-  | Absurd nominal
   | VecFromList nominal
   | VecToList nominal
   | VecLength nominal
@@ -67,22 +66,20 @@ data Primitive nominal
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 -- Opaque library constructors remain nominal in Core and are erased at Runtime.
-data BuiltinType = HandleBuiltin | VoidBuiltin | ByteBuiltin | VecBuiltin deriving (Eq, Ord, Show)
+data BuiltinType = HandleBuiltin | ByteBuiltin | VecBuiltin deriving (Eq, Ord, Show)
 
 builtinTypes :: [BuiltinType]
-builtinTypes = [HandleBuiltin, VoidBuiltin, ByteBuiltin, VecBuiltin]
+builtinTypes = [HandleBuiltin, ByteBuiltin, VecBuiltin]
 
 builtinTypeName :: BuiltinType -> Text
 builtinTypeName builtin = case builtin of
   HandleBuiltin -> "Handle"
-  VoidBuiltin -> "Void"
   ByteBuiltin -> "Byte"
   VecBuiltin -> "Vec"
 
 builtinTypeKey :: BuiltinType -> Text
 builtinTypeKey builtin = case builtin of
   HandleBuiltin -> "HANDLE"
-  VoidBuiltin -> "VOID"
   ByteBuiltin -> "BYTE"
   VecBuiltin -> "VEC"
 
@@ -125,7 +122,6 @@ primitiveCatalog =
     (Just "HANDLE_STDERR", HandleStderr HandleBuiltin),
     (Just "HANDLE_READ", HandleRead HandleBuiltin),
     (Just "HANDLE_WRITE", HandleWrite HandleBuiltin),
-    (Just "ABSURD", Absurd VoidBuiltin),
     (Just "VEC_FROM_LIST", VecFromList VecBuiltin),
     (Just "VEC_TO_LIST", VecToList VecBuiltin),
     (Just "VEC_LENGTH", VecLength VecBuiltin),
@@ -185,7 +181,6 @@ primitiveSignature primitiveId = case primitiveId of
   HandleStderr ident -> ([], NominalType ident [])
   HandleRead ident -> ([NominalType ident [], int], string)
   HandleWrite ident -> ([NominalType ident [], string], ScalarType UnitType)
-  Absurd ident -> ([NominalType ident []], a)
   VecFromList ident -> ([ListTypeOf a], vec ident a)
   VecToList ident -> ([vec ident a], ListTypeOf a)
   VecLength ident -> ([vec ident a], int)

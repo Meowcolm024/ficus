@@ -168,7 +168,9 @@ expression context source = do
       value <- expression context receiver
       letValue receiver value $ \reference -> do
         fallback <- makeExpression source ty C.Fail
-        foldM (lowerClause context reference) fallback (reverse clauses)
+        case clauses of
+          [] -> makeExpression source ty (C.Case reference [] fallback)
+          _ -> foldM (lowerClause context reference) fallback (reverse clauses)
     A.Conditional clauses -> do
       arms <- forM clauses $ \clause -> do
         let (condition, body) = A.nodeValue clause

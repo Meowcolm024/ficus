@@ -8,7 +8,7 @@ instances, and data operations. `System.IO` supplies the basic impure IO helpers
 
 Every library module disables implicit Prelude and imports its dependencies
 explicitly. `Handle`, `Byte`, and `Vec` require explicit imports. `Void` and
-`absurd` are re-exported by Prelude while v0 lacks empty source datatypes.
+`absurd` are ordinary source definitions in `Data.Void`, re-exported by Prelude.
 See [the library design](../docs/PRELUDE.md) and [the specification](../docs/SPEC.md)
 for contracts, including strict boolean functions and explicit control thunks.
 

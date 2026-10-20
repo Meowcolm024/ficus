@@ -17,6 +17,7 @@ import Ficus.Resolve.Provider
 import Ficus.Syntax.Concrete qualified as C
 import Ficus.Syntax.Name
 import Ficus.Syntax.Parser (parseModule)
+import Ficus.Syntax.Pragma (directiveSpan, standaloneEnabled)
 import Ficus.Util.Source
 
 data DiscoveryDiagnostic = ParseDiagnostic P.Diagnostic | ResolutionDiagnostic Diagnostic deriving (Eq, Show)
@@ -37,7 +38,14 @@ discoverModules provider entries = discoverModulesAt provider [(owner, Span "<mo
 discoverModulesAt :: (Monad m) => ModuleProvider m -> [(ModuleId, Span)] -> m ModuleGraph
 discoverModulesAt provider entries = do
   s <- execStateT (runReaderT (mapM_ (\(owner, anchor) -> visit anchor [] [] Nothing owner) entries) provider) (DiscoveryState Map.empty Set.empty [] [])
-  pure (ModuleGraph (loaded s) (reverse (order s)) (reverse (diagnostics s)))
+  let importErrors =
+        [ ResolutionDiagnostic ((diagnostic ModuleNotImportable (edgeSpan edge) "standalone modules cannot be imported") {relatedSpans = [(directiveSpan pragma, "standalone module declared here") | pragma <- Map.findWithDefault [] "STANDALONE" (headerOptions (discoveredHeader target))]})
+        | discovered <- Map.elems (loaded s),
+          edge <- headerEdges (discoveredHeader discovered),
+          Just target <- [Map.lookup (edgeTarget edge) (loaded s)],
+          standaloneEnabled (headerOptions (discoveredHeader target))
+        ]
+  pure (ModuleGraph (loaded s) (reverse (order s)) (reverse (diagnostics s) ++ importErrors))
   where
     visit anchor stack route incoming owner
       | owner `elem` stack = case incoming of

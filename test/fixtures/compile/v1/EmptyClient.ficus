@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Empty (Empty, Never)
+eliminate : Never Int -> a
+eliminate x = with x {}

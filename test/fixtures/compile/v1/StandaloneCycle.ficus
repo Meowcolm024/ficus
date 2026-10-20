@@ -1,0 +1,4 @@
+{-# STANDALONE #-}
+{-# NO_IMPLICIT_PRELUDE #-}
+x = identity x
+identity x = x

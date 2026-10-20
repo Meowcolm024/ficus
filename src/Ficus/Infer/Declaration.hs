@@ -39,6 +39,7 @@ data Declarations = Declarations
   { builtinTypeAssociations :: Map Text GlobalId,
     declarationTypes :: TypeEnvironment,
     valueSignatures :: Map Reference Signature,
+    uninhabitedTypes :: Set.Set GlobalId,
     constructorDeclarations :: Map C.ConstructorId (C.Node (C.ConstructorDescriptor InferType)),
     recordDeclarations :: Map GlobalId (C.Node (C.RecordDescriptor InferType)),
     traitDeclarations :: Map GlobalId (C.Node TraitDeclaration),
@@ -47,7 +48,7 @@ data Declarations = Declarations
   deriving (Eq, Show)
 
 emptyDeclarations :: Declarations
-emptyDeclarations = Declarations Map.empty emptyTypes Map.empty Map.empty Map.empty Map.empty Map.empty
+emptyDeclarations = Declarations Map.empty emptyTypes Map.empty Set.empty Map.empty Map.empty Map.empty Map.empty
 
 prepareDeclarations :: Declarations -> A.AbstractModule -> Infer Declarations
 prepareDeclarations imported tree = do
@@ -91,7 +92,7 @@ prepareDeclarations imported tree = do
           arguments <- mapM (readTypeAt (declarationTypes environment) scope False TypeKind) fields
           let descriptor = C.ConstructorDescriptor (Scheme [] quantified [] (foldr function result arguments)) (length arguments) ident
           pure (C.DataConstructor name, coreNode constructor descriptor)
-        pure environment {constructorDeclarations = Map.fromList entries `Map.union` constructorDeclarations environment}
+        pure environment {constructorDeclarations = Map.fromList entries `Map.union` constructorDeclarations environment, uninhabitedTypes = if null constructors then Set.insert ident (uninhabitedTypes environment) else uninhabitedTypes environment}
       A.RecordDefinition ident parameters _ constructor fields -> do
         (quantified, scope) <- bindQuantifiers (declarationTypes environment) parameters
         let result = appliedType environment ident quantified

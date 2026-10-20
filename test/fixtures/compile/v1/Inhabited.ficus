@@ -1,0 +1,2 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+empty (x : Int) = with x {}

@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.39.1.
+-- This file has been generated from package.yaml by hpack version 0.38.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -557,6 +557,11 @@ library
       FicusBackend.Runtime.Primitive
       FicusBackend.Runtime.Validate
       FicusBackend.Runtime.Value
+      FicusLsp
+      FicusLsp.Index
+      FicusLsp.Position
+      FicusLsp.Protocol
+      FicusLsp.Workspace
   other-modules:
       Paths_ficus
   autogen-modules:
@@ -581,6 +586,9 @@ library
     , containers
     , directory
     , filepath
+    , lens
+    , lsp
+    , lsp-types
     , megaparsec
     , mtl
     , pretty
@@ -654,6 +662,8 @@ test-suite ficus-test
       FicusBackend.DriverSpec
       FicusBackend.Runtime.Direct
       FicusBackend.Runtime.Spec
+      FicusLsp.ProtocolSpec
+      FicusLsp.Spec
       Paths_ficus
   autogen-modules:
       Paths_ficus
@@ -676,13 +686,18 @@ test-suite ficus-test
     , aeson
     , ansi-terminal
     , base >=4.7 && <5
+    , bytestring
     , containers
     , directory
     , ficus
     , filepath
+    , lens
+    , lsp
+    , lsp-types
     , megaparsec
     , mtl
     , pretty
+    , process
     , stm
     , tasty
     , tasty-hunit

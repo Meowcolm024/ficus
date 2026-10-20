@@ -18,6 +18,7 @@ import Ficus.Resolve.Spec qualified as Resolve
 import Ficus.Resolve.WildcardSpec qualified as Wildcard
 import FicusBackend.DriverSpec qualified as Driver
 import FicusBackend.Runtime.Spec qualified as Runtime
+import FicusLsp.Spec qualified as Lsp
 import Test.Tasty (defaultMain, testGroup)
 
 main :: IO ()
@@ -25,4 +26,4 @@ main = do
   parser <- Parser.tests
   resolution <- Resolve.tests
   corpus <- Corpus.tests
-  defaultMain (testGroup "Ficus" [Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests, Runtime.tests, Driver.tests])
+  defaultMain (testGroup "Ficus" [Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests, Runtime.tests, Driver.tests, Lsp.tests])

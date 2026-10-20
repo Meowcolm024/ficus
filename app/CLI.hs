@@ -20,17 +20,18 @@ import Ficus.Util.Source (Position (..), Span (..))
 import FicusBackend.Driver.Repl qualified as Repl
 import FicusBackend.Driver.Run qualified as Run
 import FicusBackend.Runtime qualified as Runtime
+import FicusLsp qualified as Lsp
 import Options.Applicative
 import Paths_ficus qualified as Paths
 import System.Console.ANSI (hSupportsANSIColor)
 import System.Console.Haskeline
 import System.Directory (getCurrentDirectory, makeAbsolute)
-import System.Exit (exitFailure)
+import System.Exit (ExitCode (..), exitFailure, exitWith)
 import System.FilePath (normalise)
 import System.IO (stderr)
 import System.IO.Error (tryIOError)
 
-data Command = Format (Maybe FilePath) | Compile Compile.CompileOptions | Run FilePath [String] Repl.ReplOptions | Repl (Maybe FilePath) Repl.ReplOptions
+data Command = Format (Maybe FilePath) | Compile Compile.CompileOptions | Run FilePath [String] Repl.ReplOptions | Repl (Maybe FilePath) Repl.ReplOptions | Lsp Repl.ReplOptions
 
 data CLIOptions = CLIOptions Bool Command
 
@@ -39,6 +40,10 @@ main = do
   CLIOptions noColor commandToRun <- execParser commandInfo
   diagnosticStyle <- if noColor then pure Plain else terminalDiagnosticStyle
   case commandToRun of
+    Lsp options -> do
+      configured <- configure options
+      status <- Lsp.run (Lsp.LspOptions (Repl.replRoots configured) (Repl.replLibraries configured) (Repl.replPrelude configured))
+      if status == 0 then pure () else exitWith (ExitFailure status)
     Compile options -> do
       libraries <- if null (Compile.libraryRoots options) then pure <$> Paths.getDataFileName "library" else pure (Compile.libraryRoots options)
       result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry (options {Compile.libraryRoots = libraries})
@@ -106,6 +111,7 @@ commandInfo =
         ( command "format" (info formatCommand (progDesc "Pretty-print a source file or stdin to stdout"))
             <> command "run" (info runCommand (progDesc "Run a file with a valid main entry point"))
             <> command "repl" (info replCommand (progDesc "Start an interactive session, optionally loading a file"))
+            <> command "lsp" (info (Lsp <$> searchOptions) (progDesc "Start the Language Server Protocol server on stdin/stdout"))
             <> command "compile" (info compileCommand (progDesc "Typecheck and elaborate source modules; emit no artifacts" <> footer "Library discovery options are for early development and are subject to change."))
         )
     formatCommand = Format <$> optional (strArgument (metavar "FILE" <> help "Source file; omit or use - for stdin")) <**> helper

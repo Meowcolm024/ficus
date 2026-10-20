@@ -67,6 +67,10 @@ language: GHC2021
 
 library:
   source-dirs: src
+  dependencies:
+    - lens
+    - lsp
+    - lsp-types
 
 executables:
   ficus:
@@ -96,3 +100,8 @@ tests:
       - tasty-quickcheck
       - QuickCheck
       - aeson
+      - lsp
+      - lsp-types
+      - lens
+      - process
+      - bytestring

@@ -33,6 +33,10 @@ See [examples](examples/README.md) for complete programs.
 
 ## Interactive use
 
+For editor support, run `stack exec ficus -- lsp`. The language server provides
+diagnostics, inferred-type hover, go-to-definition, and semantic highlighting,
+including unsaved files and their imports. See [LSP setup and behavior](docs/LSP.md).
+
 ```sh
 stack exec ficus -- repl
 stack exec ficus -- repl examples/Main.ficus

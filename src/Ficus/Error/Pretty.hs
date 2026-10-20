@@ -1,12 +1,22 @@
 -- | Render a diagnostic against the source text that its span references.
-module Ficus.Error.Pretty (prettyDiagnostic, prettyDiagnosticRelativeTo, prettyDiagnosticWithOptionalSourceRelativeTo) where
+module Ficus.Error.Pretty
+  ( DiagnosticStyle (..),
+    prettyDiagnostic,
+    prettyDiagnosticRelativeTo,
+    prettyDiagnosticWithOptionalSourceRelativeTo,
+    prettyDiagnosticWithStyleRelativeTo,
+  )
+where
 
 import Data.Text (Text)
 import Data.Text qualified as T
 import Ficus.Error.Diagnostic
 import Ficus.Util.Source
+import System.Console.ANSI (Color (..), ColorIntensity (..), ConsoleIntensity (..), ConsoleLayer (..), SGR (..), setSGRCode)
 import System.FilePath (equalFilePath, isAbsolute, joinPath, normalise, splitDirectories, takeDrive)
 import Text.PrettyPrint qualified as P
+
+data DiagnosticStyle = Plain | Ansi deriving (Eq, Show)
 
 -- | Render source locations relative to an absolute working directory. Paths
 -- embedded in diagnostic messages are deliberately left unchanged.
@@ -16,16 +26,21 @@ prettyDiagnosticRelativeTo directory source = prettyDiagnosticWithOptionalSource
 -- | Omit the excerpt when no source was loaded. An available empty source still
 -- has an EOF position and receives a caret.
 prettyDiagnosticWithOptionalSourceRelativeTo :: (ToDiagnostic d) => FilePath -> Maybe Text -> d -> Text
-prettyDiagnosticWithOptionalSourceRelativeTo directory = prettyDiagnosticWithPath (relativeSourcePath directory)
+prettyDiagnosticWithOptionalSourceRelativeTo = prettyDiagnosticWithStyleRelativeTo Plain
+
+-- | Styling is explicit; terminal capability detection belongs to the caller.
+-- Source text and messages remain unstyled, keeping excerpts readable verbatim.
+prettyDiagnosticWithStyleRelativeTo :: (ToDiagnostic d) => DiagnosticStyle -> FilePath -> Maybe Text -> d -> Text
+prettyDiagnosticWithStyleRelativeTo style directory = prettyDiagnosticWithPath style (relativeSourcePath directory)
 
 -- | No source is read from disk. Callers supply the exact text they parsed,
 -- which also permits diagnostics for stdin and unsaved editor buffers.
 -- Columns count Unicode characters, with four-column tab stops, as in parsing.
 prettyDiagnostic :: (ToDiagnostic d) => Text -> d -> Text
-prettyDiagnostic source = prettyDiagnosticWithPath id (Just source)
+prettyDiagnostic source = prettyDiagnosticWithPath Plain id (Just source)
 
-prettyDiagnosticWithPath :: (ToDiagnostic d) => (FilePath -> FilePath) -> Maybe Text -> d -> Text
-prettyDiagnosticWithPath displayPath source input = T.pack (P.render (P.vcat (map (P.text . T.unpack) output)))
+prettyDiagnosticWithPath :: (ToDiagnostic d) => DiagnosticStyle -> (FilePath -> FilePath) -> Maybe Text -> d -> Text
+prettyDiagnosticWithPath style displayPath source input = T.pack (P.render (P.vcat (map (P.text . T.unpack) output)))
   where
     diagnostic = toDiagnostic input
     s = diagnosticSpan diagnostic
@@ -38,10 +53,8 @@ prettyDiagnosticWithPath displayPath source input = T.pack (P.render (P.vcat (ma
         <> ":"
         <> number (column (start s))
         <> ": "
-        <> (case diagnosticSeverity diagnostic of Error -> "error"; Warning -> "warning")
-        <> "["
-        <> diagnosticCode diagnostic
-        <> "]: "
+        <> severityColor ((case diagnosticSeverity diagnostic of Error -> "error"; Warning -> "warning") <> "[" <> diagnosticCode diagnostic <> "]")
+        <> ": "
         <> diagnosticMessage diagnostic
     referenced =
       [ (n, expandTabs (T.dropWhileEnd (== '\r') t))
@@ -53,13 +66,13 @@ prettyDiagnosticWithPath displayPath source input = T.pack (P.render (P.vcat (ma
     gutterWidth = case reverse referenced of
       (n, _) : _ -> T.length (number n)
       [] -> 1
-    gutter = T.replicate gutterWidth " " <> " |"
+    gutter = color [SetColor Foreground Dull Cyan] (T.replicate gutterWidth " " <> " |")
     output =
       ( header : case referenced of
           [] -> []
           _ -> gutter : excerpt referenced
       )
-        ++ ["note: " <> T.pack (displayPath (sourceFile span')) <> ":" <> number (line (start span')) <> ":" <> number (column (start span')) <> ": " <> label | (span', label) <- diagnosticRelated diagnostic]
+        ++ [color [SetConsoleIntensity BoldIntensity, SetColor Foreground Dull Cyan] "note" <> ": " <> T.pack (displayPath (sourceFile span')) <> ":" <> number (line (start span')) <> ":" <> number (column (start span')) <> ": " <> label | (span', label) <- diagnosticRelated diagnostic]
     excerpt rows
       | length rows <= 4 = concatMap renderLine rows
       | otherwise =
@@ -75,9 +88,11 @@ prettyDiagnosticWithPath displayPath source input = T.pack (P.render (P.vcat (ma
           requestedEnd = if n == lastLine then column (end s) else sourceWidth
           to = max from (min sourceWidth requestedEnd)
           label = T.justifyRight gutterWidth ' ' (number n)
-       in [ label <> " | " <> text,
-            gutter <> " " <> T.replicate (from - 1) " " <> T.replicate (to - from + 1) "^"
+       in [ color [SetColor Foreground Dull Cyan] (label <> " |") <> " " <> text,
+            gutter <> " " <> T.replicate (from - 1) " " <> severityColor (T.replicate (to - from + 1) "^")
           ]
+    severityColor = color [SetConsoleIntensity BoldIntensity, SetColor Foreground Dull (case diagnosticSeverity diagnostic of Error -> Red; Warning -> Yellow)]
+    color rendition text = case style of Plain -> text; Ansi -> T.pack (setSGRCode rendition) <> text <> T.pack (setSGRCode [Reset])
     number = T.pack . show
 
 relativeSourcePath :: FilePath -> FilePath -> FilePath

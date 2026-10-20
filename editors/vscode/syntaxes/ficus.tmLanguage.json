@@ -311,7 +311,11 @@
       "name": "meta.declaration.signature.ficus",
       "beginCaptures": {
         "2": {
-          "patterns": [{ "include": "#identifier" }]
+          "patterns": [
+            { "include": "#identifier" },
+            { "include": "#operator" },
+            { "include": "#punctuation" }
+          ]
         },
         "3": {
           "name": "keyword.operator.ficus"

@@ -52,6 +52,12 @@ If the referenced line is unavailable, the header still includes the filename,
 position, code, and message.
 The CLI omits source excerpts when no source was loaded, including invalid
 input filenames and missing files. An available empty file still gets an EOF caret.
+Terminal diagnostics color errors red, warnings yellow, and source gutters and
+related-note labels cyan, using `ansi-terminal`. Redirected stderr and terminals
+without ANSI color support stay plain. The global `--no-color` flag disables color
+(for example, `ficus --no-color compile Main.ficus`). Existing plain rendering APIs
+remain plain; callers can explicitly select `Plain` or `Ansi` with
+`prettyDiagnosticWithStyleRelativeTo`.
 Explicit compile inputs are checked for file existence before validating their
 extension or module identity, so a missing input reports `N0201` even when its
 name is lowercase or its extension is invalid.

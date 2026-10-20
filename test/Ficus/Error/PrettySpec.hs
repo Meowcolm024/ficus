@@ -4,7 +4,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Parser
-import Ficus.Error.Pretty (prettyDiagnostic, prettyDiagnosticRelativeTo, prettyDiagnosticWithOptionalSourceRelativeTo)
+import Ficus.Error.Pretty (DiagnosticStyle (..), prettyDiagnostic, prettyDiagnosticRelativeTo, prettyDiagnosticWithOptionalSourceRelativeTo, prettyDiagnosticWithStyleRelativeTo)
 import Ficus.Syntax.Parser (parseModule)
 import Ficus.Util.Source
 import Test.Tasty
@@ -14,7 +14,26 @@ tests :: TestTree
 tests =
   testGroup
     "source-referenced diagnostics"
-    [ testCase "source paths are relative without changing search paths" $ do
+    [ testCase "ANSI errors color severity and carets without changing source alignment" $ do
+        let d = diagnostic UnexpectedToken 1 5 1 7
+            output = prettyDiagnosticWithStyleRelativeTo Ansi "." (Just "\tbad\n") d
+        contains "\ESC[1;31merror[P0001]\ESC[0m: problem" output
+        contains "\ESC[1;31m^^^\ESC[0m" output
+        contains "\ESC[36m1 |\ESC[0m     bad" output
+        stripAnsi output @?= prettyDiagnostic "\tbad\n" d,
+      testCase "ANSI warnings and related notes keep their severity and source paths" $ do
+        let s = Span "/project/Main.ficus" (Position 1 1 0) (Position 1 1 0)
+            d = D.Diagnostic "N0901" D.Warning s "shadowing" Nothing [(s, "earlier binding")]
+            output = prettyDiagnosticWithStyleRelativeTo Ansi "/project" Nothing d
+        contains "\ESC[1;33mwarning[N0901]\ESC[0m" output
+        contains "\ESC[1;36mnote\ESC[0m: Main.ficus:1:1: earlier binding" output
+        stripAnsi output @?= prettyDiagnosticWithOptionalSourceRelativeTo "/project" Nothing d,
+      testCase "explicit plain style contains no ANSI escapes" $ do
+        let d = diagnostic UnexpectedToken 1 1 1 1
+            output = prettyDiagnosticWithStyleRelativeTo Plain "." (Just "x") d
+        assertBool "no escape sequences" (not (T.any (== '\ESC') output))
+        output @?= prettyDiagnostic "x" d,
+      testCase "source paths are relative without changing search paths" $ do
         let s = Span "/project/src/Main.ficus" (Position 1 1 0) (Position 1 1 0)
             d = D.Diagnostic "N0201" D.Error s "searched /project/library/Absent.ficus" Nothing [(s {sourceFile = "/project/library/Prelude.ficus"}, "dependency")]
             output = prettyDiagnosticRelativeTo "/project" "x" d
@@ -86,3 +105,6 @@ tests =
       Diagnostic code (Span "Demo.ficus" (Position firstLine firstColumn 0) (Position lastLine lastColumn 0)) "problem"
     contains :: Text -> Text -> Assertion
     contains wanted actual = assertBool ("missing " <> show wanted <> " in " <> show actual) (wanted `T.isInfixOf` actual)
+
+stripAnsi :: Text -> Text
+stripAnsi source = foldl' (\text escape -> T.replace escape "" text) source ["\ESC[0m", "\ESC[1;31m", "\ESC[1;33m", "\ESC[36m", "\ESC[1;36m"]

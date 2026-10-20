@@ -40,10 +40,68 @@ tests =
         parsed "use Foo\nuse Bar\na = 1\n-- next declaration\nb = 2\n" $ \m -> do
           prettyModule m @?= "use Foo\nuse Bar\n\na = 1\n\n-- next declaration\nb = 2\n"
           assertRoundTrip m,
-      testCase "braces and layout produce identical indentation" $ do
-        let sources = ["f = { x = if { True -> 1; _ -> 0 }; x }", "f =\n  x = if\n    True -> 1\n    _ -> 0\n  x"]
-            expected = "f = {\n    x = if {\n        True -> 1;\n        _ -> 0;\n    };\n    x;\n}\n"
-        mapM_ (\source -> parsed source (\m -> prettyModule m @?= expected)) sources,
+      testGroup
+        "adjacent declarations with the same name stay together"
+        [ testCase title $ parsed source $ \m -> do
+            prettyModule m @?= expected
+            assertRoundTrip m
+        | (title, source, expected) <-
+            [ ( "signature and clause without moving later clauses",
+                "foo : Int -> Int\nfoo 0 = 0\nbar x = x\nfoo x = x - 1\n",
+                "foo : Int -> Int\nfoo 0 = 0\n\nbar x = x\n\nfoo x = x - 1\n"
+              ),
+              ( "multiple clauses",
+                "foo 0 = 0\n\nfoo x = x\nbar = 1\n",
+                "foo 0 = 0\nfoo x = x\n\nbar = 1\n"
+              ),
+              ( "operator signature and clauses",
+                "(++) : Int -> Int -> Int\n(++) x y = x\n(++) x y = y\n",
+                "(++) : Int -> Int -> Int\n(++) x y = x\n(++) x y = y\n"
+              ),
+              ( "kind signature and type alias",
+                "Thing : Type\nThing = Int\nother = 1\n",
+                "Thing : Type\nThing = Int\n\nother = 1\n"
+              ),
+              ( "comments between signature and clause",
+                "foo : Int\n-- definition\nfoo = 1\n-- another name\nbar = 2\n",
+                "foo : Int\n-- definition\nfoo = 1\n\n-- another name\nbar = 2\n"
+              ),
+              ( "wildcards have no shared name",
+                "_ = 1\n_ = 2\n",
+                "_ = 1\n\n_ = 2\n"
+              )
+            ]
+        ],
+      testGroup
+        "block delimiters follow the source"
+        [ testCase title $ parsed source $ \m -> do
+            prettyModule m @?= expected
+            assertRoundTrip m
+        | (title, source, expected) <-
+            [ ( "explicit braces",
+                "f = { x = if { True -> 1; _ -> 0 }; x }",
+                "f = {\n    x = if {\n        True -> 1;\n        _ -> 0;\n    };\n    x;\n}\n"
+              ),
+              ( "layout",
+                "f =\n  x = if\n    True -> 1\n    _ -> 0\n  x",
+                "f =\n    x = if\n        True -> 1\n        _ -> 0\n    x\n"
+              ),
+              ( "layout inside braces",
+                "f = {\n  x = if\n    True -> 1\n    _ -> 0\n; x }",
+                "f = {\n    x = if\n        True -> 1\n        _ -> 0;\n    x;\n}\n"
+              ),
+              ( "braces inside layout",
+                "f =\n  x = if { True -> 1; _ -> 0 }\n  x",
+                "f =\n    x = if {\n        True -> 1;\n        _ -> 0;\n    }\n    x\n"
+              ),
+              ( "empty explicit block",
+                "trait Empty a = {}",
+                "trait Empty a = {}\n"
+              )
+            ]
+        ],
+      testCase "where after layout stays attached to its owning declaration" $
+        parsed "f = do\n    local = 1\n  where { other = 2 }\n" assertRoundTrip,
       testCase "comments retained in source order, including inside blocks" $
         parsed "-- first\nf = { x = 1; {- inner -} x } -- last\n" $ \m -> do
           prettyModule m @?= "-- first\n{- inner -}\nf = {\n    x = 1;\n    x;\n}\n-- last\n"
@@ -66,7 +124,7 @@ tests =
       Right m -> check m
 
 -- Compare the full typed syntax, ignoring only source maps, retained original
--- text/tokens, and the deliberate normalization of all blocks to braces.
+-- text/tokens. Block delimiters are preserved.
 normalize :: ConcreteModule -> ConcreteModule
 normalize m =
   ConcreteModule
@@ -84,7 +142,7 @@ normalize m =
     node f = at dummy . f . concrete
     name n = n {nameLocation = dummy, nameOrigin = SourceOrigin dummy}
     block :: (a -> b) -> Block a -> Block b
-    block f b = Block dummy (SourceOrigin dummy) Explicit (map f (blockItems b))
+    block f b = Block dummy (SourceOrigin dummy) (blockDelimiter b) (map f (blockItems b))
     pragma = node (\(Pragma n args) -> Pragma (name n) (map (node (\case IdentifierArgument x -> IdentifierArgument (name x); StringArgument t -> StringArgument t)) args))
     importNode =
       node

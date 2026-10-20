@@ -101,8 +101,11 @@ through the compiler API. It emits no artifacts and does not execute `main`.
 `format [FILE]` writes formatted source to stdout; omit FILE or use `-` to read
 stdin. Input files are never overwritten.
 
-Diagnostics go to stderr with a stable code and source location. Errors produce
-a nonzero exit status; warnings permit success. See [error codes](docs/ERRORS.md).
+Diagnostics go to stderr with a stable code and source location. ANSI-capable
+terminals get colored diagnostics; use `--no-color` before the command to disable
+colors (for example, `ficus --no-color compile Main.ficus`). Redirected diagnostics
+remain plain text. Errors produce a nonzero exit status; warnings permit success.
+See [error codes](docs/ERRORS.md).
 
 ## Module discovery
 

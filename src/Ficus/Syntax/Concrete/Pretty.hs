@@ -1,5 +1,5 @@
--- | A deliberately simple AST printer. Blocks use explicit braces, with four
--- spaces per nesting level independent of the column of the opening brace.
+-- | A deliberately simple AST printer. Blocks retain their source delimiters,
+-- with four spaces per nesting level independent of the opening column.
 -- Comments are retained in source order above their containing top-level item.
 -- Use 'renderSource' instead when exact original text/placement is required.
 module Ficus.Syntax.Concrete.Pretty
@@ -29,7 +29,15 @@ joinDocs :: Doc -> [Doc] -> Doc
 joinDocs separator = concat . intersperse separator
 
 spaces :: [Doc] -> Doc
-spaces = joinDocs (chunk " ") . filter (not . null)
+spaces = foldr append [] . filter (not . null)
+  where
+    append doc [] = doc
+    append doc rest
+      | startsOnNewline rest = doc ++ rest
+      | otherwise = doc ++ chunk " " ++ rest
+    startsOnNewline (Newline : _) = True
+    startsOnNewline (Indented nested : _) = startsOnNewline nested
+    startsOnNewline _ = False
 
 parens :: Doc -> Doc
 parens d = chunk "(" ++ d ++ chunk ")"
@@ -43,7 +51,7 @@ data Lines = Lines
   {finishedLines :: [P.Doc], currentLine :: [P.Doc], lineIndent :: Int}
 
 render :: Doc -> Text
-render doc = T.pack (P.render (P.vcat (reverse (finishedLines final))))
+render doc = T.pack (P.render (foldr (P.$+$) P.empty (reverse (finishedLines final))))
   where
     final = finish (renderAt 0 (Lines [] [] 0) doc)
     renderAt indentation = foldl' (step indentation)
@@ -71,7 +79,20 @@ prettyModule m = T.concat (items True (moduleComments m) declarations)
     declarations =
       [(location p, pragma p, False) | p <- modulePragmas m]
         ++ [(location i, importDoc i, False) | i <- moduleImports m]
-        ++ [(location d, declaration d, True) | d <- moduleDeclarations m]
+        ++ [ (location d, declaration d, key == Nothing || key /= previous)
+           | (previous, d) <- zip (Nothing : map declarationKey (moduleDeclarations m)) (moduleDeclarations m),
+             let key = declarationKey d
+           ]
+    declarationKey d = do
+      n <- case concrete d of
+        TypeSignature n _ -> Just n
+        KindSignature n _ -> Just n
+        FunctionClause n _ _ _ _ -> Just n
+        TypeAlias n _ _ -> Just n
+        DataDeclaration n _ _ -> Just n
+        TraitDeclaration _ n _ _ -> Just n
+        _ -> Nothing
+      if nameText n == "_" then Nothing else Just (nameSpace n, nameText n)
     items _ cs [] = map comment cs
     items first cs ((s, doc, separate) : rest) =
       let (before, after) = span ((<= offset (end s)) . offset . start . commentSpan) cs
@@ -100,9 +121,11 @@ literal =
     StringLiteralText t -> t
 
 block :: (a -> Doc) -> Block a -> Doc
-block f b = case blockItems b of
-  [] -> chunk "{}"
-  xs -> chunk "{" ++ [Newline, Indented (concatMap (\x -> f x ++ chunk ";" ++ [Newline]) xs)] ++ chunk "}"
+block f b = case blockDelimiter b of
+  Layout -> [Newline, Indented (joinDocs [Newline] (map f (blockItems b)))]
+  Explicit -> case blockItems b of
+    [] -> chunk "{}"
+    xs -> chunk "{" ++ [Newline, Indented (concatMap (\x -> f x ++ chunk ";" ++ [Newline]) xs)] ++ chunk "}"
 
 expr :: Expr -> Doc
 expr e = case concrete e of
@@ -114,7 +137,11 @@ expr e = case concrete e of
   Negate x -> spaces [chunk "-", expr x]
   Lam bs ps body -> spaces (map binder bs ++ map patternDoc ps ++ [chunk "->", expr body])
   If b -> spaces [chunk "if", block ifClause b]
-  With x b -> spaces [chunk "with", expr x, block matchClause b]
+  With x b ->
+    let scrutinee = expr x
+     in if endsInLayout scrutinee
+          then spaces [chunk "with", [Indented scrutinee], [Newline] ++ block matchClause b]
+          else spaces [chunk "with", scrutinee, block matchClause b]
   Do b -> spaces [chunk "do", block doStatement b]
   ExprBlock b -> block blockItem b
   RecordWith x b -> spaces [expr x, chunk "with", block field b]
@@ -124,6 +151,12 @@ expr e = case concrete e of
   Unit -> chunk "()"
   Product xs -> parens (commas (map expr xs))
   List xs -> chunk "[" ++ commas (map expr xs) ++ chunk "]"
+
+-- A following block must dedent past a layout block in the scrutinee.
+endsInLayout :: Doc -> Bool
+endsInLayout doc = case reverse doc of
+  Indented _ : _ -> True
+  _ -> False
 
 patternDoc :: Pattern -> Doc
 patternDoc p = case concrete p of
@@ -194,8 +227,8 @@ declaration d = case concrete d of
   TypeSignature n t -> spaces [name n, chunk ":", signature t]
   KindSignature n k -> spaces [name n, chunk ":", kindDoc k]
   FunctionClause n bs ps body wh ->
-    spaces (name n : map binder bs ++ map patternDoc ps ++ [chunk "=", expr body, whereDoc wh])
-  PatternBinding p body wh -> spaces [patternDoc p, chunk "=", expr body, whereDoc wh]
+    spaces (name n : map binder bs ++ map patternDoc ps ++ [chunk "=", scopedBody body wh])
+  PatternBinding p body wh -> spaces [patternDoc p, chunk "=", scopedBody body wh]
   TypeAlias n ps t -> spaces (name n : map parameter ps ++ [chunk "=", typeDoc t])
   DataDeclaration n ps body -> spaces (chunk "type" : name n : map parameter ps ++ [chunk "=", typeBody body])
   TraitDeclaration cs n p b -> spaces [chunk "trait", context cs, name n, parameter p, chunk "=", block declaration b]
@@ -217,8 +250,17 @@ typeBody = \case
 whereDoc :: Maybe WhereClause -> Doc
 whereDoc = maybe [] (\w -> case concrete w of WhereClause b -> spaces [chunk "where", block declaration b])
 
+-- Reserve a continuation indentation for where, so it cannot attach to the
+-- final declaration inside the preceding layout block.
+scopedBody :: Expr -> Maybe WhereClause -> Doc
+scopedBody body wh =
+  let rhs = expr body
+   in case wh of
+        Just _ | endsInLayout rhs -> [Indented (rhs ++ [Newline] ++ whereDoc wh)]
+        _ -> spaces [rhs, whereDoc wh]
+
 field :: Field -> Doc
-field f = case concrete f of Field n e wh -> spaces [name n, chunk "=", expr e, whereDoc wh]
+field f = case concrete f of Field n e wh -> spaces [name n, chunk "=", scopedBody e wh]
 
 ifClause :: IfClause -> Doc
 ifClause c = case concrete c of IfClause condition body -> spaces [expr condition, chunk "->", expr body]

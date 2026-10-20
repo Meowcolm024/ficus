@@ -576,7 +576,8 @@ library
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds -Werror
   build-depends:
-      base >=4.7 && <5
+      ansi-terminal
+    , base >=4.7 && <5
     , containers
     , directory
     , filepath
@@ -611,7 +612,8 @@ executable ficus
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds -Werror -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      ansi-terminal
+    , base >=4.7 && <5
     , containers
     , directory
     , ficus
@@ -672,6 +674,7 @@ test-suite ficus-test
   build-depends:
       QuickCheck
     , aeson
+    , ansi-terminal
     , base >=4.7 && <5
     , containers
     , directory

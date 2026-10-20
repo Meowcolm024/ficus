@@ -423,11 +423,31 @@
         { "include": "#comment" },
         { "include": "#string" },
         {
-          "match": "\\b(?:as|pub)\\b",
+          "match": "(?<![\\p{L}\\p{M}\\p{N}_'])(?:as|pub)(?![\\p{L}\\p{M}\\p{N}_'])",
           "name": "keyword.other.import.ficus"
         },
+        { "include": "#import-selection" },
+        { "include": "#import-all" },
+        { "include": "#punctuation" },
+        { "include": "#operator" },
+        { "include": "#identifier" }
+      ]
+    },
+    "import-selection": {
+      "begin": "\\(",
+      "end": "\\)",
+      "name": "meta.import.selection.ficus",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.bracket.ficus" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.bracket.ficus" }
+      },
+      "patterns": [
+        { "include": "#comment" },
         { "include": "#import-type-members" },
         { "include": "#import-all" },
+        { "include": "#import-selection" },
         { "include": "#punctuation" },
         { "include": "#operator" },
         { "include": "#identifier" }
@@ -533,11 +553,16 @@
           "name": "constant.character.escape.ficus"
         },
         {
-          "match": "(?<!\\{)(\\{)((?:\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*\\.)*\\p{Ll}[\\p{L}\\p{M}\\p{N}_']*)(\\})(?!\\})",
+          "match": "(\\{)((?:\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*\\.)*(?!(?:use|type|trait|impl|with|if|where|do)\\})(?:\\p{Ll}|_)[\\p{L}\\p{M}\\p{N}_']*)(\\})",
           "name": "meta.interpolation.ficus",
           "captures": {
             "1": { "name": "punctuation.section.interpolation.begin.ficus" },
-            "2": { "name": "variable.other.readwrite.ficus" },
+            "2": {
+              "patterns": [
+                { "include": "#qualified-value" },
+                { "include": "#term-identifier" }
+              ]
+            },
             "3": { "name": "punctuation.section.interpolation.end.ficus" }
           }
         }

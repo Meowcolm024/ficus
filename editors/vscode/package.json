@@ -1,9 +1,19 @@
 {
   "name": "ficus-language",
   "displayName": "Ficus Language Support",
-  "description": "Lexical syntax highlighting for Ficus.",
+  "description": "Syntax highlighting and language server support for Ficus.",
   "version": "0.0.1",
   "publisher": "local",
+  "main": "./extension.cjs",
+  "activationEvents": ["onLanguage:ficus"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
   "scripts": {
     "test": "node --test test/*.test.cjs"
   },
@@ -11,6 +21,24 @@
     "vscode": "^1.85.0"
   },
   "contributes": {
+    "configuration": {
+      "title": "Ficus",
+      "properties": {
+        "ficus.server.path": {
+          "type": "string",
+          "default": "ficus",
+          "scope": "window",
+          "description": "Ficus executable path or command on PATH. Arguments belong in ficus.server.args. Changing this setting restarts the language server."
+        },
+        "ficus.server.args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["lsp"],
+          "scope": "window",
+          "description": "Arguments passed to the executable. Include the lsp subcommand. Changing this setting restarts the language server."
+        }
+      }
+    },
     "languages": [
       {
         "id": "ficus",

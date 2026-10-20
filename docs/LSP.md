@@ -16,6 +16,11 @@ UTF-16 edits, and shutdown.
 
 ## Features
 
+The [VS Code extension](../editors/vscode/README.md) starts the server
+automatically for Ficus files. Configure `ficus.server.path` to select an
+executable and `ficus.server.args` to customize its arguments (default: `["lsp"]`).
+Changes to these settings restart the server.
+
 | Method | Behavior |
 | --- | --- |
 | `textDocument/publishDiagnostics` | Parser, resolver, and type diagnostics, including stable codes, severities, related locations, and document versions |
@@ -29,6 +34,16 @@ and their dependency graph. Changes to an open dependency affect its importers
 immediately. Closing a file removes its overlay: remaining importers use disk
 contents. Diagnostics from previous snapshots are cleared, and a failed check
 never supplies stale type information.
+
+Interpolated strings use the editor's lexical highlighting for literal text,
+escapes, braces, and embedded names. The server omits whole-string semantic
+tokens for these literals so generated references cannot override those colors.
+Hover and definition lookup use separate editor ranges for each embedded name;
+literal text and braces do not link to an interpolated variable. Compiler nodes
+continue to retain the original string's span and provenance.
+Unresolved `as` and `pub` tokens also retain lexical scopes, allowing import
+keywords and selected members with those names to receive contextual colors.
+Resolved values and parameters named `as` or `pub` keep their semantic roles.
 
 When the client supports dynamic file-watcher registration, the server requests
 notifications for `**/*.ficus`. Watched disk changes trigger another check.

@@ -1,0 +1,14 @@
+use Data.Unit as Unit
+
+main : [String] -> Unit
+main args =
+    name = fromMaybe "World" (head args)
+    -- Interpolation accepts names; compute expressions before embedding them.
+    count = length args
+    println "Hello, {name}!"
+    println "Argument count: {count}"
+    println "Hello, {name}! Argument count: {count}"
+    println "Qualified value: {Unit.unit}"
+    -- Doubled braces and backslash escapes both produce literal braces.
+    println "Literal braces: {{name}} and \{name\}"
+    println "Braces around a value: {{{name}}}"

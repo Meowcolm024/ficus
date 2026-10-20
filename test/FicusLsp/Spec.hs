@@ -82,6 +82,20 @@ tests =
         case Protocol.definitionAt (Compile.compileSources (compilation result)) source index (L.Position 1 19) of
           Nothing -> assertFailure "missing local definition"
           Just location -> location ^. L.range @?= L.Range (L.Position 1 12) (L.Position 1 13),
+      testCase "import soft keywords retain lexical scopes while ordinary as and pub names retain semantic roles" $ do
+        let library = root <> "/Library.ficus"
+            source = prefix <> "use Library as Lib\nuse Library (as, pub) pub\ncheck as pub = Lib.as (as (Lib.pub (pub 1)))\n"
+        result <- checked [(file, source), (library, prefix <> "as x = x\npub x = x\n")]
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            tokens = Index.semanticSpans file source index
+            at line column = [kind | (location, kind, _) <- tokens, S.line (S.start location) == line, S.column (S.start location) == column]
+        at 2 13 @?= []
+        at 3 23 @?= []
+        at 4 7 @?= [Index.Parameter]
+        at 4 10 @?= [Index.Parameter]
+        at 4 20 @?= [Index.Function]
+        at 4 32 @?= [Index.Function],
       testCase "changed dependencies invalidate dependent type information" $ do
         let library = root <> "/Library.ficus"
             source = prefix <> "use Library (value)\ncheck () = if { value -> 1; _ -> 0 }\n"
@@ -100,6 +114,109 @@ tests =
         assertBool "constructor token" (any (\(location, kind, _) -> S.line (S.start location) == 3 && kind == Index.Constructor) tokens)
         assertBool "parameter token" (any (\(_, kind, _) -> kind == Index.Parameter) tokens)
         case Protocol.semanticTokens file source index of Left message -> assertFailure (T.unpack message); Right _ -> pure (),
+      testCase "a function signature and definition share semantic highlighting and hover" $ do
+        let source = prefix <> "identity : Int -> Int\nidentity x = x\n"
+        result <- checked [(file, source)]
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            names = [(S.line (S.start location), kind, declared) | (location, kind, declared) <- Index.semanticSpans file source index, S.column (S.start location) == 1, S.line (S.start location) > 1]
+        names @?= [(2, Index.Function, True), (3, Index.Function, True)]
+        fmap hoverText (Protocol.hoverAt source index (L.Position 1 1)) @?= Just "```ficus\nidentity : Int -> Int\n```"
+        fmap hoverText (Protocol.hoverAt source index (L.Position 2 1)) @?= Just "```ficus\nidentity : Int -> Int\n```",
+      testCase "every function clause has the signature's semantic role and canonical definition" $ do
+        let source = prefix <> "choose : Bool -> Int\nchoose True = 1\nchoose False = 0\n"
+        result <- checked [(file, source)]
+        diagnostics result @?= []
+        let sources = Compile.compileSources (compilation result)
+            index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            names = [(S.line (S.start location), kind, declared) | (location, kind, declared) <- Index.semanticSpans file source index, S.column (S.start location) == 1, S.line (S.start location) > 1]
+        names @?= [(2, Index.Function, True), (3, Index.Function, True), (4, Index.Function, True)]
+        mapM_
+          ( \line -> case Protocol.definitionAt sources source index (L.Position line 1) of
+              Nothing -> assertFailure "missing clause definition"
+              Just location -> location ^. L.range @?= L.Range (L.Position 1 0) (L.Position 1 6)
+          )
+          [2, 3],
+      testCase "interpolated strings retain lexical highlighting instead of a whole-string variable token" $ do
+        let source = "value = \"head args = {x}\"\n"
+            location = S.Span file (S.Position 1 9 8) (S.Position 1 25 24)
+            -- Generated interpolation references inherit the original string's span.
+            symbol = Index.Symbol location "x" Nothing Nothing (Just Index.Parameter) False
+            strings = [kind | (span', kind, _) <- Index.semanticSpans file source [symbol], Index.within location span']
+        strings @?= []
+        Protocol.semanticTokens file source [symbol] @?= Protocol.semanticTokens file source [],
+      testCase "two interpolations have separate reference ranges and literal text has no definition" $ do
+        let source = "greet : String -> Int -> String\ngreet name count = \"Hello, {name}! Argument count: {count}\"\n"
+        result <- analyze (LspOptions [root] ["library"] Nothing) (Map.singleton file source)
+        diagnostics result @?= []
+        let sources = Compile.compileSources (compilation result)
+            index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            position text = offsetPosition source (T.length (fst (T.breakOn text source)))
+            definitionAt text = Protocol.definitionAt sources source index (position text)
+            assertTarget text expected = case definitionAt text of
+              Nothing -> assertFailure ("missing reference for " <> T.unpack text)
+              Just location -> location ^. L.range @?= expected
+        assertTarget "name}!" (L.Range (L.Position 1 6) (L.Position 1 10))
+        assertTarget "count}" (L.Range (L.Position 1 11) (L.Position 1 16))
+        mapM_ (\text -> definitionAt text @?= Nothing) ["Hello", "{name", "}!", "Argument", "{count", "}\""]
+        mapM_
+          ( \(text, name, ty) -> case Protocol.hoverAt source index (position text) of
+              Nothing -> assertFailure "missing interpolation hover"
+              Just hover -> do
+                hoverText hover @?= "```ficus\n" <> name <> " : " <> ty <> "\n```"
+                hover ^. L.range @?= Just (L.Range (position text) (offsetPosition source (T.length (fst (T.breakOn text source)) + T.length name)))
+          )
+          [("name}!", "name", "String"), ("count}", "count", "Int")],
+      testCase "qualified interpolations with repeated terminal names navigate independently" $ do
+        let left = root <> "/Left.ficus"
+            right = root <> "/Right.ficus"
+            source = "use Left as L\nuse Right as R\ngreet () = \"{L.value} {R.value} {L.value}\"\n"
+        result <- analyze (LspOptions [root] ["library"] Nothing) (Map.fromList [(file, source), (left, prefix <> "value = 1\n"), (right, prefix <> "value = True\n")])
+        diagnostics result @?= []
+        let sources = Compile.compileSources (compilation result)
+            index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+        mapM_
+          ( \(text, target, ty) -> do
+              let position = offsetPosition source (T.length (fst (T.breakOn text source)) + 2)
+              case Protocol.definitionAt sources source index position of
+                Nothing -> assertFailure "missing qualified interpolation reference"
+                Just location -> location ^. L.uri @?= L.filePathToUri target
+              fmap hoverText (Protocol.hoverAt source index position) @?= Just ("```ficus\nvalue : " <> ty <> "\n```")
+          )
+          [("L.value} {", left, "Int"), ("R.value}", right, "Bool"), ("L.value}\"", left, "Int")],
+      testCase "escaped braces and Unicode text do not shift interpolation reference ranges" $ do
+        let source = "greet : String -> String\ngreet name = \"😀\t{{name}} \\{name\\} \\\\{name} {{{name}}} {name}\"\n"
+        result <- analyze (LspOptions [root] ["library"] Nothing) (Map.singleton file source)
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            literalOffset = T.length (fst (T.breakOn "\"😀" source))
+            embedded = [symbol | symbol <- index, Index.symbolName symbol == "name", S.offset (S.start (Index.symbolSpan symbol)) > literalOffset, Just _ <- [Index.symbolDefinition symbol]]
+            positions = [T.length (fst (T.breakOn text source)) + skip | (text, skip) <- [("\\\\{name}", 3), ("{{{name}}}", 3), ("{name}\"", 1)]]
+        length embedded @?= 3
+        mapM_
+          ( \offset -> case Protocol.hoverAt source index (offsetPosition source offset) of
+              Nothing -> assertFailure "missing escaped-string interpolation hover"
+              Just hover -> hover ^. L.range @?= Just (L.Range (offsetPosition source offset) (offsetPosition source (offset + 4)))
+          )
+          positions
+        mapM_
+          ( \text -> do
+              let position = offsetPosition source (T.length (fst (T.breakOn text source)) + 2)
+              Protocol.definitionAt (Compile.compileSources (compilation result)) source index position @?= Nothing
+          )
+          ["{{name}}", "\\{name\\}"],
+      testCase "only real interpolation defers string highlighting to the lexical grammar" $ do
+        let cases =
+              [ ("\"{x}\"", []),
+                ("\"{Module._value}\"", []),
+                ("\"{{{x}}}\"", []),
+                ("\"\\\\{x}\"", []),
+                ("\"plain\"", [Index.String]),
+                ("\"{{x}}\"", [Index.String]),
+                ("\"\\{x\\}\"", [Index.String]),
+                ("\"\\\\{{x}}\"", [Index.String])
+              ]
+        mapM_ (\(source, expected) -> [kind | (_, kind, _) <- Index.semanticSpans file source []] @?= expected) cases,
       testCase "invalid module names produce editor diagnostics without synthetic Core" $ do
         result <- checked [(root <> "/lowercase.ficus", prefix <> "value = 1\n")]
         map D.diagnosticCode (diagnostics result) @?= ["N0202"]

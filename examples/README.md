@@ -1,6 +1,8 @@
 # v0 examples
 
 - `Main.ficus`: implicit Prelude, a total list lookup, debug strings, and IO.
+- `Interpolation.ficus`: variable and qualified-name interpolation, computed
+  values, and literal braces.
 - `Collections.ficus`: qualified data imports, list mapping/filtering, safe
   defaults, and zip.
 - `Control.ficus`: Maybe application and choice with explicit thunks, `<*`/`*>`,
@@ -15,10 +17,25 @@
 Check all examples from the repository root:
 
 ```sh
-stack exec ficus -- compile --library library examples/Main.ficus examples/Collections.ficus examples/Control.ficus examples/Builtins.ficus examples/Fibonacci.ficus examples/Primes.ficus examples/MergeSort.ficus
+stack exec ficus -- compile --library library examples/Main.ficus examples/Interpolation.ficus examples/Collections.ficus examples/Control.ficus examples/Builtins.ficus examples/Fibonacci.ficus examples/Primes.ficus examples/MergeSort.ficus
 ```
 
 Compilation validates typed Core. The compile command does not execute `main`.
+
+Run the interpolation example with an optional greeting name:
+
+```sh
+stack exec ficus -- run examples/Interpolation.ficus -- Ada
+```
+
+```text
+Hello, Ada!
+Argument count: 1
+Hello, Ada! Argument count: 1
+Qualified value: ()
+Literal braces: {name} and {name}
+Braces around a value: {Ada}
+```
 
 ## Mini benchmarks
 

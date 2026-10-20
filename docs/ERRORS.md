@@ -197,10 +197,7 @@ a syntactic pattern looks refutable.
 
 | Code | Kind / meaning | Primary location |
 | --- | --- | --- |
-| R0001 | MatchFailure | Origin of the failed match or conditional |
-| R0002 | PrimitiveFailure | Primitive operation, including arithmetic/conversion and IO failures |
-| R0003 | UninitializedRead | Premature recursive cell read |
-| R0004 | InvalidValue | Operation receiving an incompatible runtime representation; defensive boundary error |
+| R0001 | Runtime failure | Source context is embedded in the message when available; no separate evaluation span |
 | R0099 | InvalidProgram | Invalid Runtime node, layout, address, or initialization group |
 | R0101 | InvalidEntry | Invalid selected address, main declaration, or selected module anchor for missing main |
 | R0102 | InvalidLiteral | Numeric literal rejected during Core-to-Runtime decoding |
@@ -209,8 +206,15 @@ a syntactic pattern looks refutable.
 
 Runtime lowering independently reports `ExpressionHole` as T0101 before any
 erasure, and failed Core acceptance as T0099. Runtime has no expression-hole
-constructor or placeholder. Execution retains the originating span in errors;
-tests assert kind and primary span without freezing explanatory prose.
+constructor or placeholder. `FicusBackend.Error.BackendError` represents static
+lowering, linking, entry-selection, and Runtime-validation diagnostics, retaining
+spans and specific codes. Metadata-free Runtime validation uses the synthetic
+`<runtime>` anchor. `FicusBackend.Runtime.Error.RuntimeError` contains only a
+message. Its diagnostic adapter uses the single code R0001; the CLI prints
+`error[R0001]: MESSAGE` without a synthetic source header. Generated match and
+conditional messages and fallible primitive contexts embed their originating
+file, line, and column. Dynamic primitive and IO failure details are appended at
+execution. R0002, R0003, and R0004 are no longer emitted.
 
 ## CLI display
 

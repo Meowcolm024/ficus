@@ -40,7 +40,7 @@ The Concrete AST stores a dotted expression as an unresolved base-and-segments c
 
 Concrete, Abstract, and Core AST nodes retain source spans and provenance. A source span records the file and start/end positions; provenance connects transformed or generated nodes to the source nodes and declarations that produced them. Combining clauses must retain the individual clause spans as well as the binding origin. Generated lambdas, matches, and dictionary evidence must retain their originating locations rather than borrowing arbitrary neighboring spans.
 
-Core metadata should connect inferred types and resolved references to source occurrences and declaration identities. This supports later LSP features such as showing types, jumping to definitions, and semantic highlighting. Runtime lowering retains the relevant source mappings for errors even when static metadata is erased.
+Core metadata should connect inferred types and resolved references to source occurrences and declaration identities. This supports later LSP features such as showing types, jumping to definitions, and semantic highlighting. Runtime lowering embeds relevant source context in explicit error messages and fallible primitive operations; Runtime nodes have no spans or provenance.
 
 ### 1.2 Abstract declarations
 
@@ -477,7 +477,7 @@ are recorded in [the Runtime design](RUNTIME.md).
 
 Runtime lowering must check the entire input Core module for expression holes before erasure or optimization, including unused bindings, lambda bodies, dictionary methods, and unselected branches. Encountering a hole returns a structured error at its original span and prevents Runtime output, even if elaboration or completeness validation was bypassed. The lowering traversal also explicitly rejects the hole constructor; no runtime stub or delayed failure is generated.
 
-Runtime AST has no expression-hole constructor. It erases static types, type arguments, schemes, trait predicates, and source names not needed for diagnostics. Dictionaries with operational fields remain; uncertain evidence is retained conservatively.
+Runtime AST has no expression-hole constructor. It erases static types, type arguments, schemes, trait predicates, source names, spans, and provenance. Source context remains only in explicit error payloads. Dictionaries with operational fields remain; uncertain evidence is retained conservatively.
 
 A compact form is:
 
@@ -495,8 +495,8 @@ expr    = local lexical_address
         | case expr alternatives
         | if arms fallback
         | select expr constructor_id field_index
-        | prim primitive_id args
-        | match_failure ;
+        | prim primitive_id args error_context
+        | raise message ;
 ```
 
 Runtime lowering erases constructor wrapping for every nominal ADT with exactly one constructor and one field, including single-field records. Construction evaluates the field with ordinary strict semantics and returns its representation directly, without allocating a tag or box. Matching unwraps that representation without tag dispatch, and a field projection returns the underlying representation. Keep the nominal type and constructor identities in typed Core AST and source metadata; only their runtime wrapper is erased.
@@ -548,7 +548,7 @@ Lowering from Core AST must:
 - erase memberless proof dictionaries only when their evaluation and evidence applications can safely be removed;
 - preserve strict left-to-right evaluation;
 - preserve partial and extra application behavior;
-- retain source mappings for runtime errors.
+- embed source context in generated error messages and fallible primitive operations, without per-node Runtime metadata.
 
 The Runtime AST validator checks indices, arities, tags, case tables, capture layouts, primitive operands, non-expansive cyclic initializers, and lambda protection in recursive groups. The interpreter may rely on these invariants.
 
@@ -569,8 +569,8 @@ frames. All global cells are allocated before the initialization schedule runs;
 local recursive cells are allocated before that group's ordered initializers.
 A premature read produces a structured error rather than a host-language knot.
 
-Dense vectors store functions, global debug identities, constructor layouts, and
-primitives. List nil, list cons, and binary pair reserve tags 0, 1, and 2.
+Dense vectors store functions, constructor layouts, and primitives. The program
+stores a global-cell count; source identities remain in the lowering result. List nil, list cons, and binary pair reserve tags 0, 1, and 2.
 Bool and Unit use immediate literals. Other non-erased constructors receive
 nominal tags; dictionaries receive aggregate tags with superclass fields before
 methods. Byte uses `Word8`, Vec uses an immutable vector, Int uses `Int64`, and
@@ -626,7 +626,7 @@ A direct AST interpreter may remain as a simple test oracle. The compiled evalua
 
 ## 6. Future backends
 
-The v2+ backend targets JavaScript and adds tail-call optimization. Generate from validated Runtime AST and preserve strict evaluation, closure capture, nominal identities, source provenance, and intermediate application work. Implement tail calls explicitly rather than relying on host-engine support; direct loops and trampolines are candidate strategies. Specify coverage for self, mutual, and higher-order tail calls before promising constant-stack execution.
+The v2+ backend targets JavaScript and adds tail-call optimization. Generate from validated Runtime AST and preserve strict evaluation, closure capture, nominal identities, embedded error messages, and intermediate application work. Implement tail calls explicitly rather than relying on host-engine support; direct loops and trampolines are candidate strategies. Specify coverage for self, mutual, and higher-order tail calls before promising constant-stack execution.
 
 v3+ considers WebAssembly GC or LLVM. Closure conversion, memory management, runtime services, and the backend choice remain open.
 

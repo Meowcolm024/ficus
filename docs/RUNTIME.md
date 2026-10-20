@@ -28,14 +28,16 @@ FicusBackend.Runtime.Compile
 FicusBackend.Runtime.Primitive
 
 FicusBackend.Lower.Runtime
+FicusBackend.Error
 ```
 
 - `Runtime` exposes validated programs, evaluator compilation, and execution.
-- `AST` owns runtime syntax, addresses, numeric IDs, layouts, and debug metadata.
+- `AST` owns runtime syntax, addresses, numeric IDs, layouts, and explicit error payloads.
 - `Validate` constructs an opaque `ValidatedProgram` accepted by the evaluator
   compiler.
 - `Value` owns values, environments, closures, and partial applications.
-- `Error` owns structured runtime errors with source locations.
+- `Runtime.Error` owns message-only evaluation failures. `FicusBackend.Error`
+  owns coded static backend diagnostics.
 - `Compile` composes runtime expressions into Haskell evaluator closures.
 - `Primitive` implements primitive operations behind the evaluator's effect
   interface.
@@ -58,16 +60,12 @@ oracle.
 ## 2. Runtime AST
 
 The following declarations are schematic. The implemented AST uses distinct
-`newtype`s for IDs, indices, arities, and frame sizes, `Node` wrappers for source
-metadata, and vectors for dense tables. Concrete conventions are recorded in
+`newtype`s for IDs, indices, arities, and frame sizes, metadata-free `Node`
+wrappers, and vectors for dense tables. Concrete conventions are recorded in
 [IMPL §4.5](IMPL.md#45-implemented-representation-and-boundary).
 
 ```haskell
-data Expr = Expr
-  { exprSpan :: Span,
-    exprOrigin :: Provenance,
-    exprForm :: ExprF
-  }
+newtype Expr = Expr ExprF
 
 data Address
   = Local FrameDepth SlotIndex
@@ -83,15 +81,13 @@ data ExprF
   | LetRec (NonEmpty Expr) Expr
   | Construct ConstructorIndex [Expr]
   | Case Expr [Alternative] Expr
-  | If (NonEmpty (Expr, Expr)) (Maybe Expr)
+  | If [(Expr, Expr)] Expr
   | Select Expr FieldIndex
-  | Primitive PrimitiveIndex [Expr]
-  | MatchFailure
+  | Primitive PrimitiveIndex [Expr] Text
+  | Raise Text
 
 data Function = Function
-  { functionSpan :: Span,
-    functionOrigin :: Provenance,
-    functionArity :: Arity,
+  { functionArity :: Arity,
     functionFrameSize :: FrameSize,
     functionCaptures :: CaptureLayout,
     functionBody :: Expr
@@ -107,19 +103,24 @@ capturing does not evaluate an arbitrary expression. Alternatives dispatch on
 constructor tags or decoded literals and describe the frame binding the matched
 fields. Dictionaries use ordinary aggregate layouts and indexed selection.
 
-`MatchFailure` represents legitimate runtime pattern-match failure. It must never
-stand in for an erased expression hole. Retaining `If` directly gives a simple
-initial lowering; only the selected result expression runs.
+`Raise` carries a generic error message, including source context generated
+during lowering for failed matches and conditionals. It never stands in for an
+erased expression hole. Every `If` has an explicit fallback expression; lowering
+synthesizes a `Raise` when Core has no fallback. Only selected results run.
 
-Every AST node, including alternatives, functions, and binding groups, must carry
-a span and provenance. The sketch omits some of those wrappers for brevity.
-Generated nodes inherit their originating construct's span.
+Runtime nodes, alternatives, functions, layouts, and binding groups carry no
+spans or provenance. The `Node` newtype has no runtime metadata. Source spans and
+provenance remain through Core. Lowering formats location text once for generated
+`Raise` messages and fallible primitive operations; total primitives carry an
+empty error context. Primitive failure context is applied only after operands
+have evaluated successfully, so an operand failure keeps its own message.
+`Binding.bindingExpansive` is a semantic Boolean for recursive validation, not a
+source location.
 
-A program contains dense function, global, constructor, primitive, and debug
-tables, plus an explicit ordered global-initialization schedule. Define frame
-and capture conventions explicitly so validation and execution agree. Debug
-tables retain names and declaration identities for diagnostics, without making
-execution depend on them.
+A program contains dense function, constructor, and primitive tables, a global
+cell count, and an explicit ordered initialization schedule. Source-name maps
+remain in `LoweredProgram`, outside the Runtime AST. Frame and capture
+conventions are validated before execution.
 
 Keep entry selection separate from the program representation so libraries do
 not require `main`. An execution entry is resolved and validated before running
@@ -253,7 +254,7 @@ tail-call optimization remain subsequent work.
 
 ## 7. Embedding API
 
-`lowerProgram :: [CoreModule CoreType] -> Either [RuntimeError] LoweredProgram`
+`lowerProgram :: [CoreModule CoreType] -> Either [BackendError] LoweredProgram`
 accepts closed Core modules in dependency order. It independently scans for
 holes and calls Core acceptance validation; callers do not need to manufacture
 a validation witness. Every imported value needs a linked definition with a
@@ -268,7 +269,7 @@ standard handle identities to host streams. Runtime values include opaque
 `HandleValue`s. Standard input is readable; standard output and standard error
 are writable. Bounded reads preserve Unicode code points and line terminators;
 non-positive counts skip the callback. Direction errors and host IO exceptions
-become located primitive failures. `print`, `println`, and line reading are
+become generic runtime messages with embedded operation context. `print`, `println`, and line reading are
 ordinary source definitions built from handle primitives; no close operation is
 provided.
 `Value` supplies arguments and results, and `observe` inspects data values.
@@ -281,8 +282,9 @@ same validated program as the executable/instance. Entry validation here checks
 the numeric address; `FicusBackend.Driver.Run` owns the source `main` signature
 and command-line argument contract. Library programs can have no globals or entry.
 
-`RuntimeError` carries a stable kind and primary span and implements the shared
-diagnostic interface; see [ERRORS.md](ERRORS.md#runtime-and-lowering-diagnostics-r).
+`RuntimeError` carries only message text. Its diagnostic adapter uses R0001.
+Lowering, linking, entry selection, and Runtime validation return separate
+`BackendError` diagnostics with specific codes and spans; see [ERRORS.md](ERRORS.md#runtime-and-lowering-diagnostics-r).
 
 ## 8. Interactive linking
 

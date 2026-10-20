@@ -7,7 +7,6 @@ import Data.Int (Int64)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
-import Ficus.Util.Source
 import FicusBackend.Runtime.AST
 import FicusBackend.Runtime.Error qualified as E
 import FicusBackend.Runtime.Value
@@ -31,7 +30,7 @@ ioEffects = Effects write readChunk
               character <- IO.hGetChar handle
               loop handle (remaining - 1) (character : buffer)
 
-evaluatePrimitive :: Span -> Effects -> Primitive () -> [Value] -> EvalM Value
+evaluatePrimitive :: T.Text -> Effects -> Primitive () -> [Value] -> EvalM Value
 evaluatePrimitive origin effects operation arguments = case (operation, arguments) of
   (IntAdd, [LiteralValue (Integer a), LiteralValue (Integer b)]) -> integer (a + b)
   (IntSubtract, [LiteralValue (Integer a), LiteralValue (Integer b)]) -> integer (a - b)
@@ -68,7 +67,7 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
   (StringToChars, [LiteralValue (String a)]) -> pure (listValue (map (LiteralValue . Character) (T.unpack a)))
   (CharsToString, [value]) -> do
     values <- listElements value
-    characters <- mapM (\case LiteralValue (Character c) -> pure c; _ -> invalidValue origin "character list expected") values
+    characters <- mapM (\case LiteralValue (Character c) -> pure c; _ -> invalidValue "character list expected") values
     string (T.pack characters)
   (VecFromList (), [value]) -> VectorValue . V.fromList <$> listElements value
   (VecToList (), [VectorValue values]) -> pure (listValue (V.toList values))
@@ -86,14 +85,14 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
   (HandleWrite (), [HandleValue handle, LiteralValue (String value)]) -> case handle of
     StandardInput -> failure "handle is not writable"
     _ -> io (writeHandle effects handle value) >> pure (LiteralValue Unit)
-  _ -> invalidValue origin "primitive operands do not match its contract"
+  _ -> invalidValue "primitive operands do not match its contract"
   where
     integer = pure . LiteralValue . Integer
     floating = pure . LiteralValue . Floating
     boolean = pure . LiteralValue . Boolean
     string = pure . LiteralValue . String
     failure :: T.Text -> EvalM a
-    failure = throwError . E.RuntimeError E.PrimitiveFailure origin
+    failure = throwError . E.RuntimeError . (origin <>)
     divide operation' a b
       | b == 0 = failure "integer division by zero"
       | otherwise = integer (fromInteger (operation' (toInteger a) (toInteger b)))
@@ -106,5 +105,5 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
         go accumulated (Aggregate tag values)
           | tag == nilConstructor && V.null values = pure (reverse accumulated)
           | tag == consConstructor, [first, rest] <- V.toList values = go (first : accumulated) rest
-        go _ _ = invalidValue origin "list representation expected"
+        go _ _ = invalidValue "list representation expected"
     listValue = foldr (\first rest -> Aggregate consConstructor (V.fromList [first, rest])) (Aggregate nilConstructor V.empty)

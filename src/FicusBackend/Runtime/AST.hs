@@ -1,4 +1,5 @@
--- | Untyped, addressed runtime syntax. Names occur only in debug metadata.
+-- | Untyped, addressed runtime syntax. Only explicit error operations carry
+-- source context, embedded in their message payloads.
 module FicusBackend.Runtime.AST (module FicusBackend.Runtime.AST, Primitive (..)) where
 
 import Data.Int (Int64)
@@ -7,8 +8,6 @@ import Data.Text (Text)
 import Data.Vector (Vector)
 import Ficus.Primitive.Registry (Primitive (..))
 import Ficus.Primitive.Registry qualified as P
-import Ficus.Syntax.Name (GlobalId)
-import Ficus.Util.Source
 
 newtype FrameDepth = FrameDepth Int deriving (Eq, Ord, Show)
 
@@ -32,7 +31,7 @@ newtype FrameSize = FrameSize Int deriving (Eq, Ord, Show)
 
 newtype CaptureLayout = CaptureLayout Int deriving (Eq, Show)
 
-data Node a = Node {nodeSpan :: Span, nodeOrigin :: Provenance, nodeValue :: a}
+newtype Node a = Node {nodeValue :: a}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 data Address = Local FrameDepth SlotIndex | Capture CaptureIndex deriving (Eq, Ord, Show)
@@ -59,17 +58,17 @@ data ExprF
   | LetRec (NonEmpty Binding) Expr
   | Construct ConstructorIndex [Expr]
   | Case Expr [Alternative] Expr
-  | If [Node (Expr, Expr)] (Maybe Expr)
+  | If [Node (Expr, Expr)] Expr
   | Select Expr ConstructorIndex FieldIndex
-  | Primitive PrimitiveIndex [Expr]
-  | MatchFailure
+  | Primitive PrimitiveIndex [Expr] Text
+  | Raise Text
   deriving (Eq, Show)
 
 data CaseTest = ConstructorTest ConstructorIndex FrameSize | LiteralTest RuntimeLiteral deriving (Eq, Show)
 
 -- Source classification survives erasure, including erased projections and
 -- generated evidence calls which cannot be reclassified from untyped syntax.
-data BindingF = Binding {bindingBody :: Expr, bindingExpansive :: Maybe Span} deriving (Eq, Show)
+data BindingF = Binding {bindingBody :: Expr, bindingExpansive :: Bool} deriving (Eq, Show)
 
 data FunctionF = Function
   { functionArity :: Arity,
@@ -82,7 +81,7 @@ data FunctionF = Function
 
 data GlobalGroup = GlobalGroup {groupRecursive :: Bool, groupBindings :: NonEmpty (GlobalIndex, Binding)} deriving (Eq, Show)
 
-data ConstructorLayout = ConstructorLayout {constructorFields :: FrameSize, constructorName :: Text} deriving (Eq, Show)
+newtype ConstructorLayout = ConstructorLayout {constructorFields :: FrameSize} deriving (Eq, Show)
 
 -- These tags are reserved in every program so primitive list conversion and
 -- ordinary construction share one representation.
@@ -95,10 +94,8 @@ primitiveArity :: Primitive nominal -> Arity
 primitiveArity = Arity . P.primitiveArity
 
 data Program = Program
-  { programSpan :: Span,
-    programOrigin :: Provenance,
-    programFunctions :: Vector Function,
-    programGlobals :: Vector (Node (Maybe GlobalId, Text)),
+  { programFunctions :: Vector Function,
+    programGlobalCount :: Int,
     programConstructors :: Vector (Node ConstructorLayout),
     programPrimitives :: Vector (Primitive ()),
     programInitialization :: [Node GlobalGroup]

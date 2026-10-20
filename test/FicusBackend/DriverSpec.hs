@@ -16,7 +16,7 @@ import FicusBackend.Driver.Run
 import FicusBackend.Runtime qualified as R
 import FicusBackend.Runtime.Value (StandardHandle (..))
 import System.Directory (createDirectory, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
-import System.FilePath (takeFileName, (</>))
+import System.FilePath ((</>))
 import System.IO (hClose, openTempFile)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -75,7 +75,7 @@ tests =
           testCase "division by zero returns a structured error" $ do
             prepared <- plan "DivisionMain"
             executeRun quiet prepared [] >>= \case
-              Left problem -> R.errorKind problem @?= R.PrimitiveFailure
+              Left problem -> assertBool "division failure message" ("integer division by zero" `T.isSuffixOf` R.errorMessage problem)
               Right value -> assertFailure (show value),
           invalidEntry "BadMain" 3,
           invalidEntry "PolyMain" 3,
@@ -149,10 +149,9 @@ tests =
             current <- session
             Repl.submit quiet current "1 / 0" >>= \case
               Left errors -> do
-                map D.diagnosticCode errors @?= ["R0002"]
-                -- Runtime primitives retain their builtin definition's source site.
-                map (takeFileName . sourceFile . D.diagnosticSpan) errors @?= ["Int.ficus"]
-                map (\d -> let location = start (D.diagnosticSpan d) in (line location, column location)) errors @?= [(10, 1)]
+                map D.diagnosticCode errors @?= ["R0001"]
+                map (sourceFile . D.diagnosticSpan) errors @?= ["<runtime>"]
+                assertBool "builtin location is embedded in the message" (all (T.isInfixOf "Int.ficus:10:1: integer division by zero" . D.diagnosticMessage) errors)
               Right _ -> assertFailure "division succeeded"
             result current "6 * 7" "42",
           testCase "declarations retain inferred types and execute" $ do
@@ -243,7 +242,7 @@ tests =
             current <- session
             (first, _) <- Repl.submit quiet current "value = 7" >>= requireRight
             Repl.submit quiet first "value = 1 / 0" >>= \case
-              Left errors -> map D.diagnosticCode errors @?= ["R0002"]
+              Left errors -> map D.diagnosticCode errors @?= ["R0001"]
               Right _ -> assertFailure "division succeeded"
             result first "value" "7",
           testCase "reload replaces values and failed reload retains the snapshot" $ withDirectory $ \directory -> do

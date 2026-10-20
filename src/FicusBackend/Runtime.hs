@@ -20,7 +20,6 @@ module FicusBackend.Runtime
     Observation (..),
     observe,
     RuntimeError (..),
-    ErrorKind (..),
   )
 where
 

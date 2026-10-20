@@ -1,5 +1,6 @@
 module CLI (main) where
 
+import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
@@ -144,7 +145,10 @@ configure options = do
 report :: DiagnosticStyle -> Map.Map FilePath T.Text -> [Diagnostic.Diagnostic] -> IO ()
 report diagnosticStyle sources errors = do
   directory <- getCurrentDirectory
-  mapM_ (printDiagnostic diagnosticStyle directory sources) errors
+  forM_ errors $ \problem ->
+    if Diagnostic.diagnosticCode problem == "R0001" && sourceFile (Diagnostic.diagnosticSpan problem) == "<runtime>"
+      then T.hPutStrLn stderr ("error[R0001]: " <> Diagnostic.diagnosticMessage problem)
+      else printDiagnostic diagnosticStyle directory sources problem
 
 selectedModule :: FilePath -> Compile.CompileResult -> IO (Either [Diagnostic.Diagnostic] ModuleId)
 selectedModule file result = do

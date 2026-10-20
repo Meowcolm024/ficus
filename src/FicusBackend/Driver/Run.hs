@@ -4,6 +4,7 @@ module FicusBackend.Driver.Run (RunPlan, prepareRun, executeRun, lowerCompilatio
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Vector qualified as V
 import Ficus.Compile
 import Ficus.Elaborate (checkedCore)
@@ -78,4 +79,4 @@ executeRun effects (RunPlan executable entry form origin) arguments = do
         [R.LiteralValue A.Unit] -> Right Nothing
         _ -> invalid
       _ -> invalid
-    invalid = Left (R.RuntimeError R.InvalidValue origin "entry returned an invalid runtime representation")
+    invalid = Left (R.RuntimeError (Text.pack (sourceFile origin) <> ": entry returned an invalid runtime representation"))

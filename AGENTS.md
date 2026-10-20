@@ -10,7 +10,7 @@ Never change language behavior without updating SPEC.md in the same change.
 ## Architecture invariants (easy to break)
 
 - Stages: Concrete → Abstract → Core → Runtime. No stage reaches back into an earlier one's types. Each boundary has a validator; run it in tests.
-- Every AST node carries a source span and provenance. Generated nodes (lambdas, matches, dictionary evidence) get their origin's span, never a neighbor's.
+- Every Concrete, Abstract, and Core AST node carries a source span and provenance. Generated nodes (lambdas, matches, dictionary evidence) get their origin's span, never a neighbor's. Runtime nodes have no source metadata; lowering embeds relevant source context in explicit error messages and fallible primitive operations.
 - The parser has no special cases for `::`, `Type`, `True`, `False`, `_`. These are ordinary identifiers, resolved later. All pragmas share an ALL_CAPITAL name and identifier/string arguments; no directive has a special parser production. `BUILTIN` keys are metadata; targets follow ordinary namespace and scope rules.
 - Operator grouping is dynamic and spelling-based. Do not enumerate operators and do not add fixity declarations.
 - Dotted chains stay uncommitted in the Concrete AST. Only name resolution decides module prefix vs. field projection.

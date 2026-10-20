@@ -1121,7 +1121,16 @@ Implementations reject at least:
 - use of Prelude-dependent sugar when the implicit Prelude is disabled;
 - invalid builtin placement, key, target, signature, or source definition.
 
-Runtime errors include failed pattern matches and primitive failures. Diagnostics identify relevant source locations and explain the error; exact wording is unspecified. Suggested fixes are deferred.
+Runtime errors include failed pattern matches and primitive failures. Evaluation
+failures carry a message payload and share diagnostic code `R0001`; they have
+no separate per-cause error codes. Lowering embeds relevant source locations
+in generated error messages and fallible primitive error contexts, rather than
+attaching source spans or provenance to Runtime AST nodes. An unmatched pattern
+or conditional raises its generated message. Primitive failures, including
+integer division by zero and host IO exceptions, use the same generic error
+mechanism. Evaluation failures remain separate from coded lowering, linking,
+entry-selection, and Runtime-validation diagnostics. Exact message wording is
+unspecified. Suggested fixes are deferred.
 
 ## 22. Program entry point
 

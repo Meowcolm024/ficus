@@ -27,7 +27,9 @@ main : [String] -> Result String Unit
 Only arguments after the filename are passed to `main`. Use `--` before program
 arguments that could be interpreted as CLI options. Returning `Unit` or `Ok ()`
 succeeds; `Err message` writes the message to stderr and exits with status 1.
-Compilation, entry-point, and runtime errors also exit with status 1.
+Compilation, entry-point, and runtime errors also exit with status 1. Runtime
+failures use `R0001` with an explanatory message; generated failure messages
+include source context where available.
 
 See [examples](examples/README.md) for complete programs.
 

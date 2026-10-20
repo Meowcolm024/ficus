@@ -8,7 +8,6 @@ import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Vector qualified as V
 import Data.Word (Word8)
-import Ficus.Util.Source
 import FicusBackend.Runtime.AST
 import FicusBackend.Runtime.Error qualified as E
 
@@ -59,21 +58,21 @@ observe value = case value of
   HandleValue handle -> HandleObservation handle
   FunctionValue closure -> FunctionObservation (codeArity (closureCode closure)) (V.length (closureArguments closure))
 
-invalidValue :: Span -> Text -> EvalM a
-invalidValue origin = throwError . E.RuntimeError E.InvalidValue origin
+invalidValue :: Text -> EvalM a
+invalidValue = throwError . E.RuntimeError
 
-index :: Span -> Vector a -> Int -> EvalM a
-index origin entries slot = maybe (invalidValue origin "runtime index is out of bounds") pure (entries V.!? slot)
+index :: Vector a -> Int -> EvalM a
+index entries slot = maybe (invalidValue "runtime index is out of bounds") pure (entries V.!? slot)
 
-addressCell :: Span -> Env -> Address -> EvalM Cell
-addressCell origin env address = case address of
-  Capture (CaptureIndex slot) -> index origin (envCaptures env) slot
+addressCell :: Env -> Address -> EvalM Cell
+addressCell env address = case address of
+  Capture (CaptureIndex slot) -> index (envCaptures env) slot
   Local (FrameDepth depth) (SlotIndex slot) -> case drop depth (envFrames env) of
-    frame : _ | depth >= 0 -> index origin frame slot
-    _ -> invalidValue origin "lexical frame is out of bounds"
+    frame : _ | depth >= 0 -> index frame slot
+    _ -> invalidValue "lexical frame is out of bounds"
 
-readCell :: Span -> Cell -> EvalM Value
-readCell origin cell = liftIO (readIORef cell) >>= maybe (throwError (E.RuntimeError E.UninitializedRead origin "recursive value read before initialization")) pure
+readCell :: Cell -> EvalM Value
+readCell cell = liftIO (readIORef cell) >>= maybe (throwError (E.RuntimeError "recursive value read before initialization")) pure
 
 valueFrame :: [Value] -> EvalM Frame
 valueFrame = liftIO . V.mapM (newIORef . Just) . V.fromList
@@ -87,14 +86,14 @@ writeCell cell value = liftIO (writeIORef cell (Just value))
 pushFrame :: Frame -> Env -> Env
 pushFrame frame env = env {envFrames = frame : envFrames env}
 
-makeClosure :: Span -> Env -> FunctionIndex -> [Address] -> EvalM Value
-makeClosure origin env (FunctionIndex ident) sources = do
-  code <- index origin (envFunctions env) ident
-  captures <- V.fromList <$> mapM (addressCell origin env) sources
+makeClosure :: Env -> FunctionIndex -> [Address] -> EvalM Value
+makeClosure env (FunctionIndex ident) sources = do
+  code <- index (envFunctions env) ident
+  captures <- V.fromList <$> mapM (addressCell env) sources
   pure (FunctionValue (ClosureValue code (env {envFrames = [], envCaptures = captures}) V.empty))
 
-applyValue :: Span -> Value -> Value -> EvalM Value
-applyValue origin function argument = case function of
+applyValue :: Value -> Value -> EvalM Value
+applyValue function argument = case function of
   FunctionValue closure -> do
     let arguments = V.snoc (closureArguments closure) argument
         code = closureCode closure
@@ -106,20 +105,20 @@ applyValue origin function argument = case function of
           then do
             frame <- valueFrame (V.toList arguments)
             codeBody code (pushFrame frame (closureEnvironment closure))
-          else invalidValue origin "closure received too many stored arguments"
-  _ -> invalidValue origin "application requires a function"
+          else invalidValue "closure received too many stored arguments"
+  _ -> invalidValue "application requires a function"
 
 -- Retained interactive closures keep lexical cells and code, while effects
 -- belong to the current invocation rather than the session that created them.
-applyValueWithEffects :: Effects -> Span -> Value -> Value -> EvalM Value
-applyValueWithEffects effects origin function argument = case function of
-  FunctionValue closure -> applyValue origin (FunctionValue closure {closureEnvironment = (closureEnvironment closure) {envEffects = effects}}) argument
-  _ -> applyValue origin function argument
+applyValueWithEffects :: Effects -> Value -> Value -> EvalM Value
+applyValueWithEffects effects function argument = case function of
+  FunctionValue closure -> applyValue (FunctionValue closure {closureEnvironment = (closureEnvironment closure) {envEffects = effects}}) argument
+  _ -> applyValue function argument
 
-selectField :: Span -> ConstructorIndex -> FieldIndex -> Value -> EvalM Value
-selectField origin owner (FieldIndex field) value = case value of
-  Aggregate actual fields | owner == actual -> index origin fields field
-  _ -> invalidValue origin "selection requires the expected aggregate"
+selectField :: ConstructorIndex -> FieldIndex -> Value -> EvalM Value
+selectField owner (FieldIndex field) value = case value of
+  Aggregate actual fields | owner == actual -> index fields field
+  _ -> invalidValue "selection requires the expected aggregate"
 
 testValue :: CaseTest -> Value -> Maybe [Value]
 testValue test value = case (test, value) of

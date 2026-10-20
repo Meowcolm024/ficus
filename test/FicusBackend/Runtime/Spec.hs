@@ -24,6 +24,7 @@ import Ficus.Syntax.Core.Validate (validatedModule)
 import Ficus.Syntax.Name qualified as N
 import Ficus.Type qualified as Type
 import Ficus.Util.Source
+import FicusBackend.Error qualified as B
 import FicusBackend.Lower.Runtime
 import FicusBackend.Runtime qualified as Runtime
 import FicusBackend.Runtime.AST qualified as R
@@ -39,33 +40,31 @@ origin :: Span
 origin = Span "Runtime.ficus" (Position 1 1 0) (Position 1 5 4)
 
 node :: a -> R.Node a
-node = R.Node origin (SourceOrigin origin)
+node = R.Node
 
 literal :: R.RuntimeLiteral -> R.Expr
 literal = node . R.Literal
 
 primitive :: R.Primitive () -> [R.Expr] -> R.Expr
 -- A missing catalogue entry produces an invalid address, rejected by validation.
-primitive operation = node . R.Primitive (R.PrimitiveIndex (maybe (-1) id (P.primitiveIndex operation)))
+primitive operation arguments = node (R.Primitive (R.PrimitiveIndex (maybe (-1) id (P.primitiveIndex operation))) arguments "")
 
 program :: R.Expr -> R.Program
 program body =
   R.Program
-    origin
-    (SourceOrigin origin)
     V.empty
-    (V.singleton (node (Nothing, "entry")))
-    (V.fromList [node (R.ConstructorLayout (R.FrameSize count) name) | (count, name) <- [(0, "[]"), (2, "::"), (2, "(*)")]])
+    1
+    (V.fromList [node (R.ConstructorLayout (R.FrameSize count)) | count <- [0, 2, 2]])
     (V.fromList P.allPrimitives)
-    [node (R.GlobalGroup False ((R.GlobalIndex 0, node (R.Binding body Nothing)) :| []))]
+    [node (R.GlobalGroup False ((R.GlobalIndex 0, node (R.Binding body False)) :| []))]
 
 quiet :: Effects
 quiet = Effects (\_ _ -> pure ()) (\_ _ -> pure "")
 
-capture :: (Effects -> IO (Either E.RuntimeError Value)) -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+capture :: (Effects -> IO (Either E.RuntimeError Value)) -> IO (Either E.RuntimeError Observation, [Text])
 capture = captureInput "input"
 
-captureInput :: Text -> (Effects -> IO (Either E.RuntimeError Value)) -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+captureInput :: Text -> (Effects -> IO (Either E.RuntimeError Value)) -> IO (Either E.RuntimeError Observation, [Text])
 captureInput input action = do
   output <- newIORef []
   remaining <- newIORef input
@@ -75,17 +74,17 @@ captureInput input action = do
          in (rest, chunk)
   result <- action (Effects (\_ text -> modifyIORef' output (<> [text])) readChunk)
   trace <- readIORef output
-  pure (either (\problem -> Left (E.errorKind problem, E.errorSpan problem)) (Right . observe) result, trace)
+  pure (fmap observe result, trace)
 
 execute :: Runtime.ValidatedProgram -> R.GlobalIndex -> [Value] -> Effects -> IO (Either E.RuntimeError Value)
 execute checked ident arguments effects = case Runtime.selectEntry checked ident of
-  Left problem -> pure (Left problem)
+  Left problem -> pure (Left (E.RuntimeError (B.errorMessage problem)))
   Right entry -> Runtime.runProgram effects (Runtime.compileProgram checked) entry arguments
 
-compareEvaluators :: Runtime.ValidatedProgram -> R.GlobalIndex -> [Value] -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+compareEvaluators :: Runtime.ValidatedProgram -> R.GlobalIndex -> [Value] -> IO (Either E.RuntimeError Observation, [Text])
 compareEvaluators = compareEvaluatorsWithInput "input"
 
-compareEvaluatorsWithInput :: Text -> Runtime.ValidatedProgram -> R.GlobalIndex -> [Value] -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+compareEvaluatorsWithInput :: Text -> Runtime.ValidatedProgram -> R.GlobalIndex -> [Value] -> IO (Either E.RuntimeError Observation, [Text])
 compareEvaluatorsWithInput input checked ident arguments = do
   compiled <- captureInput input (execute checked ident arguments)
   direct <- captureInput input (\effects -> runDirect effects checked ident arguments)
@@ -105,7 +104,7 @@ checkedSource source = do
         Left errors -> assertFailure (show errors) >> fail "Core did not lower"
         Right lowered -> pure lowered
 
-sourceResult :: Text -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+sourceResult :: Text -> IO (Either E.RuntimeError Observation, [Text])
 sourceResult source = do
   lowered <- checkedSource source
   let ident = N.GlobalId (N.ModuleId ("Runtime" :| [])) N.ValueNS "check"
@@ -149,7 +148,7 @@ tests =
             let source = printing <> "f True y = y\nlater () = { print \"later\"; 1 }\ncheck () = f False (later ())\n"
             (result, trace) <- sourceResult source
             trace @?= []
-            result @?= Left (E.MatchFailure, fixtureSpan source "f True y = y"),
+            result @?= Left (matchError (fixtureSpan source "f True y = y")),
           testCase "recursive local closures capture shared cells" $
             expectSource (arithmetic <> "check () = ping 8 where { ping n = if { equal n 0 -> 1; _ -> pong (sub n 1) }; pong n = if { equal n 0 -> 2; _ -> ping (sub n 1) } }\n") (int 1) [],
           testCase "recursive aggregates containing closures initialize strictly" $
@@ -174,7 +173,7 @@ tests =
             let source = printing <> "type Maybe a = { Nothing; Just a }\ntrait Get a = { get : Maybe a }\nimpl Get Int = { get = Nothing }\nchoose : Get a => a -> a\nchoose = x -> y where { Just y = get }\nargument () = { print \"argument\"; 1 }\ncheck () = choose (argument ())\n"
             (result, trace) <- sourceResult source
             trace @?= []
-            result @?= Left (E.MatchFailure, fixtureSpan source "Just y"),
+            result @?= Left (matchError (fixtureSpan source "Just y")),
           testCase "where dependency order breaks independent ties by source order" $
             expectSource (printing <> "value label result = { print label; result }\ncheck () = last where { first = value \"first\" base; independent = value \"independent\" 2; base = value \"base\" 1; last = value \"last\" first }\n") (int 1) ["independent", "base", "first", "last"],
           testCase "recursive local aggregates retain shared closure cells" $
@@ -199,7 +198,18 @@ tests =
         ],
       testGroup
         "execution API"
-        [ testCase "an instance initializes globals once across repeated entry calls" $ do
+        [ testCase "generic error operations preserve their payload" $ do
+            let tree = program (node (R.Raise "custom runtime failure"))
+            case Runtime.validateProgram tree of
+              Left errors -> assertFailure (show errors)
+              Right checked -> compareEvaluators checked (R.GlobalIndex 0) [] >>= (@?= (Left (E.RuntimeError "custom runtime failure"), []))
+            D.diagnosticCode (D.toDiagnostic (E.RuntimeError "custom runtime failure")) @?= "R0001",
+          testCase "primitive argument errors keep their own messages" $ do
+            let tree = program (node (R.Primitive (R.PrimitiveIndex (maybe (-1) id (P.primitiveIndex R.IntDivide))) [node (R.Raise "argument failure"), literal (R.Integer 0)] "primitive site: "))
+            case Runtime.validateProgram tree of
+              Left errors -> assertFailure (show errors)
+              Right checked -> compareEvaluators checked (R.GlobalIndex 0) [] >>= (@?= (Left (E.RuntimeError "argument failure"), [])),
+          testCase "an instance initializes globals once across repeated entry calls" $ do
             case Runtime.validateProgram (program (termExpr (Trace "init" (Number 7)))) of
               Left errors -> assertFailure (show errors)
               Right checked -> case Runtime.selectEntry checked (R.GlobalIndex 0) of
@@ -214,7 +224,7 @@ tests =
                         Runtime.evaluateEntry instance' entry []
                   result @?= (Right (int 7), ["init"]),
           testCase "generic multi-operand calls apply between argument evaluations" $ do
-            let traced label body = node (R.Let (node (R.Binding (primitive (R.HandleWrite ()) [primitive (R.HandleStdout ()) [], literal (R.String label)]) Nothing)) body)
+            let traced label body = node (R.Let (node (R.Binding (primitive (R.HandleWrite ()) [primitive (R.HandleStdout ()) [], literal (R.String label)]) False)) body)
                 function body = node (R.Function (R.Arity 1) (R.FrameSize 1) (R.CaptureLayout 0) (V.singleton R.ValueParameter) body)
                 call = node (R.Call (traced "function" (node (R.Closure (R.FunctionIndex 0) []))) (traced "first" (literal R.Unit) :| [traced "second" (literal (R.Integer 9))]))
                 tree = (program call) {R.programFunctions = V.fromList [function (traced "apply" (node (R.Closure (R.FunctionIndex 1) []))), function (node (R.Load (R.Local (R.FrameDepth 0) (R.SlotIndex 0))))]}
@@ -224,28 +234,29 @@ tests =
         ],
       testGroup
         "validation"
-        [ invalid "global ID" (program (node (R.Global (R.GlobalIndex 9)))),
+        [ invalid "negative global count" ((program (literal R.Unit)) {R.programGlobalCount = -1}),
+          invalid "global ID" (program (node (R.Global (R.GlobalIndex 9)))),
           invalid "local frame" (program (node (R.Load (R.Local (R.FrameDepth 0) (R.SlotIndex 0))))),
           invalid "capture index" (program (node (R.Load (R.Capture (R.CaptureIndex 0))))),
           invalid "constructor arity" (program (node (R.Construct R.consConstructor []))),
           invalid "primitive arity" (program (primitive R.IntAdd [literal (R.Integer 1)])),
-          invalid "unprotected recursive global" ((program (node (R.Global (R.GlobalIndex 0)))) {R.programInitialization = [node (R.GlobalGroup True ((R.GlobalIndex 0, node (R.Binding (node (R.Global (R.GlobalIndex 0))) Nothing)) :| []))]}),
-          invalid "unprotected recursive local" (program (node (R.LetRec (node (R.Binding (node (R.Load (R.Local (R.FrameDepth 0) (R.SlotIndex 0)))) Nothing) :| []) (literal R.Unit)))),
+          invalid "unprotected recursive global" ((program (node (R.Global (R.GlobalIndex 0)))) {R.programInitialization = [node (R.GlobalGroup True ((R.GlobalIndex 0, node (R.Binding (node (R.Global (R.GlobalIndex 0))) False)) :| []))]}),
+          invalid "unprotected recursive local" (program (node (R.LetRec (node (R.Binding (node (R.Load (R.Local (R.FrameDepth 0) (R.SlotIndex 0)))) False) :| []) (literal R.Unit)))),
           invalid "capture layout" ((program (node (R.Closure (R.FunctionIndex 0) []))) {R.programFunctions = V.singleton (node (R.Function (R.Arity 1) (R.FrameSize 1) (R.CaptureLayout 1) (V.singleton R.ValueParameter) (literal R.Unit)))}),
           invalid "function frame size" ((program (literal R.Unit)) {R.programFunctions = V.singleton (node (R.Function (R.Arity 1) (R.FrameSize 0) (R.CaptureLayout 0) (V.singleton R.ValueParameter) (literal R.Unit)))}),
           invalid
             "evidence is not recursive protection"
             ( (program (literal R.Unit))
                 { R.programFunctions = V.singleton (node (R.Function (R.Arity 1) (R.FrameSize 1) (R.CaptureLayout 0) (V.singleton R.EvidenceParameter) (node (R.Global (R.GlobalIndex 0))))),
-                  R.programInitialization = [node (R.GlobalGroup True ((R.GlobalIndex 0, node (R.Binding (node (R.Closure (R.FunctionIndex 0) [])) Nothing)) :| []))]
+                  R.programInitialization = [node (R.GlobalGroup True ((R.GlobalIndex 0, node (R.Binding (node (R.Closure (R.FunctionIndex 0) [])) False)) :| []))]
                 }
             ),
-          invalid "expansive recursive initializer" ((program (literal R.Unit)) {R.programInitialization = [node (R.GlobalGroup True ((R.GlobalIndex 0, node (R.Binding (literal R.Unit) (Just origin))) :| []))]}),
+          invalid "expansive recursive initializer" ((program (literal R.Unit)) {R.programInitialization = [node (R.GlobalGroup True ((R.GlobalIndex 0, node (R.Binding (literal R.Unit) True)) :| []))]}),
           invalid "constructor case frame" (program (node (R.Case (node (R.Construct R.nilConstructor [])) [node (R.ConstructorTest R.nilConstructor (R.FrameSize 1), literal R.Unit)] (literal R.Unit)))),
-          invalid "global dependency order" ((program (literal R.Unit)) {R.programGlobals = V.fromList [node (Nothing, "first"), node (Nothing, "second")], R.programInitialization = [node (R.GlobalGroup False ((R.GlobalIndex 0, node (R.Binding (node (R.Global (R.GlobalIndex 1))) Nothing)) :| [])), node (R.GlobalGroup False ((R.GlobalIndex 1, node (R.Binding (literal R.Unit) Nothing)) :| []))]}),
+          invalid "global dependency order" ((program (literal R.Unit)) {R.programGlobalCount = 2, R.programInitialization = [node (R.GlobalGroup False ((R.GlobalIndex 0, node (R.Binding (node (R.Global (R.GlobalIndex 1))) False)) :| [])), node (R.GlobalGroup False ((R.GlobalIndex 1, node (R.Binding (literal R.Unit) False)) :| []))]}),
           testCase "entry is validated before execution" $ case Runtime.validateProgram (program (literal (R.Integer 1))) of
             Left errors -> assertFailure (show errors)
-            Right checked -> case Runtime.selectEntry checked (R.GlobalIndex 1) of Left problem -> (E.errorKind problem, E.errorSpan problem) @?= (E.InvalidEntry, origin); Right _ -> assertFailure "invalid entry accepted"
+            Right checked -> case Runtime.selectEntry checked (R.GlobalIndex 1) of Left problem -> (B.errorKind problem, B.errorSpan problem) @?= (B.InvalidEntry, B.runtimeSpan); Right _ -> assertFailure "invalid entry accepted"
         ],
       testGroup
         "defensive Core hole rejection"
@@ -287,50 +298,50 @@ tests =
           primitiveCase "string equality" R.StringEqual [R.String "a", R.String "b"] (R.Boolean False),
           primitiveCase "string comparison uses code points" R.StringLess [R.String "\xE000", R.String "\x10000"] (R.Boolean True),
           testCase "byte conversion reduces modulo 256" $ do
-            result <- runExceptT (evaluatePrimitive origin quiet (R.ByteFromInt ()) [LiteralValue (R.Integer (-1))] >>= \byte -> evaluatePrimitive origin quiet (R.ByteToInt ()) [byte])
+            result <- runExceptT (evaluatePrimitive "fixture: " quiet (R.ByteFromInt ()) [LiteralValue (R.Integer (-1))] >>= \byte -> evaluatePrimitive "fixture: " quiet (R.ByteToInt ()) [byte])
             fmap observe result @?= Right (int 255),
           testCase "string and immutable vector conversions preserve Unicode order" $ do
             result <- runExceptT $ do
-              chars <- evaluatePrimitive origin quiet R.StringToChars [LiteralValue (R.String "a😀é")]
-              vector <- evaluatePrimitive origin quiet (R.VecFromList ()) [chars]
-              count <- evaluatePrimitive origin quiet (R.VecLength ()) [vector]
-              restored <- evaluatePrimitive origin quiet (R.VecToList ()) [vector] >>= \values -> evaluatePrimitive origin quiet R.CharsToString [values]
+              chars <- evaluatePrimitive "fixture: " quiet R.StringToChars [LiteralValue (R.String "a😀é")]
+              vector <- evaluatePrimitive "fixture: " quiet (R.VecFromList ()) [chars]
+              count <- evaluatePrimitive "fixture: " quiet (R.VecLength ()) [vector]
+              restored <- evaluatePrimitive "fixture: " quiet (R.VecToList ()) [vector] >>= \values -> evaluatePrimitive "fixture: " quiet R.CharsToString [values]
               pure (observe count, observe restored)
             result @?= Right (int 3, LiteralObservation (R.String "a😀é")),
-          testCase "primitive failures retain their primary span" $ forM_ [(R.IntDivide, [R.Integer 1, R.Integer 0]), (R.IntRemainder, [R.Integer 1, R.Integer 0]), (R.FloatToInt, [R.Floating (0 / 0)]), (R.FloatToInt, [R.Floating (1 / 0)]), (R.FloatToInt, [R.Floating 9223372036854775808])] $ \(operation, operands) -> do
-            result <- runExceptT (evaluatePrimitive origin quiet operation (map LiteralValue operands))
-            case result of Left problem -> (E.errorKind problem, E.errorSpan problem) @?= (E.PrimitiveFailure, origin); Right value -> assertFailure (show (observe value)),
+          testCase "primitive failures retain their embedded context" $ forM_ [(R.IntDivide, [R.Integer 1, R.Integer 0]), (R.IntRemainder, [R.Integer 1, R.Integer 0]), (R.FloatToInt, [R.Floating (0 / 0)]), (R.FloatToInt, [R.Floating (1 / 0)]), (R.FloatToInt, [R.Floating 9223372036854775808])] $ \(operation, operands) -> do
+            result <- runExceptT (evaluatePrimitive "fixture: " quiet operation (map LiteralValue operands))
+            case result of Left problem -> assertBool "failure message retains its context" ("fixture: " `T.isPrefixOf` E.errorMessage problem); Right value -> assertFailure (show (observe value)),
           testCase "IO exceptions become primitive failures" $ do
-            result <- runExceptT (evaluatePrimitive origin (Effects (\_ _ -> ioError (userError "fixture")) (\_ _ -> pure "")) (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "x")])
-            case result of Left problem -> (E.errorKind problem, E.errorSpan problem) @?= (E.PrimitiveFailure, origin); Right _ -> assertFailure "IO exception disappeared",
+            result <- runExceptT (evaluatePrimitive "fixture: " (Effects (\_ _ -> ioError (userError "fixture")) (\_ _ -> pure "")) (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "x")])
+            case result of Left problem -> assertBool "failure message retains its context" ("fixture: " `T.isPrefixOf` E.errorMessage problem); Right _ -> assertFailure "IO exception disappeared",
           testCase "standard handles retain distinct identities" $
             forM_ [(R.HandleStdin (), StandardInput), (R.HandleStdout (), StandardOutput), (R.HandleStderr (), StandardError)] $ \(operation, handle) -> do
-              result <- runExceptT (evaluatePrimitive origin quiet operation [])
+              result <- runExceptT (evaluatePrimitive "fixture: " quiet operation [])
               fmap observe result @?= Right (HandleObservation handle),
           testCase "handle writes route stdout and stderr separately" $ do
             output <- newIORef []
             let effects = Effects (\handle text -> modifyIORef' output (<> [(handle, text)])) (\_ _ -> pure "")
             result <- runExceptT $ do
-              _ <- evaluatePrimitive origin effects (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "out")]
-              evaluatePrimitive origin effects (R.HandleWrite ()) [HandleValue StandardError, LiteralValue (R.String "err")]
+              _ <- evaluatePrimitive "fixture: " effects (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "out")]
+              evaluatePrimitive "fixture: " effects (R.HandleWrite ()) [HandleValue StandardError, LiteralValue (R.String "err")]
             fmap observe result @?= Right (LiteralObservation R.Unit)
             readIORef output >>= (@?= [(StandardOutput, "out"), (StandardError, "err")]),
           testCase "handle reads consume bounded Unicode chunks" $ do
             result <- captureInput "a😀é" $ \effects -> runExceptT $ do
-              first <- evaluatePrimitive origin effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
-              second <- evaluatePrimitive origin effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
-              lastChunk <- evaluatePrimitive origin effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
+              first <- evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
+              second <- evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
+              lastChunk <- evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
               pure (Aggregate R.pairConstructor (V.fromList [first, Aggregate R.pairConstructor (V.fromList [second, lastChunk])]))
             result @?= (Right (AggregateObservation R.pairConstructor [LiteralObservation (R.String "a😀"), AggregateObservation R.pairConstructor [LiteralObservation (R.String "é"), LiteralObservation (R.String "")]]), []),
           testCase "nonpositive handle reads skip effects" $ forM_ [0, -1] $ \count -> do
             let effects = Effects (\_ _ -> pure ()) (\_ _ -> assertFailure "read effect ran" >> pure "")
-            result <- runExceptT (evaluatePrimitive origin effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer count)])
+            result <- runExceptT (evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer count)])
             fmap observe result @?= Right (LiteralObservation (R.String "")),
           testCase "unsupported handle directions fail at the primitive span" $
             forM_ [(R.HandleRead (), [HandleValue StandardOutput, LiteralValue (R.Integer 1)]), (R.HandleRead (), [HandleValue StandardError, LiteralValue (R.Integer 1)]), (R.HandleWrite (), [HandleValue StandardInput, LiteralValue (R.String "x")])] $ \(operation, values) -> do
-              result <- runExceptT (evaluatePrimitive origin quiet operation values)
+              result <- runExceptT (evaluatePrimitive "fixture: " quiet operation values)
               case result of
-                Left problem -> (E.errorKind problem, E.errorSpan problem) @?= (E.PrimitiveFailure, origin)
+                Left problem -> assertBool "failure message retains its context" ("fixture: " `T.isPrefixOf` E.errorMessage problem)
                 Right _ -> assertFailure "invalid handle direction succeeded"
         ],
       QC.testProperty "compiled == direct == arithmetic oracle, including failures and traces" $ QC.forAll (QC.sized (term . min 7)) $ \value -> QC.ioProperty $ do
@@ -342,16 +353,19 @@ tests =
             pure (QC.counterexample (show (compiled, direct, termValue value)) (compiled == direct && compiled == termValue value)),
       QC.testProperty "source lowering preserves the independent arithmetic oracle" $ QC.forAll (QC.sized (term . min 7)) $ \value -> QC.ioProperty $ do
         actual <- sourceResult (printing <> arithmetic <> "check () = " <> termSource value <> "\n")
-        let withoutLocation (result, trace) = (either (Left . fst) Right result, trace)
+        let withoutLocation (result, trace) = (either (const (Left ())) Right result, trace)
         pure (QC.counterexample (show actual) (withoutLocation actual == withoutLocation (termValue value)))
     ]
   where
     invalid name tree = testCase name $ case Runtime.validateProgram tree of
       Right _ -> assertFailure "malformed Runtime accepted"
-      Left errors -> do assertBool "error returned" (not (null errors)); mapM_ (\problem -> (E.errorKind problem, E.errorSpan problem) @?= (E.InvalidProgram, origin)) errors
+      Left errors -> do assertBool "error returned" (not (null errors)); mapM_ (\problem -> (B.errorKind problem, B.errorSpan problem) @?= (B.InvalidProgram, B.runtimeSpan)) errors
     primitiveCase name operation operands expected = testCase name $ do
-      result <- runExceptT (evaluatePrimitive origin quiet operation (map LiteralValue operands))
+      result <- runExceptT (evaluatePrimitive "fixture: " quiet operation (map LiteralValue operands))
       fmap observe result @?= Right (LiteralObservation expected)
+
+matchError :: Span -> E.RuntimeError
+matchError site = E.RuntimeError (T.pack (sourceFile site) <> ":" <> T.pack (show (line (start site))) <> ":" <> T.pack (show (column (start site))) <> ": pattern match failed")
 
 fixtureSpan :: Text -> Text -> Span
 fixtureSpan source fragment = Span "Runtime.ficus" (end (sourceEndSpan "" before)) (end (sourceEndSpan "" (before <> T.dropEnd 1 fragment)))
@@ -407,7 +421,7 @@ holeCase name body = testCase name $ do
       tree = C.CoreModule owner OrdinaryInitialization origin (SourceOrigin origin) Map.empty Map.empty Map.empty Map.empty Map.empty [C.NonRecursive binding] Map.empty
   case lowerProgram [tree] of
     Right _ -> assertFailure "hole reached Runtime"
-    Left errors -> map (\problem -> (E.errorKind problem, E.errorSpan problem)) errors @?= [(E.ExpressionHole, origin)]
+    Left errors -> map (\problem -> (B.errorKind problem, B.errorSpan problem)) errors @?= [(B.ExpressionHole, origin)]
 
 data Term = Number Int64 | Add Term Term | Trace Text Term | Choice Bool Term Term | Failure deriving (Show)
 
@@ -421,14 +435,14 @@ termExpr :: Term -> R.Expr
 termExpr value = case value of
   Number number -> literal (R.Integer number)
   Add a b -> primitive R.IntAdd [termExpr a, termExpr b]
-  Trace message body -> node (R.Let (node (R.Binding (primitive (R.HandleWrite ()) [primitive (R.HandleStdout ()) [], literal (R.String message)]) Nothing)) (termExpr body))
-  Choice choice yes no -> node (R.If [node (literal (R.Boolean choice), termExpr yes)] (Just (termExpr no)))
-  Failure -> node R.MatchFailure
+  Trace message body -> node (R.Let (node (R.Binding (primitive (R.HandleWrite ()) [primitive (R.HandleStdout ()) [], literal (R.String message)]) False)) (termExpr body))
+  Choice choice yes no -> node (R.If [node (literal (R.Boolean choice), termExpr yes)] (termExpr no))
+  Failure -> node (R.Raise "pattern match failed")
 
-termValue :: Term -> (Either (E.ErrorKind, Span) Observation, [Text])
+termValue :: Term -> (Either E.RuntimeError Observation, [Text])
 termValue value = case value of
   Number number -> (Right (int number), [])
-  Failure -> (Left (E.MatchFailure, origin), [])
+  Failure -> (Left (E.RuntimeError "pattern match failed"), [])
   Trace message body -> let (result, trace) = termValue body in (result, message : trace)
   Choice choice yes no -> termValue (if choice then yes else no)
   Add a b -> case termValue a of
@@ -438,7 +452,7 @@ termValue value = case value of
       (failed, later) -> (failed, earlier ++ later)
     other -> other
 
-libraryResult :: Text -> Text -> IO (Either (E.ErrorKind, Span) Observation, [Text])
+libraryResult :: Text -> Text -> IO (Either E.RuntimeError Observation, [Text])
 libraryResult input source = do
   lowered <- checkedLibrary source
   case Map.lookup (N.GlobalId (N.ModuleId ("Runtime" :| [])) N.ValueNS "check") (loweredGlobals lowered) of

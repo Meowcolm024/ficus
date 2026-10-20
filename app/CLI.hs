@@ -12,6 +12,7 @@ import Ficus.Compile qualified as Compile
 import Ficus.Error.Diagnostic qualified as Diagnostic
 import Ficus.Error.Pretty (DiagnosticStyle (..), prettyDiagnosticWithStyleRelativeTo)
 import Ficus.Library.Contracts
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Resolve (frontendModules)
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Concrete.Pretty (prettyModule)
@@ -32,7 +33,7 @@ import System.FilePath (normalise)
 import System.IO (stderr)
 import System.IO.Error (tryIOError)
 
-data Command = Format (Maybe FilePath) | Compile Compile.CompileOptions | Run FilePath [String] Repl.ReplOptions | Repl (Maybe FilePath) Repl.ReplOptions | Lsp Repl.ReplOptions
+data Command = Format (Maybe FilePath) | Compile (NonEmpty FilePath) ModuleOptions | Run FilePath [String] ModuleOptions | Repl (Maybe FilePath) ModuleOptions | Lsp ModuleOptions
 
 data CLIOptions = CLIOptions Bool Command
 
@@ -43,17 +44,17 @@ main = do
   case commandToRun of
     Lsp options -> do
       configured <- configure options
-      status <- Lsp.run (Lsp.LspOptions (Repl.replRoots configured) (Repl.replLibraries configured) (Repl.replPrelude configured))
+      status <- Lsp.run configured
       if status == 0 then pure () else exitWith (ExitFailure status)
-    Compile options -> do
-      libraries <- if null (Compile.libraryRoots options) then pure <$> Paths.getDataFileName "library" else pure (Compile.libraryRoots options)
-      result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry (options {Compile.libraryRoots = libraries})
+    Compile files options -> do
+      configured <- configure options
+      result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry configured files
       directory <- getCurrentDirectory
       mapM_ (printDiagnostic diagnosticStyle directory (Compile.compileSources result)) (Compile.compileDiagnostics result)
       if Compile.compileSucceeded result then pure () else exitFailure
     Run file arguments options -> do
       configured <- configure options
-      result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry (Compile.CompileOptions (file :| []) (Repl.replRoots configured) (Repl.replLibraries configured) (Repl.replPrelude configured))
+      result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry configured (file :| [])
       report diagnosticStyle (Compile.compileSources result) (Compile.compileDiagnostics result)
       if not (Compile.compileSucceeded result)
         then exitFailure
@@ -75,6 +76,7 @@ main = do
           loaded <- case file of
             Nothing -> pure session
             Just path -> Repl.loadSession session path >>= either (\errors -> report diagnosticStyle Map.empty errors >> pure session) pure
+          report diagnosticStyle (Repl.sessionDiagnosticSources loaded) (Repl.sessionDiagnostics loaded)
           runInputT defaultSettings (replLoop diagnosticStyle loaded)
     Format path -> do
       let sourceName = case path of Nothing -> "<stdin>"; Just "-" -> "<stdin>"; Just file -> file
@@ -120,27 +122,23 @@ commandInfo =
     -- its nonempty result makes the conversion to NonEmpty safe.
     compileCommand =
       Compile
-        <$> ( Compile.CompileOptions
-                <$> (NE.fromList <$> some inputFile)
-                <*> many (strOption (long "source-root" <> metavar "DIR" <> help "Project source root (repeatable); defaults to input file directories"))
-                <*> many (strOption (long "library" <> metavar "DIR" <> help "Standard library source root (repeatable); defaults to bundled library"))
-                <*> optional (strOption (long "prelude" <> metavar "FILE" <> help "Source file for the canonical Prelude module"))
-            )
+        <$> (NE.fromList <$> some inputFile)
+        <*> searchOptions
 
     inputFile = strArgument (metavar "FILE..." <> help "Ficus source files to check")
 
     runCommand = Run <$> strArgument (metavar "FILE") <*> many (strArgument (metavar "ARGS...")) <*> searchOptions
     replCommand = Repl <$> optional (strArgument (metavar "FILE")) <*> searchOptions
     searchOptions =
-      Repl.ReplOptions
-        <$> many (strOption (long "source-root" <> metavar "DIR" <> help "Project source root (repeatable)"))
-        <*> many (strOption (long "library" <> metavar "DIR" <> help "Library source root (repeatable)"))
+      ModuleOptions
+        <$> many (strOption (long "source-root" <> metavar "DIR" <> help "Project source root (repeatable); defaults to input file directories or cwd"))
+        <*> many (strOption (long "library" <> metavar "DIR" <> help "Library source root (repeatable); defaults to bundled library"))
         <*> optional (strOption (long "prelude" <> metavar "FILE" <> help "Override the Prelude file"))
 
-configure :: Repl.ReplOptions -> IO Repl.ReplOptions
+configure :: ModuleOptions -> IO ModuleOptions
 configure options = do
-  libraries <- if null (Repl.replLibraries options) then pure <$> Paths.getDataFileName "library" else pure (Repl.replLibraries options)
-  pure (options {Repl.replLibraries = libraries})
+  libraries <- if null (libraryRoots options) then pure <$> Paths.getDataFileName "library" else pure (libraryRoots options)
+  pure (options {libraryRoots = libraries})
 
 report :: DiagnosticStyle -> Map.Map FilePath T.Text -> [Diagnostic.Diagnostic] -> IO ()
 report diagnosticStyle sources errors = do
@@ -170,7 +168,10 @@ replLoop diagnosticStyle session = handleInterrupt (outputStrLn "Interrupted." >
         result <- liftIO (Repl.loadSession session file)
         case result of
           Left errors -> liftIO (report diagnosticStyle Map.empty errors) >> replLoop diagnosticStyle session
-          Right next -> outputStrLn ("Loaded " ++ file) >> replLoop diagnosticStyle next
+          Right next -> do
+            liftIO (report diagnosticStyle (Repl.sessionDiagnosticSources next) (Repl.sessionDiagnostics next))
+            outputStrLn ("Loaded " ++ file)
+            replLoop diagnosticStyle next
       Repl.TypeOf name -> do
         result <- liftIO (Repl.inspectType session name)
         either (liftIO . report diagnosticStyle Map.empty) (outputStrLn . T.unpack) result
@@ -184,5 +185,6 @@ replLoop diagnosticStyle session = handleInterrupt (outputStrLn "Interrupted." >
         case result of
           Left errors -> liftIO (report diagnosticStyle Map.empty errors) >> replLoop diagnosticStyle session
           Right (next, output) -> do
+            liftIO (report diagnosticStyle (Repl.sessionDiagnosticSources next) (Repl.sessionDiagnostics next))
             maybe (pure ()) (outputStrLn . T.unpack) output
             replLoop diagnosticStyle next

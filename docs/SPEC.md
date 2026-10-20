@@ -1199,6 +1199,8 @@ Qualified names follow ordinary resolution rules. Inspection does not evaluate
 the expression or initialize any compiled code; for example, `:t 1 / 0` reports
 `Int` without performing division. Neither query adds bindings to the session.
 
+Successful interactive declarations, expressions, and file loads report compilation warnings, including non-exhaustive function clauses and matches, without rejecting the submission. Later commands do not repeat warnings from previously accepted source.
+
 A successful load replaces interactive imports and declarations and brings the
 module's exported names into scope.
 Loading rereads the selected file and its dependencies. Failed loads, imports,

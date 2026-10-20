@@ -131,8 +131,10 @@ winner. See [the standard library](docs/PRELUDE.md) for its layout and Prelude A
 ## Compiler and runtime APIs
 
 `Ficus.Compile` discovers, resolves, and elaborates source to validated typed
-Core. Backend drivers in `FicusBackend.Driver.Run` and
-`FicusBackend.Driver.Repl` consume those results. The REPL retains inferred
+Core. `ModuleOptions` in `Ficus.ModuleOptions` supplies shared source roots, library
+roots, and the Prelude override for compilation, REPL, and LSP. `compileFiles`
+takes these options followed by a nonempty list of input files. Backend drivers
+in `FicusBackend.Driver.Run` and `FicusBackend.Driver.Repl` consume those results. The REPL retains inferred
 schemes, evaluated values and compiled runtime closures, with source snapshots
 for reload and stable constructor layouts; Core is temporary compilation data.
 

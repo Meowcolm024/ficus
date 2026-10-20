@@ -1,0 +1,1 @@
+foo x = with x { Just x -> x }

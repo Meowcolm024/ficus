@@ -1,13 +1,19 @@
-module FicusLsp.Protocol (diagnostic, hoverAt, definitionAt, semanticTokens) where
+module FicusLsp.Protocol (diagnostic, hoverAt, definitionAt, documentSymbols, flatDocumentSymbols, semanticTokens) where
 
-import Data.List (sortOn)
+import Control.Lens ((^.))
+import Data.List (find, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Ficus.Error.Diagnostic qualified as D
+import Ficus.Syntax.Concrete qualified as Concrete
+import Ficus.Syntax.Parser (parseModule)
 import Ficus.Util.Source qualified as S
 import FicusLsp.Index qualified as I
 import FicusLsp.Position
+import Language.LSP.Protocol.Lens qualified as L
 import Language.LSP.Protocol.Types qualified as L
 
 diagnostic :: Map FilePath Text -> D.Diagnostic -> L.Diagnostic
@@ -44,6 +50,103 @@ definitionAt sources source symbols position = do
   location <- I.symbolDefinition symbol
   text <- Map.lookup (S.sourceFile location) sources
   pure (L.Location (L.filePathToUri (S.sourceFile location)) (spanRange text location))
+
+data DeclarationKey = ValueDeclaration Text | TypeDeclaration Text | InstanceDeclaration Int
+  deriving (Eq, Ord)
+
+-- Read only top-level syntax and type/trait member blocks. Function bodies and
+-- where clauses deliberately do not contribute entries to the outline.
+documentSymbols :: FilePath -> Text -> [I.Symbol] -> [L.DocumentSymbol]
+documentSymbols file source symbols = case parseModule file source of
+  Left _ -> []
+  Right tree -> ordered (map importSymbol (Concrete.moduleImports tree) ++ declarations False (Concrete.moduleDeclarations tree))
+  where
+    ordered = sortOn (\symbol -> symbol ^. L.range . L.start)
+    cover a b = a {S.start = min (S.start a) (S.start b), S.end = max (S.end a) (S.end b)}
+    slice location = T.take (S.offset (S.end location) - S.offset (S.start location) + 1) (T.drop (S.offset (S.start location)) source)
+    named method fallback location name children =
+      let matching = find (\symbol -> I.symbolDeclared symbol && I.within (Concrete.nameLocation name) (I.symbolSpan symbol)) symbols
+          detail = matching >>= I.symbolType
+          role = matching >>= I.symbolClass >>= symbolKind
+          kind = if method && fallback `elem` [L.SymbolKind_Function, L.SymbolKind_Variable] then L.SymbolKind_Method else maybe fallback id role
+       in L.DocumentSymbol (Concrete.nameText name) detail kind Nothing Nothing (spanRange source location) (spanRange source (Concrete.nameLocation name)) (Just children)
+    declarations methods items = ordered (mapMaybe (renderGroup methods) (Map.elems (Map.fromListWith (flip (++)) [(key, [item]) | item <- items, Just key <- [keyFor item]])))
+    renderGroup _ [] = Nothing
+    renderGroup methods items@(first : rest) =
+      let location = foldl (\region item -> cover region (Concrete.location item)) (Concrete.location first) rest
+          representative = maybe first id (find hasBody items)
+          withName fallback name children = Just (named methods fallback location (maybe name id (nameOf first)) children)
+       in case Concrete.concrete representative of
+            Concrete.TypeSignature name _ -> withName L.SymbolKind_Variable name []
+            Concrete.KindSignature name _ -> withName L.SymbolKind_Class name []
+            Concrete.FunctionClause name _ parameters _ _ -> withName (if null parameters then L.SymbolKind_Variable else L.SymbolKind_Function) name []
+            Concrete.TypeAlias name _ _ -> withName L.SymbolKind_Class name []
+            Concrete.DataDeclaration name _ body ->
+              withName
+                L.SymbolKind_Class
+                name
+                ( case body of
+                    Concrete.Constructors block -> [named False L.SymbolKind_EnumMember (Concrete.location item) constructor [] | item <- Concrete.blockItems block, let Concrete.Constructor constructor _ = Concrete.concrete item]
+                    Concrete.Fields block -> [named False L.SymbolKind_Field (Concrete.location item) field [] | item <- Concrete.blockItems block, let Concrete.FieldSignature field _ = Concrete.concrete item]
+                )
+            Concrete.TraitDeclaration _ name _ block -> withName L.SymbolKind_Interface name (declarations True (Concrete.blockItems block))
+            Concrete.Implementation _ target block -> Just (L.DocumentSymbol ("impl " <> slice (Concrete.location target)) Nothing L.SymbolKind_Object Nothing Nothing (spanRange source location) (spanRange source (Concrete.location target)) (Just (declarations True (Concrete.blockItems block))))
+            Concrete.PatternBinding {} -> Nothing
+            Concrete.PragmaDeclaration _ -> Nothing
+    hasBody item = case Concrete.concrete item of
+      Concrete.TypeSignature {} -> False
+      Concrete.KindSignature {} -> False
+      _ -> True
+    nameOf item = case Concrete.concrete item of
+      Concrete.TypeSignature name _ -> Just name
+      Concrete.KindSignature name _ -> Just name
+      Concrete.FunctionClause name _ _ _ _ -> Just name
+      Concrete.TypeAlias name _ _ -> Just name
+      Concrete.DataDeclaration name _ _ -> Just name
+      Concrete.TraitDeclaration _ name _ _ -> Just name
+      Concrete.Implementation {} -> Nothing
+      Concrete.PatternBinding {} -> Nothing
+      Concrete.PragmaDeclaration _ -> Nothing
+    keyFor item = case Concrete.concrete item of
+      Concrete.TypeSignature name _ -> Just (ValueDeclaration (Concrete.nameText name))
+      Concrete.FunctionClause name _ _ _ _ -> Just (ValueDeclaration (Concrete.nameText name))
+      Concrete.KindSignature name _ -> Just (TypeDeclaration (Concrete.nameText name))
+      Concrete.TypeAlias name _ _ -> Just (TypeDeclaration (Concrete.nameText name))
+      Concrete.DataDeclaration name _ _ -> Just (TypeDeclaration (Concrete.nameText name))
+      Concrete.TraitDeclaration _ name _ _ -> Just (TypeDeclaration (Concrete.nameText name))
+      Concrete.Implementation {} -> Just (InstanceDeclaration (S.offset (S.start (Concrete.location item))))
+      Concrete.PatternBinding {} -> Nothing
+      Concrete.PragmaDeclaration _ -> Nothing
+    importSymbol item =
+      let Concrete.Import path mode = Concrete.concrete item
+          moduleName = T.intercalate "." (map Concrete.nameText path)
+          name = moduleName <> case mode of Concrete.Aliased alias -> " as " <> Concrete.nameText alias; _ -> ""
+          selection = case path of first : rest -> foldl (\region part -> cover region (Concrete.nameLocation part)) (Concrete.nameLocation first) rest; [] -> Concrete.location item
+       in L.DocumentSymbol name Nothing L.SymbolKind_Module Nothing Nothing (spanRange source (Concrete.location item)) (spanRange source selection) (Just [])
+
+-- Older clients still receive explicit container names in their flat response.
+flatDocumentSymbols :: FilePath -> [L.DocumentSymbol] -> [L.SymbolInformation]
+flatDocumentSymbols file = descend Nothing
+  where
+    descend container = concatMap (\(L.DocumentSymbol name _ kind tags deprecated _ selection children) -> L.SymbolInformation name kind tags container deprecated (L.Location (L.filePathToUri file) selection) : descend (Just name) (maybe [] id children))
+
+symbolKind :: I.TokenClass -> Maybe L.SymbolKind
+symbolKind role = case role of
+  I.Namespace -> Just L.SymbolKind_Namespace
+  I.TypeName -> Just L.SymbolKind_Class
+  I.Variable -> Just L.SymbolKind_Variable
+  I.Function -> Just L.SymbolKind_Function
+  I.Property -> Just L.SymbolKind_Field
+  I.Constructor -> Just L.SymbolKind_EnumMember
+  I.Trait -> Just L.SymbolKind_Interface
+  I.TypeParameter -> Nothing
+  I.Parameter -> Nothing
+  I.Keyword -> Nothing
+  I.Operator -> Nothing
+  I.Number -> Nothing
+  I.String -> Nothing
+  I.Comment -> Nothing
+  I.Pragma -> Nothing
 
 semanticTokens :: FilePath -> Text -> [I.Symbol] -> Either Text L.SemanticTokens
 semanticTokens file source symbols =

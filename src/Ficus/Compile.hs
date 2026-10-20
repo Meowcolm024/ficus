@@ -1,6 +1,6 @@
 -- | Discover, resolve, infer and elaborate modules in dependency order.
 -- Configuration and source caching belong here, outside the individual passes.
-module Ficus.Compile (CompileOptions (..), CompileResult (..), compileFiles, compileProvided, compileInteractiveProvided, compileSucceeded, compileDiagnostics) where
+module Ficus.Compile (CompileResult (..), compileFiles, compileProvided, compileInteractiveProvided, compileSucceeded, compileDiagnostics) where
 
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (modify', runStateT)
@@ -16,6 +16,7 @@ import Ficus.Elaborate qualified as Elaborate
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Resolve qualified as R
 import Ficus.Error.Type qualified as E
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Resolve
 import Ficus.Resolve.Desugar (ResolveConfig)
 import Ficus.Resolve.Discovery
@@ -25,14 +26,6 @@ import Ficus.Syntax.Name (ModuleId, NameSummary)
 import Ficus.Util.Source
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath (normalise, takeDirectory, takeExtension)
-
-data CompileOptions = CompileOptions
-  { inputFiles :: NonEmpty FilePath,
-    projectRoots :: [FilePath],
-    libraryRoots :: [FilePath],
-    preludeFile :: Maybe FilePath
-  }
-  deriving (Eq, Show)
 
 data CompileResult = CompileResult
   { compileFrontend :: FrontendResult,
@@ -49,10 +42,10 @@ compileSucceeded = all ((/= D.Error) . D.diagnosticSeverity) . compileDiagnostic
 compileDiagnostics :: CompileResult -> [D.Diagnostic]
 compileDiagnostics result = map D.toDiagnostic (frontendDiagnostics (compileFrontend result)) ++ map D.toDiagnostic (compileTypeDiagnostics result)
 
-compileFiles :: ResolveConfig -> SugarRegistry -> CompileOptions -> IO CompileResult
-compileFiles resolver sugar options = do
-  files <- traverse absolute (inputFiles options)
-  roots <- nub <$> mapM absolute (if null (projectRoots options) then map takeDirectory (NE.toList files) else projectRoots options)
+compileFiles :: ResolveConfig -> SugarRegistry -> ModuleOptions -> NonEmpty FilePath -> IO CompileResult
+compileFiles resolver sugar options inputs = do
+  files <- traverse absolute inputs
+  roots <- nub <$> mapM absolute (if null (sourceRoots options) then map takeDirectory (NE.toList files) else sourceRoots options)
   libraries <- mapM absolute (libraryRoots options)
   prelude <- traverse absolute (preludeFile options)
   identities <- mapM (entryIdentity roots) (NE.toList files)

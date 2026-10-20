@@ -20,12 +20,15 @@ The [VS Code extension](../editors/vscode/README.md) starts the server
 automatically for Ficus files. Configure `ficus.server.path` to select an
 executable and `ficus.server.args` to customize its arguments (default: `["lsp"]`).
 Changes to these settings restart the server.
+The server accepts `workspace/didChangeConfiguration` notifications without
+changing its startup options; executable settings are handled by the client.
 
 | Method | Behavior |
 | --- | --- |
 | `textDocument/publishDiagnostics` | Parser, resolver, and type diagnostics, including stable codes, severities, related locations, and document versions |
 | `textDocument/hover` | Inferred types for values, local binders, expressions, and record projections; kinds for type names |
 | `textDocument/definition` | Canonical declarations across imports and aliases, local binders with shadowing, and nominal record fields |
+| `textDocument/documentSymbol` | Outline of top-level functions, values, aliases, imports, ADTs, records, traits, and trait implementations, with members under their parent |
 | `textDocument/semanticTokens/full` | Resolved roles for names, declarations, constructors, parameters, and fields, combined with lexical strings, numbers, comments, keywords, and operators |
 
 The server accepts full-document and incremental changes, including unsaved new
@@ -34,6 +37,14 @@ and their dependency graph. Changes to an open dependency affect its importers
 immediately. Closing a file removes its overlay: remaining importers use disk
 contents. Diagnostics from previous snapshots are cleared, and a failed check
 never supplies stale type information.
+
+VS Code uses document symbols for **Outline** and **Go to Symbol in Editor**
+(`Cmd+Shift+O` on macOS, `Ctrl+Shift+O` on Windows/Linux). Signatures and repeated
+function clauses share one entry. ADT constructors, record fields, trait
+methods, and implementation methods appear under their parent. Imports include
+their module names and aliases. Local declarations in `where` clauses and
+expression blocks, parameters, and reference sites are omitted. Clients without
+hierarchical-symbol support receive a flat list with member container names.
 
 Interpolated strings use the editor's lexical highlighting for literal text,
 escapes, braces, and embedded names. The server omits whole-string semantic

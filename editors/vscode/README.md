@@ -1,7 +1,8 @@
 # Ficus for VS Code
 
 Provides syntax highlighting, compiler diagnostics, inferred-type hover,
-go-to-definition, and semantic highlighting for `.ficus` files.
+go-to-definition, Outline, Go to Symbol in Editor, and semantic highlighting for
+`.ficus` files.
 
 Install Ficus with `stack install`, then open a Ficus file in a trusted workspace.
 The extension starts `ficus lsp` over standard input/output and finds `ficus` on

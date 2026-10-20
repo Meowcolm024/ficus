@@ -8,6 +8,7 @@ import Ficus.Compile
 import Ficus.Elaborate (checkedCore)
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Library.Contracts
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Syntax.Core qualified as Core
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Name (ModuleId (..))
@@ -19,7 +20,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 compileFixture :: FilePath -> IO CompileResult
-compileFixture file = compileFiles libraryResolveConfig librarySugarRegistry (CompileOptions ((root </> file) :| []) [] ["library"] Nothing)
+compileFixture file = compileFiles libraryResolveConfig librarySugarRegistry (ModuleOptions [] ["library"] Nothing) ((root </> file) :| [])
   where
     root = "test/fixtures/compile/v1"
 
@@ -65,7 +66,7 @@ tests =
                  executeRun effects prepared [] >>= (@?= Right Nothing)
                  readIORef output >>= (@?= ["initialize\n", "42\n"]),
            testCase "implicit imports reject standalone Prelude" $ do
-             result <- compileFiles libraryResolveConfig librarySugarRegistry (CompileOptions ("test/fixtures/compile/v1/implicit/Implicit.ficus" :| []) [] [] Nothing)
+             result <- compileFiles libraryResolveConfig librarySugarRegistry (ModuleOptions [] [] Nothing) ("test/fixtures/compile/v1/implicit/Implicit.ficus" :| [])
              assertDiagnostic result "N0207" [1, 1, 1, 1]
              Map.member (ModuleId ("Implicit" :| [])) (compileModules result) @?= False,
            testCase "inhabited empty match warns" $ do

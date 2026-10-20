@@ -772,6 +772,11 @@ Perform initialization non-expansiveness, recursive lambda-protection, and value
 
 ## Frontend implementation API
 
+`Ficus.ModuleOptions` defines the shared `ModuleOptions` record (`sourceRoots`,
+`libraryRoots`, and `preludeFile`) used by compilation, REPL, and LSP.
+`compileFiles` accepts this record and a separate nonempty list of input files;
+REPL and LSP supply their own context when source roots are omitted.
+
 `Ficus.Resolve.Provider.fileProvider` accepts explicit source roots and either
 `PreludeFromRoots` or `PreludeFile path`. The latter supplies the source of the
 canonical Prelude module without deriving its identity from the override filename.

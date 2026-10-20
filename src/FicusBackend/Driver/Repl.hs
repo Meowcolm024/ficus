@@ -1,8 +1,9 @@
 -- | Interactive compilation and execution. Core exists only while preparing
 -- a command; a session retains source snapshots, inferred types and closures.
 module FicusBackend.Driver.Repl
-  ( ReplOptions (..),
-    Session,
+  ( Session,
+    sessionDiagnostics,
+    sessionDiagnosticSources,
     ReplCommand (..),
     parseCommand,
     helpText,
@@ -26,6 +27,7 @@ import Ficus.Compile qualified as C
 import Ficus.Elaborate (checkedCore, checkedTypes)
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Library.Contracts
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Resolve
 import Ficus.Resolve.Discovery (discoverModules)
 import Ficus.Resolve.Header (scanHeader)
@@ -45,12 +47,8 @@ import FicusBackend.Runtime.AST qualified as Runtime
 import System.Directory (getCurrentDirectory, makeAbsolute)
 import System.FilePath (normalise, takeDirectory)
 
--- Empty project roots infer the loaded file's directory, or cwd without a file.
-data ReplOptions = ReplOptions
-  {replRoots :: [FilePath], replLibraries :: [FilePath], replPrelude :: Maybe FilePath}
-
 data Session = Session
-  { sessionOptions :: ReplOptions,
+  { sessionOptions :: ModuleOptions,
     sessionProvider :: P.ProviderConfig,
     sessionSources :: Map ModuleId P.Source,
     sessionScopes :: Map ModuleId NameSummary,
@@ -60,7 +58,9 @@ data Session = Session
     sessionTypes :: Map GlobalId (Scheme Core.CoreType),
     sessionTypeInfo :: Map GlobalId TypeInfo,
     sessionValues :: Map (ModuleId, Reference) R.Value,
-    sessionLayouts :: Maybe RuntimeLayouts
+    sessionLayouts :: Maybe RuntimeLayouts,
+    sessionDiagnostics :: [D.Diagnostic],
+    sessionDiagnosticSources :: Map FilePath Text
   }
 
 -- Only compact display metadata survives compilation, alongside value schemes.
@@ -126,28 +126,28 @@ replPath session = "<repl:" ++ show (sessionNext session) ++ ">"
 anchor :: Span
 anchor = Span "<repl>" (Position 1 1 0) (Position 1 1 0)
 
-newSession :: ReplOptions -> IO (Either [D.Diagnostic] Session)
+newSession :: ModuleOptions -> IO (Either [D.Diagnostic] Session)
 newSession options = do
-  roots <- if null (replRoots options) then pure <$> getCurrentDirectory else mapM makeAbsolute (replRoots options)
-  libraries <- mapM makeAbsolute (replLibraries options)
-  prelude <- traverse makeAbsolute (replPrelude options)
+  roots <- if null (sourceRoots options) then pure <$> getCurrentDirectory else mapM makeAbsolute (sourceRoots options)
+  libraries <- mapM makeAbsolute (libraryRoots options)
+  prelude <- traverse makeAbsolute (preludeFile options)
   let config = P.ProviderConfig (nub (roots ++ libraries)) (maybe P.PreludeFromRoots P.PreludeFile prelude)
-      session = Session options config Map.empty Map.empty Map.empty 0 [] Map.empty Map.empty Map.empty Nothing
+      session = Session options config Map.empty Map.empty Map.empty 0 [] Map.empty Map.empty Map.empty Nothing [] Map.empty
   compileSession session "" >>= install R.ioEffects session
 
 loadSession :: Session -> FilePath -> IO (Either [D.Diagnostic] Session)
 loadSession session file = do
   absolute <- normalise <$> makeAbsolute file
   let options = sessionOptions session
-      roots = if null (replRoots options) then [takeDirectory absolute] else replRoots options
-  result <- C.compileFiles libraryResolveConfig librarySugarRegistry (C.CompileOptions (absolute :| []) roots (replLibraries options) (replPrelude options))
+      roots = if null (sourceRoots options) then [takeDirectory absolute] else sourceRoots options
+  result <- C.compileFiles libraryResolveConfig librarySugarRegistry (options {sourceRoots = roots}) (absolute :| [])
   if not (C.compileSucceeded result)
     then pure (Left (C.compileDiagnostics result))
     else do
       let owners = [owner | (owner, tree) <- Map.toList (frontendModules (C.compileFrontend result)), normalise (sourceFile (A.abstractSpan tree)) == absolute]
       case owners of
         [owner] | not (interactiveOwner owner) -> do
-          searchRoots <- mapM makeAbsolute (roots ++ replLibraries options)
+          searchRoots <- mapM makeAbsolute (roots ++ libraryRoots options)
           let ordinary = Map.findWithDefault Map.empty owner (Map.map A.abstractExports (frontendModules (C.compileFrontend result)))
               candidate =
                 session
@@ -162,7 +162,8 @@ loadSession session file = do
                     sessionValues = Map.empty,
                     sessionLayouts = Nothing
                   }
-          compileSession candidate "" >>= install R.ioEffects candidate
+          installed <- compileSession candidate "" >>= install R.ioEffects candidate
+          pure (withDiagnostics (session {sessionSources = Map.empty}) result <$> installed)
         _ -> pure (Left [message "cannot select the loaded module (reserved interactive module or ambiguous identity)"])
 
 interactiveOwner :: ModuleId -> Bool
@@ -255,7 +256,7 @@ install effects session result = case prepare of
         pure $ do
           stored <- sequence values
           Right
-            session
+            (withDiagnostics session result session)
               { sessionSources = savedSources,
                 sessionScopes = scopes session,
                 sessionVisible = visible,
@@ -292,11 +293,20 @@ install effects session result = case prepare of
           visible = own `Map.union` Map.filter keep previous `Map.union` Map.filter keep imported
       Right (lowered, visible)
 
+-- Keep warnings from this command and newly loaded dependencies, with their
+-- source excerpts. Older accepted cells are rechecked but must not warn again.
+withDiagnostics :: Session -> C.CompileResult -> Session -> Session
+withDiagnostics previous result next =
+  let previousFiles = Set.fromList (map P.sourcePath (Map.elems (sessionSources previous)))
+      warnings = [problem | problem <- C.compileDiagnostics result, D.diagnosticSeverity problem == D.Warning, Set.notMember (sourceFile (D.diagnosticSpan problem)) previousFiles]
+      files = Set.fromList (map (sourceFile . D.diagnosticSpan) warnings)
+   in next {sessionDiagnostics = warnings, sessionDiagnosticSources = Map.restrictKeys (C.compileSources result) files}
+
 -- A successful declaration/import replaces the session transactionally.
 -- Expression errors return diagnostics and leave the caller's session intact.
 submit :: R.Effects -> Session -> Text -> IO (Either [D.Diagnostic] (Session, Maybe Text))
 submit effects session input
-  | T.null (T.strip input) = pure (Right (session, Nothing))
+  | T.null (T.strip input) = pure (Right (session {sessionDiagnostics = [], sessionDiagnosticSources = Map.empty}, Nothing))
   | otherwise = case parseModule "<repl>" input of
       Right tree | not (null (Concrete.moduleImports tree)) && null (Concrete.moduleDeclarations tree) && null (Concrete.modulePragmas tree) -> do
         let candidate = session {sessionImports = sessionImports session ++ [input]}
@@ -327,7 +337,7 @@ submit effects session input
                 Right instance' -> either (Left . pure . D.toDiagnostic) Right <$> R.evaluateEntry instance' entry [R.LiteralValue Runtime.Unit]
               pure $ case outcome of
                 Left diagnostics -> Left diagnostics
-                Right (R.LiteralValue (Runtime.String output)) -> Right (session, Just output)
+                Right (R.LiteralValue (Runtime.String output)) -> Right (withDiagnostics session result session, Just output)
                 Right _ -> Left [message "interactive Debug result is not a string"]
 
 inspectType :: Session -> Text -> IO (Either [D.Diagnostic] Text)

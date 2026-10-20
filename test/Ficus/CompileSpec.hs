@@ -13,6 +13,7 @@ import Ficus.Error.Pretty (prettyDiagnosticWithOptionalSourceRelativeTo)
 import Ficus.Error.Resolve qualified as R
 import Ficus.Error.Type qualified as E
 import Ficus.Library.Contracts
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Resolve
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Concrete qualified as Concrete
@@ -26,11 +27,14 @@ import System.FilePath (takeExtension, takeFileName, (</>))
 import Test.Tasty
 import Test.Tasty.HUnit
 
-check :: CompileOptions -> IO CompileResult
-check = compileFiles libraryResolveConfig librarySugarRegistry
+check :: FilePath -> ModuleOptions -> IO CompileResult
+check file = checkMany (file :| [])
 
-baseOptions :: FilePath -> CompileOptions
-baseOptions file = CompileOptions (file :| []) [] ["library"] Nothing
+checkMany :: NonEmpty FilePath -> ModuleOptions -> IO CompileResult
+checkMany files options = compileFiles libraryResolveConfig librarySugarRegistry options files
+
+baseOptions :: ModuleOptions
+baseOptions = ModuleOptions [] ["library"] Nothing
 
 tests :: TestTree
 tests =
@@ -39,7 +43,7 @@ tests =
     [ testCase "every bundled library module and its clients produce validated Core" $ do
         files <- libraryFiles "library"
         let client = "test/fixtures/compile/library/Main.ficus"
-        result <- check ((baseOptions client) {inputFiles = client :| files, projectRoots = ["library", "test/fixtures/compile/library"]})
+        result <- checkMany (client :| files) (baseOptions {sourceRoots = ["library", "test/fixtures/compile/library"]})
         assertBool (show (compileDiagnostics result)) (compileSucceeded result)
         let modules = Map.elems (Map.delete (ModuleId ("Main" :| [])) (frontendModules (compileFrontend result)))
         mapM_ (\source -> assertBool "library dependencies must be explicit" (not (A.implicitPrelude source))) modules
@@ -60,15 +64,15 @@ tests =
         case files of
           [] -> assertFailure "no example programs"
           first : rest -> do
-            result <- check ((baseOptions first) {inputFiles = first :| rest})
+            result <- checkMany (first :| rest) baseOptions
             assertBool (show (compileDiagnostics result)) (compileSucceeded result)
             mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
       testCase "handle clients compile with explicit imports" $ do
-        result <- check (baseOptions "test/fixtures/compile/library/Handles.ficus")
+        result <- check "test/fixtures/compile/library/Handles.ficus" baseOptions
         assertBool (show (compileDiagnostics result)) (compileSucceeded result)
         mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
       testCase "builtin contracts preserve renamed opaque type identities" $ do
-        result <- check (baseOptions "test/fixtures/compile/library/Renamed.ficus")
+        result <- check "test/fixtures/compile/library/Renamed.ficus" baseOptions
         assertBool (show (compileDiagnostics result)) (compileSucceeded result)
         mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
       builtinFailure "WrongScalar" 3,
@@ -79,32 +83,32 @@ tests =
       builtinFailure "MissingVectorAssociation" 5,
       builtinFailure "WrongPolymorphism" 5,
       testCase "Prelude resolves without a main declaration" $ do
-        result <- check (baseOptions "test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus")
+        result <- check "test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus" baseOptions
         compileSucceeded result @?= True,
       testCase "implicit Prelude is found in the library root" $ do
-        result <- check (baseOptions "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus")
+        result <- check "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus" baseOptions
         compileSucceeded result @?= True
         assertBool "Prelude loaded" (Map.member (ModuleId ("Prelude" :| [])) (frontendModules (compileFrontend result))),
       testCase "explicit source root preserves nested module identity" $ do
-        result <- check ((baseOptions "test/fixtures/semantics/name-resolution/support/Resolve/Left.ficus") {projectRoots = ["test/fixtures/semantics/name-resolution/support"]})
+        result <- check "test/fixtures/semantics/name-resolution/support/Resolve/Left.ficus" (baseOptions {sourceRoots = ["test/fixtures/semantics/name-resolution/support"]})
         compileSucceeded result @?= True
         assertBool "Resolve.Left identity" (Map.member (ModuleId ("Resolve" :| ["Left"])) (frontendModules (compileFrontend result))),
       testCase "Prelude override finds its explicit library dependencies" $ do
-        result <- check ((baseOptions "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus") {preludeFile = Just "library/Prelude.ficus"})
+        result <- check "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus" (baseOptions {preludeFile = Just "library/Prelude.ficus"})
         compileSucceeded result @?= True,
       testCase "NO_IMPLICIT_PRELUDE does not require any library" $ do
-        result <- check ((baseOptions "test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus") {libraryRoots = []})
+        result <- check "test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus" (baseOptions {libraryRoots = []})
         compileSucceeded result @?= True,
       testCase "missing Prelude is an error" $ do
-        result <- check ((baseOptions "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus") {libraryRoots = []})
+        result <- check "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus" (baseOptions {libraryRoots = []})
         compileSucceeded result @?= False
         assertBool "module not found" (any ((== "N0201") . D.diagnosticCode . D.toDiagnostic) (frontendDiagnostics (compileFrontend result))),
       testCase "all entry files are checked after an independent error" $ do
-        result <- check ((baseOptions "test/fixtures/semantics/name-resolution/negative/UnknownPragma.ficus") {inputFiles = "test/fixtures/semantics/name-resolution/negative/UnknownPragma.ficus" :| ["test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus"]})
+        result <- checkMany ("test/fixtures/semantics/name-resolution/negative/UnknownPragma.ficus" :| ["test/fixtures/semantics/name-resolution/positive/EqualClauseArity.ficus"]) baseOptions
         compileSucceeded result @?= False
         assertBool "valid entry still resolved" (Map.member (ModuleId ("EqualClauseArity" :| [])) (frontendModules (compileFrontend result))),
       testCase "diagnostics retain exact source for excerpts" $ do
-        result <- check (baseOptions "test/fixtures/semantics/name-resolution/negative/ClauseArityMismatch.ficus")
+        result <- check "test/fixtures/semantics/name-resolution/negative/ClauseArityMismatch.ficus" baseOptions
         compileSucceeded result @?= False
         case frontendDiagnostics (compileFrontend result) of
           d : _ -> do
@@ -112,7 +116,7 @@ tests =
             assertBool "source retained" (maybe False (T.isInfixOf "foo x = y -> y") (Map.lookup path (compileSources result)))
           [] -> assertFailure "expected a diagnostic",
       testCase "invalid entry names produce a located diagnostic" $ do
-        result <- check (baseOptions "test/fixtures/compile/invalid/main.ficus")
+        result <- check "test/fixtures/compile/invalid/main.ficus" baseOptions
         compileSucceeded result @?= False
         case frontendDiagnostics (compileFrontend result) of
           d : _ -> do
@@ -123,17 +127,17 @@ tests =
             assertBool "no source excerpt for a filename error" (not (" |" `T.isInfixOf` output))
           [] -> assertFailure "expected an invalid module identity",
       testCase "overlapping project roots do not choose a module identity" $ do
-        result <- check ((baseOptions "test/fixtures/semantics/name-resolution/support/Resolve/Left.ficus") {projectRoots = ["test/fixtures/semantics/name-resolution/support", "test/fixtures/semantics/name-resolution/support/Resolve"]})
+        result <- check "test/fixtures/semantics/name-resolution/support/Resolve/Left.ficus" (baseOptions {sourceRoots = ["test/fixtures/semantics/name-resolution/support", "test/fixtures/semantics/name-resolution/support/Resolve"]})
         compileSucceeded result @?= False,
       testCase "missing entry files each have their own diagnostic" $ do
-        result <- check ((baseOptions "DoesNotExist.ficus") {inputFiles = "DoesNotExist.ficus" :| ["AlsoAbsent.ficus"]})
+        result <- checkMany ("DoesNotExist.ficus" :| ["AlsoAbsent.ficus"]) baseOptions
         compileSucceeded result @?= False
         let ds = frontendDiagnostics (compileFrontend result)
         sort (map (takeFileName . sourceFile . D.diagnosticSpan . D.toDiagnostic) ds) @?= ["AlsoAbsent.ficus", "DoesNotExist.ficus"]
         map (D.diagnosticCode . D.toDiagnostic) ds @?= ["N0201", "N0201"],
       testCase "missing entry files are reported before invalid module names" $ do
         let files = "examples/ain.ficus" :| ["examples/absent.txt"]
-        result <- check ((baseOptions "examples/ain.ficus") {inputFiles = files})
+        result <- checkMany files baseOptions
         compileSucceeded result @?= False
         let ds = map D.toDiagnostic (frontendDiagnostics (compileFrontend result))
         map D.diagnosticCode ds @?= ["N0201", "N0201"]
@@ -141,33 +145,33 @@ tests =
         map (start . D.diagnosticSpan) ds @?= replicate 2 (Position 1 1 0)
         assertBool "missing files have no source excerpts" (Map.null (compileSources result)),
       testCase "warnings do not fail compilation" $ do
-        result <- check (baseOptions "test/fixtures/semantics/name-resolution/positive/SequentialDifferentArities.ficus")
+        result <- check "test/fixtures/semantics/name-resolution/positive/SequentialDifferentArities.ficus" baseOptions
         compileSucceeded result @?= True
         assertBool "shadowing warning" (any ((== D.Warning) . D.diagnosticSeverity . D.toDiagnostic) (frontendDiagnostics (compileFrontend result))),
       testCase "successful compilation returns validated typed Core" $ do
-        result <- check (baseOptions "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus")
+        result <- check "test/fixtures/semantics/type-checking/positive/MiniPrelude.ficus" baseOptions
         compileSucceeded result @?= True
         assertBool "checked modules returned" (not (Map.null (compileModules result)))
         mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
       testCase "a resolved type error fails compilation at its source span" $ do
-        result <- check (baseOptions "test/fixtures/semantics/type-checking/negative/ApplicationMismatch.ficus")
+        result <- check "test/fixtures/semantics/type-checking/negative/ApplicationMismatch.ficus" baseOptions
         compileSucceeded result @?= False
         let matching = filter ((== E.TypeMismatch) . E.diagnosticCode) (compileTypeDiagnostics result)
         map (\d -> (line (start (E.diagnosticSpan d)), column (start (E.diagnosticSpan d)), column (end (E.diagnosticSpan d)))) matching @?= [(1, 14, 14)]
         Map.member (ModuleId ("ApplicationMismatch" :| [])) (compileModules result) @?= False,
       testCase "a fully typed hole fails compilation and publishes no interface" $ do
-        result <- check (baseOptions "test/fixtures/semantics/type-checking/negative/TypedExpressionHole.ficus")
+        result <- check "test/fixtures/semantics/type-checking/negative/TypedExpressionHole.ficus" baseOptions
         compileSucceeded result @?= False
         let matching = filter ((== E.ExpressionHole) . E.diagnosticCode) (compileTypeDiagnostics result)
         map (\d -> (line (start (E.diagnosticSpan d)), column (start (E.diagnosticSpan d)))) matching @?= [(2, 9)]
         Map.member (ModuleId ("TypedExpressionHole" :| [])) (compileModules result) @?= False,
       testCase "checked interfaces retain reexported polymorphism and trait kinds" $ do
-        result <- check ((baseOptions "test/fixtures/compile/typing/Main.ficus") {libraryRoots = []})
+        result <- check "test/fixtures/compile/typing/Main.ficus" (baseOptions {libraryRoots = []})
         assertBool (show (compileDiagnostics result)) (compileSucceeded result)
         Map.size (compileModules result) @?= 3
         mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result)),
       testCase "failed dependencies publish no interface while independent modules continue" $ do
-        result <- check ((baseOptions "test/fixtures/compile/typing/Dependent.ficus") {inputFiles = "test/fixtures/compile/typing/Dependent.ficus" :| ["test/fixtures/compile/typing/Main.ficus"], libraryRoots = []})
+        result <- checkMany ("test/fixtures/compile/typing/Dependent.ficus" :| ["test/fixtures/compile/typing/Main.ficus"]) (baseOptions {libraryRoots = []})
         compileSucceeded result @?= False
         Map.member (ModuleId ("Failure" :| [])) (compileModules result) @?= False
         Map.member (ModuleId ("Dependent" :| [])) (compileModules result) @?= False
@@ -189,7 +193,7 @@ libraryFiles directory = do
 
 builtinFailure :: String -> Int -> TestTree
 builtinFailure name expectedLine = testCase ("reject builtin contract " ++ name) $ do
-  result <- check (baseOptions ("test/fixtures/compile/library/negative" </> name ++ ".ficus"))
+  result <- check ("test/fixtures/compile/library/negative" </> name ++ ".ficus") baseOptions
   compileSucceeded result @?= False
   let matching = filter ((== E.BuiltinContractMismatch) . E.diagnosticCode) (compileTypeDiagnostics result)
   assertBool (show (compileDiagnostics result)) (not (null matching))

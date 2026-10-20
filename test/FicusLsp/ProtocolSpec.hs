@@ -15,7 +15,11 @@ import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Vector qualified as V
 import FicusLsp qualified as Lsp
+import Language.LSP.Protocol.Message (SMethod (..))
+import Language.LSP.Protocol.Types qualified as L
+import Language.LSP.Protocol.Utils.SMethodMap qualified as Methods
 import Language.LSP.Server (runServerWithHandles)
+import Language.LSP.Server qualified as Server
 import System.Exit (ExitCode (..))
 import System.IO (Handle, hClose, hFlush)
 import System.IO.Error (tryIOError)
@@ -31,7 +35,13 @@ tests :: TestTree
 tests =
   testGroup
     "LSP transport"
-    [ testCase "initialize, unsaved edits, queries, diagnostic clearing and shutdown" $
+    [ testCase "configuration notifications have a registered handler" $ do
+        definition <- Lsp.serverDefinition Lsp.defaultOptions
+        let capabilities = L.ClientCapabilities Nothing Nothing Nothing Nothing Nothing Nothing
+        assertBool
+          "workspace/didChangeConfiguration must not fall through to the missing-handler logger"
+          (case definition of Server.ServerDefinition {Server.staticHandlers = static} -> Methods.member SMethod_WorkspaceDidChangeConfiguration (Server.notHandlers (static capabilities))),
+      testCase "initialize, unsaved edits, queries, diagnostic clearing and shutdown" $
         bracket start stop $ \client -> do
           completed <- timeout 15000000 (session client)
           case completed of Just () -> pure (); Nothing -> readIORef (history client) >>= assertFailure . show . reverse
@@ -54,11 +64,12 @@ stop client = do
 
 session :: Client -> Assertion
 session client = do
-  initialize <- request client 1 "initialize" (J.object ["processId" J..= J.Null, "rootUri" J..= ("file:///ficus-lsp-wire" :: Text), "capabilities" J..= J.object ["workspace" J..= J.object ["didChangeWatchedFiles" J..= J.object ["dynamicRegistration" J..= True]]]])
+  initialize <- request client 1 "initialize" (J.object ["processId" J..= J.Null, "rootUri" J..= ("file:///ficus-lsp-wire" :: Text), "capabilities" J..= J.object ["workspace" J..= J.object ["didChangeWatchedFiles" J..= J.object ["dynamicRegistration" J..= True]], "textDocument" J..= J.object ["documentSymbol" J..= J.object ["hierarchicalDocumentSymbolSupport" J..= True]]]])
   let capability name = at "result" initialize >>= at "capabilities" >>= at name
       provided value = case value of Just (J.Bool True) -> True; Just (J.Object _) -> True; _ -> False
   assertBool "hover capability" (provided (capability "hoverProvider"))
   assertBool "definition capability" (provided (capability "definitionProvider"))
+  assertBool "document symbol capability" (provided (capability "documentSymbolProvider"))
   assertBool "semantic token capability" (case capability "semanticTokensProvider" of Just (J.Object _) -> True; _ -> False)
   notify client "initialized" (J.object [])
   registration <- receiveUntil client (\value -> at "method" value == Just (J.String "client/registerCapability"))
@@ -70,10 +81,28 @@ session client = do
   send client (J.object ["jsonrpc" J..= ("2.0" :: Text), "id" J..= at "id" registration, "result" J..= J.Null])
   let uri = "file:///ficus-lsp-wire/Main.ficus" :: Text
       document = J.object ["uri" J..= uri]
-      source = "{-# NO_IMPLICIT_PRELUDE #-}\nidentity x = x\ncheck () = identity 1\n" :: Text
+      source = "{-# NO_IMPLICIT_PRELUDE #-}\nidentity x = helper x where { helper y = y }\ncheck () = identity 1\ntype Box a = Box a\n" :: Text
   notify client "textDocument/didOpen" (J.object ["textDocument" J..= J.object ["uri" J..= uri, "languageId" J..= ("ficus" :: Text), "version" J..= (1 :: Int), "text" J..= source]])
   first <- diagnostics client
   (at "params" first >>= at "diagnostics") @?= Just (J.Array V.empty)
+  notify client "workspace/didChangeConfiguration" (J.object ["settings" J..= J.object ["ficus" J..= J.object ["server" J..= J.object ["path" J..= ("unused-executable" :: Text)]]]])
+  notify client "workspace/didChangeConfiguration" (J.object ["settings" J..= J.Null])
+  outline <- request client 20 "textDocument/documentSymbol" (J.object ["textDocument" J..= document])
+  case at "result" outline of
+    Just (J.Array values) -> do
+      map (at "name") (V.toList values) @?= map (Just . J.String) ["identity", "check", "Box"]
+      case V.toList values of
+        value : _ -> do
+          at "kind" value @?= Just (J.toJSON (12 :: Int))
+          at "selectionRange" value @?= Just (range 1 0 1 8)
+          at "children" value @?= Just (J.Array V.empty)
+        [] -> assertFailure "missing outline declarations"
+      case [value | value <- V.toList values, at "name" value == Just (J.String "Box")] of
+        [box] -> case at "children" box of
+          Just (J.Array children) -> map (at "name") (V.toList children) @?= [Just (J.String "Box")]
+          other -> assertFailure (show other)
+        other -> assertFailure (show other)
+    other -> assertFailure (show other)
   hover <- request client 2 "textDocument/hover" (J.object ["textDocument" J..= document, "position" J..= position 2 14])
   (at "result" hover >>= at "contents" >>= at "value") @?= Just (J.String "```ficus\nidentity : a -> a\n```")
   definition <- request client 3 "textDocument/definition" (J.object ["textDocument" J..= document, "position" J..= position 2 14])
@@ -97,6 +126,10 @@ session client = do
   change client document 3 [J.object ["range" J..= range 1 6 1 13, "text" J..= ("1" :: Text)]]
   repaired <- diagnostics client
   (at "params" repaired >>= at "diagnostics") @?= Just (J.Array V.empty)
+  updatedOutline <- request client 21 "textDocument/documentSymbol" (J.object ["textDocument" J..= document])
+  case at "result" updatedOutline of
+    Just (J.Array values) -> map (at "name") (V.toList values) @?= [Just (J.String "bad")]
+    other -> assertFailure (show other)
   repairedHover <- request client 6 "textDocument/hover" (J.object ["textDocument" J..= document, "position" J..= position 1 1])
   (at "result" repairedHover >>= at "contents" >>= at "value") @?= Just (J.String "```ficus\nbad : Int\n```")
   change client document 4 [J.object ["text" J..= ("{-# NO_IMPLICIT_PRELUDE #-}\nvalue = \"😀\"\ncopy = value\n" :: Text)]]
@@ -107,6 +140,8 @@ session client = do
   notify client "textDocument/didClose" (J.object ["textDocument" J..= document])
   closed <- diagnostics client
   (at "params" closed >>= at "diagnostics") @?= Just (J.Array V.empty)
+  closedOutline <- request client 22 "textDocument/documentSymbol" (J.object ["textDocument" J..= document])
+  at "result" closedOutline @?= Just (J.Array V.empty)
   gone <- request client 7 "textDocument/hover" (J.object ["textDocument" J..= document, "position" J..= position 1 1])
   at "result" gone @?= Just J.Null
   let otherUri = "file:///ficus-lsp-second/Other.ficus" :: Text

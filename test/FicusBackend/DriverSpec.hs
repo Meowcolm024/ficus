@@ -3,12 +3,14 @@ module FicusBackend.DriverSpec (tests) where
 import Control.Exception (bracket)
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List.NonEmpty (NonEmpty (..))
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Ficus.Compile
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Library.Contracts
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Syntax.Name
 import Ficus.Util.Source
 import FicusBackend.Driver.Repl qualified as Repl
@@ -27,8 +29,8 @@ root = "test/fixtures/backend/driver"
 quiet :: R.Effects
 quiet = R.Effects (\_ _ -> pure ()) (\_ _ -> pure "")
 
-options :: Repl.ReplOptions
-options = Repl.ReplOptions [] ["library"] Nothing
+options :: ModuleOptions
+options = ModuleOptions [] ["library"] Nothing
 
 requireRight :: (Show e) => Either e a -> IO a
 requireRight = either (\problem -> assertFailure (show problem) >> fail "fixture failed") pure
@@ -42,7 +44,7 @@ result current source expected = do
   output @?= Just expected
 
 fixture :: Text -> IO CompileResult
-fixture name = compileFiles libraryResolveConfig librarySugarRegistry (CompileOptions ((root </> T.unpack name ++ ".ficus") :| []) [] ["library"] Nothing)
+fixture name = compileFiles libraryResolveConfig librarySugarRegistry (ModuleOptions [] ["library"] Nothing) ((root </> T.unpack name ++ ".ficus") :| [])
 
 plan :: Text -> IO RunPlan
 plan name = do
@@ -93,7 +95,47 @@ tests =
         ],
       testGroup
         "repl"
-        [ testCase "command aliases and arguments" $ do
+        [ testCase "compile reports incomplete matches in bodies and function clauses" $
+            mapM_
+              ( \(name, startColumn, endColumn) -> do
+                  compiled <- fixture name
+                  compileSucceeded compiled @?= True
+                  let warnings = filter ((== "T0901") . D.diagnosticCode) (compileDiagnostics compiled)
+                  map (\problem -> let site = D.diagnosticSpan problem in (line (start site), column (start site), line (end site), column (end site))) warnings @?= [(1, startColumn, 1, endColumn)]
+              )
+              [("Coverage", 9, 30), ("CoverageFunction", 1, 16)],
+          testCase "accepted REPL definitions retain coverage warnings and source spans" $
+            mapM_
+              ( \(source, firstColumn) -> do
+                  current <- session
+                  (next, output) <- Repl.submit quiet current source >>= requireRight
+                  output @?= Nothing
+                  let warnings = Repl.sessionDiagnostics next
+                  map D.diagnosticCode warnings @?= ["T0901"]
+                  map D.diagnosticSeverity warnings @?= [D.Warning]
+                  map (column . start . D.diagnosticSpan) warnings @?= [firstColumn]
+                  mapM_
+                    ( \problem -> do
+                        let site = D.diagnosticSpan problem
+                        case Map.lookup (sourceFile site) (Repl.sessionDiagnosticSources next) of
+                          Nothing -> assertFailure "warning source is missing"
+                          Just text -> T.take (offset (end site) - offset (start site) + 1) (T.drop (offset (start site)) text) @?= T.drop (firstColumn - 1) source
+                    )
+                    warnings
+                  (later, value) <- Repl.submit quiet next "1 + 2" >>= requireRight
+                  value @?= Just "3"
+                  Repl.sessionDiagnostics later @?= []
+              )
+              [("foo x = with x { Just x -> x }", 9), ("foo (Just x) = x", 1)],
+          testCase "REPL loads retain coverage warnings" $ do
+            current <- session
+            next <- Repl.loadSession current (root </> "Coverage.ficus") >>= requireRight
+            let warnings = filter ((== "T0901") . D.diagnosticCode) (Repl.sessionDiagnostics next)
+            map (\problem -> let site = D.diagnosticSpan problem in (line (start site), column (start site), line (end site), column (end site))) warnings @?= [(1, 9, 1, 30)]
+            (later, output) <- Repl.submit quiet next "foo (Just 42)" >>= requireRight
+            output @?= Just "42"
+            Repl.sessionDiagnostics later @?= [],
+          testCase "command aliases and arguments" $ do
             map Repl.parseCommand [":q", ":quit"] @?= replicate 2 Repl.Quit
             map Repl.parseCommand [":h", ":help"] @?= replicate 2 Repl.Help
             Repl.parseCommand ":h extra" @?= Repl.InvalidCommand ":help takes no arguments"

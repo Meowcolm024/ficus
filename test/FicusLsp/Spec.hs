@@ -8,6 +8,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Ficus.Compile qualified as Compile
 import Ficus.Error.Diagnostic qualified as D
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Util.Source qualified as S
 import FicusLsp.Index qualified as Index
 import FicusLsp.Position
@@ -33,7 +34,7 @@ file :: FilePath
 file = root <> "/Main.ficus"
 
 checked :: [(FilePath, Text)] -> IO Analysis
-checked documents = analyze (LspOptions [root] [] Nothing) (Map.fromList documents)
+checked documents = analyze (ModuleOptions [root] [] Nothing) (Map.fromList documents)
 
 tests :: TestTree
 tests =
@@ -114,6 +115,58 @@ tests =
         assertBool "constructor token" (any (\(location, kind, _) -> S.line (S.start location) == 3 && kind == Index.Constructor) tokens)
         assertBool "parameter token" (any (\(_, kind, _) -> kind == Index.Parameter) tokens)
         case Protocol.semanticTokens file source index of Left message -> assertFailure (T.unpack message); Right _ -> pure (),
+      testCase "document outline lists top-level declarations once and omits local bindings" $ do
+        let source = prefix <> "type Box a = Box a\nchoose : Bool -> Int\nchoose True = 1\nchoose False = 0\nouter x = { value = x; value }\nother x = { value = x; value }\n"
+        result <- checked [(file, source)]
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            outline = Protocol.documentSymbols file source index
+        map (\symbol -> (symbol ^. L.name, symbol ^. L.kind)) outline
+          @?= [ ("Box", L.SymbolKind_Class),
+                ("choose", L.SymbolKind_Function),
+                ("outer", L.SymbolKind_Function),
+                ("other", L.SymbolKind_Function)
+              ]
+        let flat = Protocol.flatDocumentSymbols file outline
+        assertBool "local values are absent" (all (\symbol -> symbol ^. L.name /= "value") flat)
+        [(symbol ^. L.name, symbol ^. L.containerName) | symbol <- flat, symbol ^. L.kind == L.SymbolKind_EnumMember] @?= [("Box", Just "Box")]
+        Protocol.documentSymbols file "" [] @?= [],
+      testCase "document outline includes record fields and trait methods" $ do
+        let source = prefix <> "type Point = { x : Int }\ntrait Pick a = { pick : a -> a }\n"
+        result <- checked [(file, source)]
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            outline = Protocol.documentSymbols file source index
+        map (\symbol -> (symbol ^. L.name, symbol ^. L.kind)) outline
+          @?= [("Point", L.SymbolKind_Class), ("Pick", L.SymbolKind_Interface)]
+        [(parent ^. L.name, child ^. L.name, child ^. L.kind) | parent <- outline, child <- maybe [] id (parent ^. L.children)]
+          @?= [("Point", "x", L.SymbolKind_Field), ("Pick", "pick", L.SymbolKind_Method)],
+      testCase "where declarations are omitted and function ranges include their bodies" $ do
+        let source = prefix <> "main : Int -> Int\nmain x = helper x where\n    helper y = leaf y where { leaf z = z }\nother x = x\n"
+        result <- checked [(file, source)]
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            outline = Protocol.documentSymbols file source index
+        map (\symbol -> symbol ^. L.name) outline @?= ["main", "other"]
+        case outline of
+          main : _ -> do
+            main ^. L.selectionRange @?= L.Range (L.Position 1 0) (L.Position 1 4)
+            main ^. L.range @?= L.Range (L.Position 1 0) (L.Position 3 42)
+            main ^. L.children @?= Just []
+          [] -> assertFailure "missing main outline entry",
+      testCase "outline includes imports, aliases, ADT constructors and trait implementations" $ do
+        let library = root <> "/Library.ficus"
+            source = prefix <> "use Library as Lib\nuse Library (value) pub\nAlias = Int\ntype Box a = Box a\ntrait Pick a = { pick : a -> a }\nimpl Pick Int = { pick x = helper x where { helper y = y } }\ncheck x = Lib.value x\n"
+        result <- checked [(file, source), (library, prefix <> "value x = x\n")]
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            outline = Protocol.documentSymbols file source index
+        map (\symbol -> symbol ^. L.name) outline @?= ["Library as Lib", "Library", "Alias", "Box", "Pick", "impl Pick Int", "check"]
+        [(parent ^. L.name, child ^. L.name) | parent <- outline, child <- maybe [] id (parent ^. L.children)]
+          @?= [("Box", "Box"), ("Pick", "pick"), ("impl Pick Int", "pick")]
+        let flat = Protocol.flatDocumentSymbols file outline
+        assertBool "implementation locals are absent" (all (\symbol -> symbol ^. L.name /= "helper") flat)
+        [(symbol ^. L.name, symbol ^. L.containerName) | symbol <- flat, symbol ^. L.name == "pick"] @?= [("pick", Just "Pick"), ("pick", Just "impl Pick Int")],
       testCase "a function signature and definition share semantic highlighting and hover" $ do
         let source = prefix <> "identity : Int -> Int\nidentity x = x\n"
         result <- checked [(file, source)]
@@ -147,7 +200,7 @@ tests =
         Protocol.semanticTokens file source [symbol] @?= Protocol.semanticTokens file source [],
       testCase "two interpolations have separate reference ranges and literal text has no definition" $ do
         let source = "greet : String -> Int -> String\ngreet name count = \"Hello, {name}! Argument count: {count}\"\n"
-        result <- analyze (LspOptions [root] ["library"] Nothing) (Map.singleton file source)
+        result <- analyze (ModuleOptions [root] ["library"] Nothing) (Map.singleton file source)
         diagnostics result @?= []
         let sources = Compile.compileSources (compilation result)
             index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
@@ -171,7 +224,7 @@ tests =
         let left = root <> "/Left.ficus"
             right = root <> "/Right.ficus"
             source = "use Left as L\nuse Right as R\ngreet () = \"{L.value} {R.value} {L.value}\"\n"
-        result <- analyze (LspOptions [root] ["library"] Nothing) (Map.fromList [(file, source), (left, prefix <> "value = 1\n"), (right, prefix <> "value = True\n")])
+        result <- analyze (ModuleOptions [root] ["library"] Nothing) (Map.fromList [(file, source), (left, prefix <> "value = 1\n"), (right, prefix <> "value = True\n")])
         diagnostics result @?= []
         let sources = Compile.compileSources (compilation result)
             index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
@@ -186,7 +239,7 @@ tests =
           [("L.value} {", left, "Int"), ("R.value}", right, "Bool"), ("L.value}\"", left, "Int")],
       testCase "escaped braces and Unicode text do not shift interpolation reference ranges" $ do
         let source = "greet : String -> String\ngreet name = \"😀\t{{name}} \\{name\\} \\\\{name} {{{name}}} {name}\"\n"
-        result <- analyze (LspOptions [root] ["library"] Nothing) (Map.singleton file source)
+        result <- analyze (ModuleOptions [root] ["library"] Nothing) (Map.singleton file source)
         diagnostics result @?= []
         let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
             literalOffset = T.length (fst (T.breakOn "\"😀" source))
@@ -253,7 +306,7 @@ tests =
             imported = directory </> "Library.ficus"
             mainSource = prefix <> "use Library (value)\ncheck () = if { value -> 1; _ -> 0 }\n"
             open = Map.singleton mainFile mainSource
-            options = LspOptions [directory] [] Nothing
+            options = ModuleOptions [directory] [] Nothing
         TIO.writeFile imported (prefix <> "value = True\n")
         first <- analyze options open
         diagnostics first @?= []

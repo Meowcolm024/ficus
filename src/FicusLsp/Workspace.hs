@@ -13,6 +13,7 @@ import Data.Text.IO qualified as T
 import Ficus.Compile qualified as C
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Library.Contracts
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Resolve.Provider qualified as P
 import Ficus.Syntax.Name
 import Ficus.Util.Source
@@ -20,27 +21,20 @@ import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath (normalise, takeDirectory, takeExtension, (<.>), (</>))
 import System.IO.Error (tryIOError)
 
-data LspOptions = LspOptions
-  { sourceRoots :: [FilePath],
-    libraryRoots :: [FilePath],
-    preludeFile :: Maybe FilePath
-  }
-  deriving (Eq, Show)
-
-defaultOptions :: LspOptions
-defaultOptions = LspOptions [] [] Nothing
+defaultOptions :: ModuleOptions
+defaultOptions = ModuleOptions [] [] Nothing
 
 -- All paths in a workspace snapshot are absolute and normalized.
 type Documents = Map FilePath Text
 
 data Analysis = Analysis {compilation :: C.CompileResult, diagnostics :: [D.Diagnostic]} deriving (Eq, Show)
 
-normalizeOptions :: LspOptions -> IO LspOptions
-normalizeOptions options = LspOptions <$> mapM absolute (sourceRoots options) <*> mapM absolute (libraryRoots options) <*> traverse absolute (preludeFile options)
+normalizeOptions :: ModuleOptions -> IO ModuleOptions
+normalizeOptions options = ModuleOptions <$> mapM absolute (sourceRoots options) <*> mapM absolute (libraryRoots options) <*> traverse absolute (preludeFile options)
   where
     absolute path = normalise <$> makeAbsolute path
 
-analyze :: LspOptions -> Documents -> IO Analysis
+analyze :: ModuleOptions -> Documents -> IO Analysis
 analyze options documents = do
   let roots = nub (if null (sourceRoots options) then map takeDirectory (Map.keys documents) else sourceRoots options)
       identities = [(file, identity roots file) | file <- Map.keys documents]

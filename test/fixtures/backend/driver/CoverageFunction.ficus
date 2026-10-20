@@ -1,0 +1,1 @@
+foo (Just x) = x

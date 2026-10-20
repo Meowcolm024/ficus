@@ -22,6 +22,8 @@ extra-source-files:
     docs/ERRORS.md
     test/fixtures/backend/driver/ArgsMain.ficus
     test/fixtures/backend/driver/BadMain.ficus
+    test/fixtures/backend/driver/Coverage.ficus
+    test/fixtures/backend/driver/CoverageFunction.ficus
     test/fixtures/backend/driver/DivisionMain.ficus
     test/fixtures/backend/driver/ErrMain.ficus
     test/fixtures/backend/driver/LocalMain.ficus
@@ -544,6 +546,7 @@ library
       Ficus.Infer.Unify
       Ficus.Initialization
       Ficus.Library.Contracts
+      Ficus.ModuleOptions
       Ficus.Primitive.Registry
       Ficus.Resolve
       Ficus.Resolve.Desugar

@@ -1,6 +1,6 @@
 -- | The Ficus language server. Protocol, editor state, overlays, and indexes are
 -- confined to this module namespace; compiler passes remain ordinary libraries.
-module FicusLsp (LspOptions (..), defaultOptions, run, serverDefinition) where
+module FicusLsp (defaultOptions, run, serverDefinition) where
 
 import Control.Lens ((^.))
 import Control.Monad (forM_, void, when)
@@ -16,6 +16,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Ficus.Compile qualified as Compile
 import Ficus.Error.Diagnostic qualified as D
+import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Util.Source qualified as Source
 import FicusLsp.Index qualified as Index
 import FicusLsp.Protocol qualified as Protocol
@@ -28,17 +29,17 @@ import Language.LSP.VFS (virtualFileText, virtualFileVersion)
 import System.FilePath (normalise)
 
 data State = State
-  { settings :: LspOptions,
+  { settings :: ModuleOptions,
     documents :: Map FilePath (Int32, Text),
     analysis :: Maybe Analysis,
     symbols :: Index.Index,
     published :: Set FilePath
   }
 
-run :: LspOptions -> IO Int
+run :: ModuleOptions -> IO Int
 run options = serverDefinition options >>= Server.runServer
 
-serverDefinition :: LspOptions -> IO (Server.ServerDefinition ())
+serverDefinition :: ModuleOptions -> IO (Server.ServerDefinition ())
 serverDefinition options = do
   configured <- normalizeOptions options
   state <- newIORef (State configured Map.empty Nothing Map.empty Set.empty)
@@ -78,6 +79,9 @@ handlers state workspaceRoots capabilities =
               SMethod_WorkspaceDidChangeWatchedFiles
               (L.DidChangeWatchedFilesRegistrationOptions [L.FileSystemWatcher (L.GlobPattern (L.InL (L.Pattern "**/*.ficus"))) Nothing])
               (\_ -> recheck state),
+      -- Server options come from startup arguments. The editor restarts the
+      -- process when its executable settings change, but also sends this notice.
+      Server.notificationHandler SMethod_WorkspaceDidChangeConfiguration $ \_ -> pure (),
       Server.notificationHandler SMethod_TextDocumentDidOpen $ \message -> syncDocument state (message ^. L.params . L.textDocument . L.uri),
       Server.notificationHandler SMethod_TextDocumentDidChange $ \message -> syncDocument state (message ^. L.params . L.textDocument . L.uri),
       Server.notificationHandler SMethod_TextDocumentDidSave $ \_ -> recheck state,
@@ -104,6 +108,14 @@ handlers state workspaceRoots capabilities =
               (file, source) <- documentSource current (params ^. L.textDocument . L.uri)
               Protocol.definitionAt (sources current) source (Map.findWithDefault [] file (symbols current)) (params ^. L.position)
         respond (Right (maybe (L.InR (L.InR L.Null)) (L.InL . L.Definition . L.InL) result)),
+      Server.requestHandler SMethod_TextDocumentDocumentSymbol $ \request respond -> do
+        current <- liftIO (readIORef state)
+        let uri = request ^. L.params . L.textDocument . L.uri
+            result = case documentSource current uri of
+              Nothing -> []
+              Just (file, source) -> Protocol.documentSymbols file source (Map.findWithDefault [] file (symbols current))
+            flat = maybe [] (\file -> Protocol.flatDocumentSymbols file result) (filePath uri)
+        respond (Right (if hierarchicalSymbols == Just True then L.InR (L.InL result) else L.InL flat)),
       Server.requestHandler SMethod_TextDocumentSemanticTokensFull $ \request respond -> do
         current <- liftIO (readIORef state)
         let result = case documentSource current (request ^. L.params . L.textDocument . L.uri) of
@@ -116,6 +128,7 @@ handlers state workspaceRoots capabilities =
     -- The lsp library deliberately refuses to register a method dynamically
     -- when it already has a static handler for that method.
     dynamic = capabilities ^. L.workspace >>= (^. L.didChangeWatchedFiles) >>= (^. L.dynamicRegistration)
+    hierarchicalSymbols = capabilities ^. L.textDocument >>= (^. L.documentSymbol) >>= (^. L.hierarchicalDocumentSymbolSupport)
 
 filePath :: L.Uri -> Maybe FilePath
 filePath = fmap normalise . L.uriToFilePath

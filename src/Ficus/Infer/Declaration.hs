@@ -14,6 +14,7 @@ import Ficus.Infer.Syntax
 import Ficus.Infer.Type
 import Ficus.Infer.Unify qualified as U
 import Ficus.Initialization
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Abstract.Dependencies
 import Ficus.Syntax.Core qualified as C
@@ -66,7 +67,9 @@ prepareDeclarationsWithMode mode imported tree = do
   mapM_ emit (K.kindDiagnostics summary)
   preparedTypes <- foldM prepareAlias environment orderedAliases
   let localException = Map.lookup "EXCEPTION" (A.builtinAssociations tree)
-      associations = maybe (builtinTypeAssociations imported) (\ident -> Map.insert "EXCEPTION" ident (builtinTypeAssociations imported)) localException
+      dataKeys = P.builtinDataKeys
+      localData = Map.restrictKeys (A.builtinAssociations tree) (Set.fromList dataKeys)
+      associations = localData `Map.union` maybe (builtinTypeAssociations imported) (\ident -> Map.insert "EXCEPTION" ident (builtinTypeAssociations imported)) localException
   prepared <- foldM prepare (imported {declarationTypes = preparedTypes, builtinTypeAssociations = associations}) declarations
   forM_ localException $ \ident -> do
     let location = maybe (A.abstractSpan tree) A.entitySpan (Map.lookup ident (A.abstractEntities tree))
@@ -76,6 +79,15 @@ prepareDeclarationsWithMode mode imported tree = do
   when
     (length (filter (traitException . C.nodeValue) (Map.elems (traitDeclarations prepared))) > 1)
     (emit (E.diagnostic E.BuiltinContractMismatch (A.abstractSpan tree) "conflicting visible EXCEPTION trait associations"))
+  forM_ (Map.toList localData) $ \(key, ident) -> do
+    let location = maybe (A.abstractSpan tree) A.entitySpan (Map.lookup ident (A.abstractEntities tree))
+        validType = Map.lookup ident (typeKinds (declarationTypes prepared)) == Just TypeKind && any ((== ident) . C.constructorOwner . C.nodeValue) (Map.elems (constructorDeclarations prepared)) && any (\source -> case A.nodeValue source of A.DataDefinition owner _ _ _ -> owner == ident; A.RecordDefinition owner _ _ _ _ -> owner == ident; _ -> False) declarations
+        validConstructor owner fields = case (Map.lookup owner associations, Map.lookup (C.DataConstructor ident) (constructorDeclarations prepared)) of
+          (Just ty, Just node) -> let descriptor = C.nodeValue node; scheme = C.constructorScheme descriptor in null (quantifiers scheme) && null (schemePredicates scheme) && schemeType scheme == foldr function (Constructor ty TypeKind) (map primitive fields)
+          _ -> False
+        valid = if key `elem` P.builtinDataTypes then validType else or [validConstructor owner fields | (constructor, owner, fields) <- P.builtinConstructors, constructor == key]
+    unless valid (emit (E.diagnostic E.BuiltinContractMismatch location "builtin data or constructor association has an incompatible declaration"))
+    when (maybe False (/= ident) (Map.lookup key (builtinTypeAssociations imported))) (emit (E.diagnostic E.BuiltinContractMismatch location "conflicting visible builtin associations"))
   mapM_ emit (regularityDiagnostics prepared declarations)
   mapM_ emit (superclassDiagnostics prepared)
   implementations <- foldM prepareImplementation prepared declarations

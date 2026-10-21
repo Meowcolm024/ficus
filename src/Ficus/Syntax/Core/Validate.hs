@@ -27,12 +27,20 @@ validateCore :: CoreModule CoreType -> [E.Diagnostic]
 validateCore tree =
   checkOrigin (coreSpan tree) (coreOrigin tree)
     ++ concatMap (checkScheme tree Map.empty (coreSpan tree)) (Map.elems (coreImports tree))
+    ++ concatMap checkBuiltin (Map.toList (coreBuiltins tree))
     ++ concatMap checkConstructor (Map.elems (coreConstructors tree))
     ++ concatMap checkRecord (Map.elems (coreRecords tree))
     ++ concatMap checkDictionary (Map.toList (coreDictionaries tree))
     ++ snd (foldl checkGroup (coreImports tree, []) (coreBindings tree))
     ++ concatMap checkGoal (Map.toList (coreGoals tree))
   where
+    checkBuiltin (key, ident) =
+      let validType = Map.lookup ident (coreKinds tree) == Just TypeKind && any ((== ident) . constructorOwner . nodeValue) (Map.elems (coreConstructors tree))
+          validConstructor owner fields = case (Map.lookup owner (coreBuiltins tree), Map.lookup (DataConstructor ident) (coreConstructors tree)) of
+            (Just ty, Just node) -> let scheme = constructorScheme (nodeValue node) in null (quantifiers scheme) && null (schemePredicates scheme) && schemeType scheme == foldr function (Constructor ty TypeKind) (map primitive fields)
+            _ -> False
+          valid = if key `elem` P.builtinDataTypes then validType else or [validConstructor owner fields | (constructor, owner, fields) <- P.builtinConstructors, constructor == key]
+       in require (coreSpan tree) valid "invalid builtin data or constructor association"
     checkConstructor descriptor =
       let value = nodeValue descriptor
           scheme = constructorScheme value

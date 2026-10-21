@@ -1,0 +1,18 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN EXCEPTION Signal #-}
+trait Signal a = {}
+{-# BUILTIN CATCH rescue #-}
+rescue : Signal e => (Unit -> a) -> (e -> a) -> a
+{-# BUILTIN ARITHMETIC_ERROR Problem #-}
+type Problem = Problem String
+{-# BUILTIN INVALID_CONVERSION Problem #-}
+impl Signal Problem = {}
+{-# BUILTIN FLOAT_TO_INT convert #-}
+convert : Float -> Int
+{-# BUILTIN FLOAT_DIV divide #-}
+divide : Float -> Float -> Float
+check () = rescue (_ -> convert (divide 1.0 0.0)) ((Problem message) -> 38)
+
+{-# BUILTIN MATCH_ERROR MatchError #-}
+type MatchError = MatchError String
+{-# BUILTIN MATCH_FAILURE MatchError #-}

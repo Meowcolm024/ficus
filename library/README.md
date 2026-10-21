@@ -3,7 +3,8 @@
 `Prelude.ficus` is the reviewed, selective implicit API. `Class.*` defines traits
 and instances for compiler-owned types; `Data.*` defines ordinary types, their
 instances, and data operations. `System.IO` supplies the basic impure IO helpers.
-`Ficus.Builtin.*` binds compiler keys and never imports the data layer. Primitive
+`Ficus.Builtin.*` binds compiler keys. Self-contained builtin modules are preferred;
+imports are permitted provided dependencies remain acyclic. Primitive
 `Bool` and `Unit` already belong to the compiler and need no builtin keys.
 
 Every library module disables implicit Prelude and imports its dependencies
@@ -32,3 +33,17 @@ select it. Define `impl Exception MyError = {}` alongside a user error type.
 Parameterized error types require explicit component constraints, for example
 `impl Exception a => Exception (Box a) = {}`. Runtime failures are not catchable;
 completed effects survive a throw. See SPEC §24.3 for the complete contract.
+
+`Control.Exception` also exports `ArithmeticError(..)`, `IOError(..)`, and
+`MatchError(..)`. Integer division/remainder by zero throws `DivisionByZero`;
+invalid float-to-int conversion throws `InvalidConversion message`; handle and
+host IO failures throw `IOError operation message`; failed patterns and unmatched
+conditionals throw `MatchError message`. These are source-defined types and
+primitive constructors in `Ficus.Builtin.Errors` with compiler-key associations.
+
+The v1 `System.IO` extension exports `openFile`, `close`, and `IOMode(..)`
+(`ReadMode`, `WriteMode`, `AppendMode`, `ReadWriteMode`). Use existing `read`,
+`write`, and `readLineFrom` with file handles. Files use UTF-8 and preserve line
+endings; close files explicitly. Failed file operations throw `IOError`.
+Standard streams remain owned by the runtime and cannot be closed through this
+API. These declarations are explicit imports.

@@ -1,0 +1,34 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use System.IO (Handle, IOMode(..), openFile, close, read, write, stdout)
+use Control.Exception (catch, IOError(..))
+use Ficus.Builtin.String (stringAppend)
+
+contents path = { handle = openFile path ReadMode; text = read handle 100; close handle; text }
+roundTrip path =
+    handle = openFile path WriteMode
+    write handle "a😀\r\nb"
+    close handle
+    input = openFile path ReadMode
+    first = read input 2
+    rest = read input 100
+    end = read input 1
+    close input
+    stringAppend first (stringAppend rest end)
+append path =
+    first = openFile path WriteMode
+    write first "first"
+    close first
+    last = openFile path AppendMode
+    write last "|last"
+    close last
+    contents path
+truncate path = { handle = openFile path WriteMode; close handle; contents path }
+readWrite path = { handle = openFile path ReadWriteMode; write handle "H"; close handle; contents path }
+missing path = catch (_ -> { handle = openFile (stringAppend path ".missing") ReadMode; close handle; "wrong" }) ((IOError operation message) -> operation)
+closedRead path = { handle = openFile path ReadMode; alias = handle; close handle; catch (_ -> read alias 1) ((IOError operation message) -> operation) }
+closedWrite path = { handle = openFile path WriteMode; close handle; catch (_ -> { write handle "wrong"; "wrong" }) ((IOError operation message) -> operation) }
+readOnlyWrite path = { handle = openFile path ReadMode; result = catch (_ -> { write handle "wrong"; "wrong" }) ((IOError operation message) -> operation); close handle; result }
+writeOnlyRead path = { handle = openFile path WriteMode; result = catch (_ -> read handle 1) ((IOError operation message) -> operation); close handle; result }
+closeStandard path = catch (_ -> { close stdout; "wrong" }) ((IOError operation message) -> operation)
+zeroClosedRead path = { handle = openFile path ReadMode; close handle; read handle 0 }
+doubleClose path = { handle = openFile path ReadMode; close handle; close handle; "closed" }

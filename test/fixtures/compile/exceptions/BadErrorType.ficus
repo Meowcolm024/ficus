@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN ARITHMETIC_ERROR Problem #-}
+type Problem a = Problem a

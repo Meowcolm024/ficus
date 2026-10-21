@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN ARITHMETIC_ERROR Second #-}
+type Second = Second

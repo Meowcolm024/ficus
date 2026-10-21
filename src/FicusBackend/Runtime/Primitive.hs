@@ -1,13 +1,16 @@
 module FicusBackend.Runtime.Primitive (evaluatePrimitive, ioEffects) where
 
-import Control.Exception (IOException, try)
+import Control.Exception (IOException, bracketOnError, try)
 import Control.Monad.Except (catchError, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
+import Ficus.Primitive.Registry qualified as P
 import FicusBackend.Runtime.AST
 import FicusBackend.Runtime.Value
 import System.IO qualified as IO
@@ -19,19 +22,23 @@ ioEffects = Effects write readChunk
     nativeHandle StandardOutput = IO.stdout
     nativeHandle StandardError = IO.stderr
     write handle = TIO.hPutStr (nativeHandle handle)
-    readChunk handle count = T.pack . reverse <$> loop (nativeHandle handle) count []
-    loop handle remaining buffer
+    readChunk handle count = readFileChunk (nativeHandle handle) count
+
+readFileChunk :: IO.Handle -> Int64 -> IO T.Text
+readFileChunk handle count = T.pack . reverse <$> loop handle count []
+  where
+    loop handle' remaining buffer
       | remaining <= 0 = pure buffer
       | otherwise = do
-          ended <- IO.hIsEOF handle
+          ended <- IO.hIsEOF handle'
           if ended
             then pure buffer
             else do
-              character <- IO.hGetChar handle
-              loop handle (remaining - 1) (character : buffer)
+              character <- IO.hGetChar handle'
+              loop handle' (remaining - 1) (character : buffer)
 
-evaluatePrimitive :: T.Text -> Effects -> Primitive () -> [Value] -> EvalM Value
-evaluatePrimitive origin effects operation arguments = case (operation, arguments) of
+evaluatePrimitive :: Map P.PrimitiveError ErrorConstructor -> Map ConstructorIndex P.FileMode -> T.Text -> Effects -> Primitive () -> [Value] -> EvalM Value
+evaluatePrimitive errors modes origin effects operation arguments = case (operation, arguments) of
   (IntAdd, [LiteralValue (Integer a), LiteralValue (Integer b)]) -> integer (a + b)
   (IntSubtract, [LiteralValue (Integer a), LiteralValue (Integer b)]) -> integer (a - b)
   (IntMultiply, [LiteralValue (Integer a), LiteralValue (Integer b)]) -> integer (a * b)
@@ -51,11 +58,11 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
   (FloatNegate, [LiteralValue (Floating a)]) -> floating (negate a)
   (FloatShow, [LiteralValue (Floating a)]) -> string (T.pack (show a))
   (FloatToInt, [LiteralValue (Floating a)])
-    | isNaN a || isInfinite a -> failure "cannot convert a non-finite float to Int"
+    | isNaN a || isInfinite a -> conversion "cannot convert a non-finite float to Int"
     | otherwise ->
         let value = truncate a :: Integer
          in if value < toInteger (minBound :: Int64) || value > toInteger (maxBound :: Int64)
-              then failure "float is outside the Int range"
+              then conversion "float is outside the Int range"
               else integer (fromInteger value)
   (CharEqual, [LiteralValue (Character a), LiteralValue (Character b)]) -> boolean (a == b)
   (CharLess, [LiteralValue (Character a), LiteralValue (Character b)]) -> boolean (a < b)
@@ -74,6 +81,7 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
   (VecLength (), [VectorValue values]) -> integer (fromIntegral (V.length values))
   (ByteFromInt (), [LiteralValue (Integer value)]) -> pure (ByteValue (fromIntegral value))
   (ByteToInt (), [ByteValue value]) -> integer (fromIntegral value)
+  (MatchFailure, [LiteralValue (String message)]) -> typedFailure P.MatchError message [LiteralValue (String message)]
   (Throw (), [TokenValue token, value]) -> throwError (Thrown token value origin)
   (Catch (), [TokenValue expected, action, handler]) ->
     catchError (applyValueWithEffects effects action (LiteralValue Unit)) $ \case
@@ -86,31 +94,54 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
     updated <- applyValueWithEffects effects update previous
     liftIO (writeIORef cell updated)
     pure (LiteralValue Unit)
+  (HandleOpenFile () (), [LiteralValue (String path), Aggregate tag fields]) | V.null fields -> do
+    mode <- maybe (invalidValue "unknown IO mode constructor") pure (Map.lookup tag modes)
+    let nativeMode = case mode of P.ReadMode -> IO.ReadMode; P.WriteMode -> IO.WriteMode; P.AppendMode -> IO.AppendMode; P.ReadWriteMode -> IO.ReadWriteMode
+    handle <- io "openFile" $ bracketOnError (IO.openFile (T.unpack path) nativeMode) IO.hClose $ \handle -> do
+      IO.hSetEncoding handle IO.utf8
+      IO.hSetNewlineMode handle IO.noNewlineTranslation
+      pure handle
+    pure (FileHandleValue handle)
+  (HandleClose (), [FileHandleValue handle]) -> io "close" (IO.hClose handle) >> pure (LiteralValue Unit)
+  (HandleClose (), [HandleValue _]) -> ioFailure "close" "cannot close a standard handle"
+  (HandleRead (), [FileHandleValue handle, LiteralValue (Integer count)])
+    | count <= 0 -> string ""
+    | otherwise -> io "read" (readFileChunk handle count) >>= string
+  (HandleWrite (), [FileHandleValue handle, LiteralValue (String value)]) -> io "write" (TIO.hPutStr handle value) >> pure (LiteralValue Unit)
   (HandleStdin (), []) -> pure (HandleValue StandardInput)
   (HandleStdout (), []) -> pure (HandleValue StandardOutput)
   (HandleStderr (), []) -> pure (HandleValue StandardError)
   (HandleRead (), [HandleValue StandardInput, LiteralValue (Integer count)])
     | count <= 0 -> string ""
-    | otherwise -> io (readHandle effects StandardInput count) >>= string
-  (HandleRead (), [HandleValue _, LiteralValue (Integer _)]) -> failure "handle is not readable"
+    | otherwise -> io "read" (readHandle effects StandardInput count) >>= string
+  (HandleRead (), [HandleValue _, LiteralValue (Integer _)]) -> ioFailure "read" "handle is not readable"
   (HandleWrite (), [HandleValue handle, LiteralValue (String value)]) -> case handle of
-    StandardInput -> failure "handle is not writable"
-    _ -> io (writeHandle effects handle value) >> pure (LiteralValue Unit)
+    StandardInput -> ioFailure "write" "handle is not writable"
+    _ -> io "write" (writeHandle effects handle value) >> pure (LiteralValue Unit)
   _ -> invalidValue "primitive operands do not match its contract"
   where
     integer = pure . LiteralValue . Integer
     floating = pure . LiteralValue . Floating
     boolean = pure . LiteralValue . Boolean
     string = pure . LiteralValue . String
-    failure :: T.Text -> EvalM a
-    failure = raiseRuntime . (origin <>)
+    typedFailure :: P.PrimitiveError -> T.Text -> [Value] -> EvalM a
+    typedFailure kind message fields = case Map.lookup kind errors of
+      Nothing -> invalidValue "missing primitive error association"
+      Just (ErrorConstructor identity representation) -> do
+        payload <- case representation of
+          Just tag -> pure (Aggregate tag (V.fromList fields))
+          Nothing -> case fields of [value] -> pure value; _ -> invalidValue "invalid erased error constructor"
+        throwError (Thrown (ExceptionToken identity []) payload (origin <> message <> ": "))
+    conversion message = typedFailure P.InvalidConversionError message [LiteralValue (String message)]
+    ioFailure :: T.Text -> T.Text -> EvalM a
+    ioFailure operation' message = typedFailure P.IOError (operation' <> ": " <> message) [LiteralValue (String operation'), LiteralValue (String message)]
     divide operation' a b
-      | b == 0 = failure "integer division by zero"
+      | b == 0 = typedFailure P.DivisionByZeroError "integer division by zero" []
       | otherwise = integer (fromInteger (operation' (toInteger a) (toInteger b)))
-    io :: IO a -> EvalM a
-    io action = do
+    io :: T.Text -> IO a -> EvalM a
+    io operation' action = do
       result <- liftIO (try action)
-      either (\(exception :: IOException) -> failure (T.pack (show exception))) pure result
+      either (\(exception :: IOException) -> ioFailure operation' (T.pack (show exception))) pure result
     listElements = go []
       where
         go accumulated (Aggregate tag values)

@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN ARITHMETIC_ERROR Problem #-}
+type Problem = Fine
+type Other = Wrong
+{-# BUILTIN DIVISION_BY_ZERO Wrong #-}

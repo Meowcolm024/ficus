@@ -1,4 +1,5 @@
 {-# NO_IMPLICIT_PRELUDE #-}
+use Ficus.Builtin.Errors (..)
 
 {-# BUILTIN FLOAT_ADD floatAdd #-}
 floatAdd : Float -> Float -> Float

@@ -69,5 +69,4 @@ interpret program source env = case nodeValue source of
   Primitive (PrimitiveIndex ident) arguments context -> do
     values <- mapM (\argument -> interpret program argument env) arguments
     operation <- index (programPrimitives program) ident
-    evaluatePrimitive context (envEffects env) operation values
-  Raise message -> raiseRuntime message
+    evaluatePrimitive (programErrors program) (programFileModes program) context (envEffects env) operation values

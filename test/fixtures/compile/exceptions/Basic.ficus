@@ -8,3 +8,7 @@ handle : Failure e => (Unit -> a) -> (e -> a) -> a
 impl Failure Int = {}
 
 check () = handle (_ -> raise 7) ((value : Int) -> value)
+
+{-# BUILTIN MATCH_ERROR MatchError #-}
+type MatchError = MatchError String
+{-# BUILTIN MATCH_FAILURE MatchError #-}

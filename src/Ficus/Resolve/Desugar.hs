@@ -17,6 +17,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Ficus.Builtin.Registry qualified as Builtin
 import Ficus.Desugar.Registry
 import Ficus.Error.Resolve
 import Ficus.Resolve.Header
@@ -823,7 +824,9 @@ collectBuiltins pragmas = forM_ [p | p@(C.Located _ _ (C.Pragma n _)) <- pragmas
         keys <- asks (builtinKeys . envConfig)
         unless (Set.member (C.nameText key) keys) (failAt UnknownBuiltin (C.nameLocation key) "unknown compiler builtin key")
         own <- asks envOwn
-        let ns = if C.nameSpace target == C.LowerName then ValueNS else TypeNS
+        let ns = case Map.lookup (C.nameText key) Builtin.builtinRegistry of
+              Just Builtin.ConstrBuiltin {} -> ConstructorNS
+              _ -> if C.nameSpace target == C.LowerName then ValueNS else TypeNS
         entity <- maybe (failAt UnresolvedName (C.nameLocation target) "builtin target is not declared in this module") pure (Map.lookup (ns, C.nameText target) own)
         table <- gets associations
         when (Map.member (C.nameText key) table || A.entityId entity `elem` Map.elems table) (failAt ConflictingBuiltinAssociation (C.nameLocation key) "conflicting builtin association")

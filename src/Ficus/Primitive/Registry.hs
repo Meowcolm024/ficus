@@ -56,6 +56,8 @@ data Primitive nominal
   | HandleStderr nominal
   | HandleRead nominal
   | HandleWrite nominal
+  | HandleOpenFile nominal nominal
+  | HandleClose nominal
   | VecFromList nominal
   | VecToList nominal
   | VecLength nominal
@@ -68,10 +70,11 @@ data Primitive nominal
   | Catch nominal
   | IntNegate
   | FloatNegate
+  | MatchFailure
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 -- Nominal builtin dependencies include opaque types and marker traits.
-data BuiltinType = HandleBuiltin | ByteBuiltin | VecBuiltin | RefBuiltin | ExceptionBuiltin deriving (Eq, Ord, Show)
+data BuiltinType = HandleBuiltin | ByteBuiltin | VecBuiltin | RefBuiltin | ExceptionBuiltin | IOModeBuiltin deriving (Eq, Ord, Show)
 
 builtinTypes :: [BuiltinType]
 builtinTypes = [HandleBuiltin, ByteBuiltin, VecBuiltin, RefBuiltin]
@@ -86,6 +89,7 @@ builtinTypeName builtin = case builtin of
   VecBuiltin -> "Vec"
   RefBuiltin -> "Ref"
   ExceptionBuiltin -> "Exception"
+  IOModeBuiltin -> "IOMode"
 
 builtinTypeKey :: BuiltinType -> Text
 builtinTypeKey builtin = case builtin of
@@ -94,6 +98,7 @@ builtinTypeKey builtin = case builtin of
   VecBuiltin -> "VEC"
   RefBuiltin -> "REF"
   ExceptionBuiltin -> "EXCEPTION"
+  IOModeBuiltin -> "IO_MODE"
 
 builtinTypeArity :: BuiltinType -> Int
 builtinTypeArity builtin = case builtin of
@@ -136,6 +141,8 @@ primitiveCatalog =
     (Just "HANDLE_STDERR", HandleStderr HandleBuiltin),
     (Just "HANDLE_READ", HandleRead HandleBuiltin),
     (Just "HANDLE_WRITE", HandleWrite HandleBuiltin),
+    (Just "HANDLE_OPEN_FILE", HandleOpenFile HandleBuiltin IOModeBuiltin),
+    (Just "HANDLE_CLOSE", HandleClose HandleBuiltin),
     (Just "VEC_FROM_LIST", VecFromList VecBuiltin),
     (Just "VEC_TO_LIST", VecToList VecBuiltin),
     (Just "VEC_LENGTH", VecLength VecBuiltin),
@@ -147,7 +154,8 @@ primitiveCatalog =
     (Just "THROW", Throw ExceptionBuiltin),
     (Just "CATCH", Catch ExceptionBuiltin),
     (Nothing, IntNegate),
-    (Nothing, FloatNegate)
+    (Nothing, FloatNegate),
+    (Nothing, MatchFailure)
   ]
 
 allPrimitives :: [Primitive ()]
@@ -202,6 +210,8 @@ primitiveSignature primitiveId = case primitiveId of
   HandleStderr ident -> ([], NominalType ident [])
   HandleRead ident -> ([NominalType ident [], int], string)
   HandleWrite ident -> ([NominalType ident [], string], ScalarType UnitType)
+  HandleOpenFile ident mode -> ([string, NominalType mode []], NominalType ident [])
+  HandleClose ident -> ([NominalType ident []], ScalarType UnitType)
   VecFromList ident -> ([ListTypeOf a], vec ident a)
   VecToList ident -> ([vec ident a], ListTypeOf a)
   VecLength ident -> ([vec ident a], int)
@@ -214,6 +224,7 @@ primitiveSignature primitiveId = case primitiveId of
   Catch ident -> ([NominalType ident [a], FunctionTypeOf (ScalarType UnitType) SecondTypeParameter, FunctionTypeOf a SecondTypeParameter], SecondTypeParameter)
   IntNegate -> ([int], int)
   FloatNegate -> ([ScalarType FloatType], ScalarType FloatType)
+  MatchFailure -> ([string], a)
   where
     int = ScalarType IntType
     bool = ScalarType BoolType
@@ -234,3 +245,41 @@ exceptionTrait operation = case operation of
   Throw ident -> Just ident
   Catch ident -> Just ident
   _ -> Nothing
+
+-- Source-defined data and constructor associations used by fallible primitives.
+builtinDataTypes :: [Text]
+builtinDataTypes = ["ARITHMETIC_ERROR", "IO_ERROR", "MATCH_ERROR", "IO_MODE"]
+
+data PrimitiveError = DivisionByZeroError | InvalidConversionError | IOError | MatchError deriving (Eq, Ord, Show)
+
+primitiveErrors :: [(PrimitiveError, Text, Text, [Intrinsic])]
+primitiveErrors =
+  [ (DivisionByZeroError, "ARITHMETIC_ERROR", "DIVISION_BY_ZERO", []),
+    (InvalidConversionError, "ARITHMETIC_ERROR", "INVALID_CONVERSION", [StringType]),
+    (IOError, "IO_ERROR", "IO_FAILURE", [StringType, StringType]),
+    (MatchError, "MATCH_ERROR", "MATCH_FAILURE", [StringType])
+  ]
+
+requiredErrors :: Primitive nominal -> [PrimitiveError]
+requiredErrors operation = case operation of
+  IntDivide -> [DivisionByZeroError]
+  IntRemainder -> [DivisionByZeroError]
+  FloatToInt -> [InvalidConversionError]
+  HandleRead _ -> [IOError]
+  HandleWrite _ -> [IOError]
+  HandleOpenFile _ _ -> [IOError]
+  HandleClose _ -> [IOError]
+  MatchFailure -> [MatchError]
+  _ -> []
+
+-- Source-defined primitive constructors, including file modes and errors.
+builtinConstructors :: [(Text, Text, [Intrinsic])]
+builtinConstructors = [(key, owner, fields) | (_, owner, key, fields) <- primitiveErrors] ++ [(key, "IO_MODE", []) | (key, _) <- fileModeConstructors]
+
+builtinDataKeys :: [Text]
+builtinDataKeys = builtinDataTypes ++ [key | (key, _, _) <- builtinConstructors]
+
+data FileMode = ReadMode | WriteMode | AppendMode | ReadWriteMode deriving (Eq, Ord, Show)
+
+fileModeConstructors :: [(Text, FileMode)]
+fileModeConstructors = [("IO_READ_MODE", ReadMode), ("IO_WRITE_MODE", WriteMode), ("IO_APPEND_MODE", AppendMode), ("IO_READ_WRITE_MODE", ReadWriteMode)]

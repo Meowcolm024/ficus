@@ -2,9 +2,11 @@ module FicusBackend.Runtime.Validate (ValidatedProgram, validatedProgram, valida
 
 import Data.List (nub)
 import Data.List.NonEmpty qualified as NE
+import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Vector qualified as V
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Util.Source
 import FicusBackend.Error qualified as E
 import FicusBackend.Runtime.AST
@@ -21,6 +23,8 @@ validateProgram program = case errors of [] -> Right (ValidatedProgram program);
       require E.runtimeSpan (programGlobalCount program >= 0) "negative global count"
         ++ concatMap (\layout -> require (E.runtimeSpan) (let FrameSize n = constructorFields (nodeValue layout) in n >= 0) "negative constructor size") (programConstructors program)
         ++ concat [require (E.runtimeSpan) (fmap (constructorFields . nodeValue) (programConstructors program V.!? index') == Just (FrameSize size)) "missing intrinsic constructor layout" | (index', size) <- [(0, 0), (1, 2), (2, 2)]]
+        ++ concat [layoutArity E.runtimeSpan identity 0 ++ case payload of Just (ConstructorIndex tag) -> layoutArity E.runtimeSpan tag (length fields); Nothing -> require E.runtimeSpan (length fields == 1) "invalid erased error payload" | (kind, ErrorConstructor (ConstructorIndex identity) payload) <- Map.toList (programErrors program), (_, _, _, fields) <- filter (\(key, _, _, _) -> key == kind) P.primitiveErrors]
+        ++ concat [layoutArity E.runtimeSpan tag 0 | ConstructorIndex tag <- Map.keys (programFileModes program)]
         ++ concatMap checkFunction (programFunctions program)
         ++ snd (foldl checkGroup (Set.empty, []) (programInitialization program))
         ++ require (E.runtimeSpan) (Set.fromList initialized == Set.fromList [GlobalIndex n | n <- [0 .. programGlobalCount program - 1]] && length initialized == length (nub initialized)) "globals must be initialized exactly once"
@@ -73,8 +77,7 @@ validateProgram program = case errors of [] -> Right (ValidatedProgram program);
             ++ concatMap (expression frames captures) arguments
             ++ case programPrimitives program V.!? ident of
               Nothing -> []
-              Just primitive -> require (E.runtimeSpan) (primitiveArity primitive == Arity (length arguments)) "primitive operand count differs from its arity"
-        Raise _ -> []
+              Just primitive -> require (E.runtimeSpan) (primitiveArity primitive == Arity (length arguments)) "primitive operand count differs from its arity" ++ concat [require E.runtimeSpan (Map.member kind (programErrors program)) "missing primitive error association" | kind <- P.requiredErrors primitive] ++ case primitive of HandleOpenFile _ _ -> require E.runtimeSpan (all (\(_, mode) -> mode `elem` Map.elems (programFileModes program)) P.fileModeConstructors) "missing IO mode constructor association"; _ -> []
     bindingErrors frames captures binding = expression frames captures (bindingBody (nodeValue binding))
     cyclicBinding binding = require E.runtimeSpan (not (bindingExpansive (nodeValue binding))) "expansive recursive initializer"
     layoutArity origin ident count =
@@ -123,7 +126,6 @@ children node = case nodeValue node of
   Global _ -> []
   Literal _ -> []
   Closure _ _ -> []
-  Raise _ -> []
   Call f arguments -> f : NE.toList arguments
   Let binding body -> [bindingBody (nodeValue binding), body]
   LetRec bindings body -> map (bindingBody . nodeValue) (NE.toList bindings) ++ [body]

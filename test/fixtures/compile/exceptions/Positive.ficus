@@ -39,8 +39,8 @@ noReplay () = catch (_ -> { print "before"; throw 18; print "wrong"; 0 }) ((e : 
 failedStore () = { cell = newRef 1; _ = catch (_ -> modifyRef cell (_ -> throw 7)) ((e : Int) -> ()); readRef cell }
 completedStore () = { cell = newRef 1; _ = catch (_ -> modifyRef cell (_ -> { modifyRef cell (_ -> 2); throw 7 })) ((e : Int) -> ()); readRef cell }
 uncaught () = throw (First 1) : Int
-runtimeFailure () = catch (_ -> 1 / 0) ((e : Int) -> 0)
-handlerFailure () = catch (_ -> throw 1) ((e : Int) -> 1 / 0)
+mismatchedMatch () = catch (_ -> with False { True -> 1 }) ((e : Int) -> 0)
+handlerFailure () = catch (_ -> throw 1) ((e : Int) -> with False { True -> 1 })
 
 listPayload () = catch (_ -> throw [19]) ((values : [Int]) -> with values { n :: _ -> n; [] -> 0 })
 productPayload () = catch (_ -> throw (20, True)) ((value : Int * Bool) -> with value { (n, b) -> if { b -> n; _ -> 0 } })

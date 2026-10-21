@@ -1,4 +1,4 @@
-module Ficus.ExceptionSpec (tests) where
+module FicusBackend.ExceptionSpec (tests) where
 
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -17,6 +17,7 @@ import Ficus.Syntax.Name
 import Ficus.Type qualified as Ty
 import Ficus.Util.Source
 import FicusBackend.Driver.Repl qualified as Repl
+import FicusBackend.Error qualified as B
 import FicusBackend.Lower.Runtime
 import FicusBackend.Runtime qualified as R
 import FicusBackend.Runtime.AST qualified as A
@@ -31,7 +32,10 @@ requireRight :: (Show e) => Either e a -> IO a
 requireRight = either (\problem -> assertFailure (show problem) >> fail "exception fixture failed") pure
 
 runFixture :: String -> Text -> IO (Either R.RuntimeError R.Observation, [Text])
-runFixture file member = do
+runFixture = runFixtureWith id
+
+runFixtureWith :: (R.Effects -> R.Effects) -> String -> Text -> IO (Either R.RuntimeError R.Observation, [Text])
+runFixtureWith configure file member = do
   compiled <- compileFixture file
   assertBool (show (compileDiagnostics compiled)) (compileSucceeded compiled)
   mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules compiled))
@@ -41,7 +45,7 @@ runFixture file member = do
   let capture action = do
         output <- newIORef []
         let effects = R.Effects (\_ text -> modifyIORef' output (<> [text])) (\_ _ -> pure "")
-        result <- action effects
+        result <- action (configure effects)
         trace <- readIORef output
         pure (fmap R.observe result, trace)
       arguments = [R.LiteralValue A.Unit]
@@ -77,6 +81,22 @@ tests =
     "exceptions"
     [ execution "Basic" "check" 7 [],
       execution "Library" "check" 21 [],
+      execution "PrimitiveErrors" "division" 31 [],
+      execution "PrimitiveErrors" "remainder" 32 [],
+      execution "PrimitiveErrors" "conversion" 33 [],
+      execution "PrimitiveErrors" "direction" 34 [],
+      execution "PrimitiveErrors" "explicit" 39 [],
+      execution "PrimitiveErrors" "mismatch" 40 [],
+      execution "PrimitiveErrors" "failedStore" 1 [],
+      execution "PrimitiveErrors" "matchFailure" 41 [],
+      execution "PrimitiveErrors" "conditionalFailure" 42 [],
+      execution "PrimitiveErrors" "parameterFailure" 43 [],
+      execution "RenamedErrors" "check" 35 [],
+      execution "ErasedError" "check" 38 [],
+      testCase "host write failures carry a typed operation and message" $
+        runFixtureWith (\effects -> effects {R.writeHandle = \_ _ -> ioError (userError "fixture")}) "PrimitiveErrors" "writeFailure" >>= (@?= (Right (R.LiteralObservation (A.Integer 36)), [])),
+      testCase "host read failures are typed" $
+        runFixtureWith (\effects -> effects {R.readHandle = \_ _ -> ioError (userError "fixture")}) "PrimitiveErrors" "readFailure" >>= (@?= (Right (R.LiteralObservation (A.Integer 37)), [])),
       testGroup
         "execution"
         [ execution "Positive" member expected []
@@ -106,8 +126,23 @@ tests =
       execution "Positive" "strictOrder" 14 ["action", "handler", "run", "caught"],
       execution "Positive" "noReplay" 18 ["before", "after"],
       failure "uncaught" "uncaught exception",
-      failure "runtimeFailure" "integer division by zero",
-      failure "handlerFailure" "integer division by zero",
+      failure "mismatchedMatch" "pattern match failed",
+      failure "handlerFailure" "pattern match failed",
+      testCase "missing primitive constructors fail lowering even on a successful operand" $ do
+        compiled <- compileFixture "MissingErrorConstructor"
+        assertBool (show (compileDiagnostics compiled)) (compileSucceeded compiled)
+        case lowerProgram [validatedModule (checkedCore checked) | owner <- compileOrder compiled, Just checked <- [Map.lookup owner (compileModules compiled)]] of
+          Left problems -> mapM_ (\problem -> (B.errorKind problem, B.errorSpan problem) @?= (B.InvalidProgram, B.runtimeSpan)) problems
+          Right _ -> assertFailure "missing error association was accepted",
+      testCase "Core rejects forged primitive constructor metadata" $ do
+        compiled <- compileFixture "PrimitiveErrors"
+        assertBool (show (compileDiagnostics compiled)) (compileSucceeded compiled)
+        checked <- maybe (assertFailure "missing fixture" >> fail "missing fixture") pure (Map.lookup (ModuleId ("PrimitiveErrors" :| [])) (compileModules compiled))
+        let tree = validatedModule (checkedCore checked)
+            forged = tree {C.coreBuiltins = Map.insert "DIVISION_BY_ZERO" (GlobalId (C.coreId tree) ConstructorNS "missing") (C.coreBuiltins tree)}
+            problems = validateCore forged
+        assertBool "forged primitive constructor was accepted" (not (null problems))
+        mapM_ (\problem -> (E.diagnosticCode problem, E.diagnosticSpan problem) @?= (E.InvalidCoreTree, C.coreSpan tree)) problems,
       testCase "Core rejects forged or malformed exception evidence" $ do
         compiled <- compileFixture "Basic"
         checked <- maybe (assertFailure "missing Basic module" >> fail "missing module") pure (Map.lookup (ModuleId ("Basic" :| [])) (compileModules compiled))
@@ -148,7 +183,13 @@ tests =
         value @?= Just "3",
       testGroup
         "contracts"
-        [ negative "WrongTarget" "T0501" (3, 6, 3, 12),
+        [ negative "BadIOMode" "T0501" (3, 13, 3, 19),
+          negative "ConflictingErrors" "T0501" (1, 1, 4, 1),
+          negative "MissingErrorType" "T0501" (2, 16, 2, 19),
+          negative "BadErrorType" "T0501" (3, 6, 3, 12),
+          negative "BadErrorFields" "T0501" (3, 16, 3, 20),
+          negative "BadErrorOwner" "T0501" (4, 14, 4, 18),
+          negative "WrongTarget" "T0501" (3, 6, 3, 12),
           negative "Methods" "T0501" (3, 1, 3, 43),
           negative "Superclass" "T0501" (4, 1, 4, 30),
           negative "HigherKind" "T0501" (3, 1, 3, 37),

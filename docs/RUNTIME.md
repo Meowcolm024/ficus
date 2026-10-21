@@ -86,7 +86,6 @@ data ExprF
   | If [(Expr, Expr)] Expr
   | Select Expr FieldIndex
   | Primitive PrimitiveIndex [Expr] Text
-  | Raise Text
 
 data Function = Function
   { functionArity :: Arity,
@@ -105,15 +104,15 @@ capturing does not evaluate an arbitrary expression. Alternatives dispatch on
 constructor tags or decoded literals and describe the frame binding the matched
 fields. Dictionaries use ordinary aggregate layouts and indexed selection.
 
-`Raise` carries a generic error message, including source context generated
-during lowering for failed matches and conditionals. It never stands in for an
-erased expression hole. Every `If` has an explicit fallback expression; lowering
-synthesizes a `Raise` when Core has no fallback. Only selected results run.
+Generated match and conditional failures use the compiler-only `MatchFailure`
+primitive, which throws the associated `MatchError` with a message. It never
+stands in for an erased expression hole. Every `If` has an explicit fallback;
+lowering synthesizes this primitive when Core has none. Only selected results run.
 
 Runtime nodes, alternatives, functions, layouts, and binding groups carry no
 spans or provenance. The `Node` newtype has no runtime metadata. Source spans and
 provenance remain through Core. Lowering formats location text once for generated
-`Raise` messages and fallible primitive operations; total primitives carry an
+match-failure messages and fallible primitive operations; total primitives carry an
 empty error context. Primitive failure context is applied only after operands
 have evaluated successfully, so an operand failure keeps its own message.
 `Binding.bindingExpansive` is a semantic Boolean for recursive validation, not a
@@ -271,9 +270,9 @@ standard handle identities to host streams. Runtime values include opaque
 `HandleValue`s. Standard input is readable; standard output and standard error
 are writable. Bounded reads preserve Unicode code points and line terminators;
 non-positive counts skip the callback. Direction errors and host IO exceptions
-become generic runtime messages with embedded operation context. `print`, `println`, and line reading are
-ordinary source definitions built from handle primitives; no close operation is
-provided.
+become typed `IOError` exceptions with operation/message fields and embedded throw context. `print`, `println`, and line reading are
+ordinary source definitions built from handle primitives. File opening and closing
+are v1 extensions described below.
 `Value` supplies arguments and results, and `observe` inspects data values.
 Host closure equality is intentionally unavailable.
 
@@ -329,7 +328,36 @@ before a throw remain visible, and `modifyRef` writes its final result only on
 normal return. Public execution APIs still return `Either RuntimeError a`;
 `runEvaluation` reports uncaught throws with their explicit primitive context.
 
-`test/Ficus/ExceptionSpec.hs` covers source contracts, renaming/imports, erased
+`test/FicusBackend/ExceptionSpec.hs` covers source contracts, renaming/imports, erased
 wrappers, nested and polymorphic catches, phantom arguments, strict effects,
 reference updates, malformed Core, and REPL identity/recovery. Execution fixtures
 compare the compiled evaluator with the direct Runtime interpreter.
+
+## Primitive constructor associations
+
+The shared registry describes source-defined error type and constructor keys.
+Inference checks nominal ownership, kind, and exact constructor field types;
+Core retains and independently validates these associations. Lowering allocates
+numeric type-token and constructor identities into `programErrors`, respecting
+wrapper erasure. Runtime validation checks layouts and requires the error
+bindings needed by every used fallible primitive. Runtime performs no source
+name lookup. Division/remainder, float-to-int conversion, and handle failures
+throw through the same typed exception path as source `throw`; invariant
+failures and host asynchronous exceptions remain separate.
+
+Generated match/conditional failures lower to the compiler-only `MatchFailure`
+primitive, throwing the registered `MatchError` with a message. Runtime has no
+`Raise Text` AST node. Internal invariant checks still use the separate runtime
+failure channel. Match-error payloads respect ordinary wrapper erasure.
+
+## File IO
+
+`HANDLE_OPEN_FILE` decodes the associated `IOMode` constructor through the
+numeric `programFileModes` table. Runtime validates nullary mode layouts and
+requires all four mode associations for opening. File values use opaque
+`FileHandleValue` handles; observations neither expose host handles nor compare
+them. UTF-8 and no newline translation are configured at open, with host cleanup
+if setup fails. `HANDLE_CLOSE` flushes/closes files and rejects standard streams.
+Existing `Effects` callbacks still cover standard streams; opened files use host
+IO directly. Both evaluator paths share primitives and use independent temporary
+files in [file IO tests](../test/FicusBackend/FileIOSpec.hs).

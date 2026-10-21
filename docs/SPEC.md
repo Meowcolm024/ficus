@@ -980,7 +980,7 @@ Handle : Type
 intAdd : Int -> Int -> Int
 ```
 
-`BUILTIN key name` associates a compiler implementation with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source definition are static errors. Placement and argument checks are semantic, not special parser productions.
+`BUILTIN key name` associates compiler behavior with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source implementation for a primitive value are static errors. Source-defined data types and primitive constructors retain their ordinary definitions as described below. Placement and argument checks are semantic, not special parser productions.
 
 `HANDLE` and `BYTE` supply opaque types of kind `Type`; `VEC` and `REF` supply opaque types of kind `Type -> Type`. Their conventional names are `Handle`, `Byte`, `Vec`, and `Ref`. `Void` and `absurd` are ordinary source definitions; there are no `VOID` or `ABSURD` compiler keys. For example, `HANDLE` supplies an opaque type conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
 
@@ -1017,16 +1017,18 @@ variable renaming; a specialization or additional trait predicate is invalid.
 | `HANDLE_STDIN`, `HANDLE_STDOUT`, `HANDLE_STDERR` | `Handle` |
 | `HANDLE_READ` | `Handle -> Int -> String` |
 | `HANDLE_WRITE` | `Handle -> String -> Unit` |
+| `HANDLE_OPEN_FILE` (v1) | `String -> IOMode -> Handle` |
+| `HANDLE_CLOSE` (v1) | `Handle -> Unit` |
 | `REF_NEW` | `a -> Ref a` |
 | `REF_READ` | `Ref a -> a` |
 | `REF_MODIFY` | `Ref a -> (a -> a) -> Unit` |
 
 Integer division truncates toward zero; remainder has the dividend's sign.
-Division or remainder by zero is a primitive failure. The minimum signed integer
+Division or remainder by zero throws `ArithmeticError.DivisionByZero` (Section 24.3). The minimum signed integer
 divided by `-1` wraps to the minimum signed integer, with remainder zero.
 Floating arithmetic and comparisons follow IEEE 754 binary64 (including NaN).
 `INT_TO_FLOAT` rounds to nearest, ties to even; `FLOAT_TO_INT` truncates toward
-zero and fails for non-finite or out-of-range results. `INT_SHOW` renders signed
+zero and throws `ArithmeticError.InvalidConversion` for non-finite or out-of-range results. `INT_SHOW` renders signed
 decimal; `FLOAT_SHOW` renders a shortest round-tripping decimal for finite values
 and `NaN`, `Infinity`, or `-Infinity` otherwise. `CHAR_SHOW` returns a singleton
 string, without quotes. Character ordering uses Unicode code points; string
@@ -1044,7 +1046,7 @@ string at EOF. A non-positive count returns the empty string without performing
 IO. `HANDLE_WRITE` writes its string unchanged to a writable handle and returns
 unit. Standard input is readable; standard output and standard error are
 writable. Using a handle in an unsupported direction or encountering an IO error
-is a primitive failure. No close operation is provided in v0.
+throws `IOError` (Section 24.3). No close operation is provided in v0.
 
 `System.IO.print`, `println`, and `readLine` are source-derived library functions,
 not builtin keys. `print` writes to standard output without a newline; `println`
@@ -1054,6 +1056,28 @@ unchanged. `readLineFrom : Handle -> String` provides the same behavior on an
 explicit readable handle. Low-level handles, `read`, and `write` require explicit
 imports from `Ficus.Builtin.Handle` or `System.IO`.
 
+Source-defined data types and constructors may also have builtin associations.
+Unlike opaque builtin types, these retain ordinary source definitions and
+constructors. `ARITHMETIC_ERROR`, `IO_ERROR`, `MATCH_ERROR`, and `IO_MODE` require nominal data/record types
+of kind `Type` with at least one constructor. Compiler-associated source
+constructors are called primitive constructors. Their contracts require the
+associated owner and the exact monomorphic field types below. Keys, not declaration spellings, select behavior;
+imports and re-exports preserve original identity. Associations need not be
+adjacent to declarations. Wrong categories, aliases, field types, owners, and
+conflicting visible associations are static errors.
+
+| Constructor key | Owner key | Fields |
+| --- | --- | --- |
+| `DIVISION_BY_ZERO` | `ARITHMETIC_ERROR` | none |
+| `INVALID_CONVERSION` | `ARITHMETIC_ERROR` | `String` |
+| `IO_FAILURE` | `IO_ERROR` | `String`, `String` |
+| `MATCH_FAILURE` | `MATCH_ERROR` | `String` |
+| `IO_READ_MODE`, `IO_WRITE_MODE`, `IO_APPEND_MODE`, `IO_READ_WRITE_MODE` | `IO_MODE` | none |
+
+Fallible primitives require their corresponding primitive constructor and type
+associations to be linked, including when their error path is not taken. Runtime lowering
+rejects missing associations rather than silently producing a generic failure.
+
 `BUILTIN` does not affect implicit Prelude. Only `NO_IMPLICIT_PRELUDE` disables it. There is no compiler-provided `magic` identifier or module-level `MAGIC` pragma; `magic` remains an ordinary identifier.
 
 ## 20. Prelude
@@ -1062,7 +1086,8 @@ The Prelude is a library, not core semantics. It should provide arithmetic trait
 
 The bundled v0 library uses `Ficus.Builtin.*` for compiler-key bindings,
 `Class.*` for traits, `Data.*` for ordinary data APIs, and `System.IO` for IO.
-Builtin modules never import the data layer. Every library module explicitly
+Builtin modules are preferably self-contained, but may import other modules
+provided the dependency graph remains acyclic. Every library module explicitly
 disables implicit Prelude and imports its dependencies; Prelude selectively
 re-exports the reviewed API in [PRELUDE.md](PRELUDE.md#1-organization).
 `Handle`, `Vec`, `Byte`, and `Ref` require explicit imports. `Result e a` uses `Err` and
@@ -1123,14 +1148,16 @@ Implementations reject at least:
 - use of Prelude-dependent sugar when the implicit Prelude is disabled;
 - invalid builtin placement, key, target, signature, or source definition.
 
-Runtime errors include failed pattern matches and primitive failures. Evaluation
-failures carry a message payload and share diagnostic code `R0001`; they have
+Source-level failed matches and primitive arithmetic/IO failures are typed
+exceptions. Internal runtime invariant failures remain separate runtime errors.
+Evaluation failures carry a message payload and share diagnostic code `R0001`; they have
 no separate per-cause error codes. Lowering embeds relevant source locations
 in generated error messages and fallible primitive error contexts, rather than
 attaching source spans or provenance to Runtime AST nodes. An unmatched pattern
-or conditional raises its generated message. Primitive failures, including
-integer division by zero and host IO exceptions, use the same generic error
-mechanism. Evaluation failures remain separate from coded lowering, linking,
+or conditional throws `MatchError` with its generated message. Arithmetic and handle
+failures throw the typed standard errors specified in Section 24.3; invalid
+primitive operands indicate a runtime invariant failure. Evaluation failures remain
+separate from coded lowering, linking,
 entry-selection, and Runtime-validation diagnostics. Exact message wording is
 unspecified. Suggested fixes are deferred.
 
@@ -1231,7 +1258,7 @@ module's exported names into scope.
 Loading rereads the selected file and its dependencies. Failed loads, imports,
 declarations, type or kind queries, and expression evaluation leave the last successful
 environment available; in particular, division by zero reports a primitive
-failure and returns to the prompt. Previously accepted right-hand sides are not
+exception and returns to the prompt. Previously accepted right-hand sides are not
 replayed by later commands. Effects already performed before an error are not
 rolled back.
 
@@ -1256,7 +1283,7 @@ The initial language excludes:
 - effect systems, concurrency, and async syntax;
 - macros, ownership types, and custom memory management.
 
-Empty type bodies, empty matches, `STANDALONE`, and the `Data.Ref` mutable-reference API are implemented v1 extensions to this baseline. The remaining exclusions do not settle future syntax or semantics. Planned v1+ designs are grouped in Section 24; later work is listed in Section 25.
+Empty type bodies, empty matches, `STANDALONE`, mutable references, typed exceptions, and file IO are implemented v1 extensions to this baseline. The remaining exclusions do not settle future syntax or semantics. Planned v1+ designs are grouped in Section 24; later work is listed in Section 25.
 
 ## 24. v1+ language features and libraries
 
@@ -1416,8 +1443,9 @@ The standard trait module `Class.Exception` supplies instances for `Int`,
 `Float`, `Bool`, `Char`, `String`, `Unit`, lists, and products, with the required
 component constraints. User nominal types require explicit implementations.
 
-Typed exceptions do not catch generic runtime failures (Section 21), host IO
-errors, or host asynchronous exceptions. Completed output and reference writes
+Typed exceptions do not catch generic runtime failures (Section 21) or host
+asynchronous exceptions. Handle primitives convert host `IOException`s to typed
+`IOError` values. Completed output and reference writes
 are preserved. A throwing `modifyRef` updater skips its final store, while any
 writes already performed by the updater remain visible. No implicit cleanup or
 resource finalization runs; cleanup APIs are deferred. An uncaught typed
@@ -1425,8 +1453,59 @@ exception is reported as a generic runtime error with throw context; `run` exits
 with status 1 and the REPL reports the error and remains available under its
 ordinary failed-submission rules. No `Show` constraint is implicitly required.
 
+#### Standard primitive exceptions
+
+`Ficus.Builtin.Errors` defines ordinary source data types and their builtin
+associations; `Control.Exception` re-exports them:
+
+```text
+type ArithmeticError = { DivisionByZero; InvalidConversion String }
+type IOError = IOError String String
+type MatchError = MatchError String
+```
+
+All three types implement `Exception`. Integer division/remainder by zero throw
+`DivisionByZero`; invalid float-to-int conversion throws `InvalidConversion`
+with a message. Floating-point division retains IEEE behavior. Handle direction
+errors and synchronous host IO errors throw `IOError operation message`, where
+operation is `"read"`, `"write"`, `"openFile"`, or `"close"`. Failed function/lambda parameter patterns, local pattern bindings, unmatched
+`with` expressions, and conditionals with no selected arm throw `MatchError`
+with a generated message. Message wording is unspecified. Source
+construction, explicit `throw`, and primitive-generated errors have the same
+nominal identity and payload representation. Builtin Int, Float, and Handle
+modules import the error bindings explicitly. No effect constraints are added to arithmetic or IO signatures.
+
 Existential errors (Section 24.6), cleanup combinators, and fibers remain
 separate future extensions.
+
+
+#### File IO
+
+The implemented v1 `System.IO` API explicitly re-exports `openFile`, `close`,
+and `IOMode(..)` alongside the existing handle operations. `Ficus.Builtin.IOMode`
+defines an ordinary source ADT with `IO_MODE` and the four constructor keys
+listed in Section 19; `Ficus.Builtin.Handle` binds the operations:
+
+```text
+type IOMode = { ReadMode; WriteMode; AppendMode; ReadWriteMode }
+openFile : String -> IOMode -> Handle
+close : Handle -> Unit
+```
+
+`ReadMode` requires an existing file. `WriteMode` creates or truncates a file;
+`AppendMode` creates or appends; `ReadWriteMode` allows both operations without
+truncating an existing file. Files use UTF-8 text with no newline translation.
+`read` consumes Unicode code points from the current position, returning an
+empty string at EOF; a non-positive count skips IO even on a closed handle.
+`write` advances the file position; append-mode writes go to the end.
+
+`close` flushes and closes an opened file. Aliases refer to the same resource;
+subsequent positive reads and writes throw `IOError`. Repeated close is harmless.
+The runtime owns the standard streams; attempting to close one throws `IOError`
+without closing it. Opening, encoding, direction, read/write, and close failures
+use the typed IO error contract above. Handles are not closed implicitly when a
+source exception escapes; cleanup combinators remain future work. No file or
+mode declarations are added to implicit Prelude.
 
 ### 24.4 Pragmas
 

@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.38.1.
+-- This file has been generated from package.yaml by hpack version 0.39.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -33,23 +33,37 @@ extra-source-files:
     test/fixtures/backend/driver/ReexportMain.ficus
     test/fixtures/backend/driver/UnitMain.ficus
     test/fixtures/backend/driver/Values.ficus
+    test/fixtures/compile/exceptions/BadErrorFields.ficus
+    test/fixtures/compile/exceptions/BadErrorOwner.ficus
+    test/fixtures/compile/exceptions/BadErrorType.ficus
+    test/fixtures/compile/exceptions/BadIOMode.ficus
     test/fixtures/compile/exceptions/Basic.ficus
     test/fixtures/compile/exceptions/Conflicting.ficus
+    test/fixtures/compile/exceptions/ConflictingErrors.ficus
     test/fixtures/compile/exceptions/ConflictingImports.ficus
+    test/fixtures/compile/exceptions/ErasedError.ficus
+    test/fixtures/compile/exceptions/ErrorFirst.ficus
+    test/fixtures/compile/exceptions/ErrorSecond.ficus
     test/fixtures/compile/exceptions/HigherKind.ficus
     test/fixtures/compile/exceptions/HigherKindHead.ficus
     test/fixtures/compile/exceptions/Library.ficus
     test/fixtures/compile/exceptions/Methods.ficus
     test/fixtures/compile/exceptions/MissingAssociation.ficus
+    test/fixtures/compile/exceptions/MissingErrorConstructor.ficus
+    test/fixtures/compile/exceptions/MissingErrorType.ficus
     test/fixtures/compile/exceptions/MissingEvidence.ficus
     test/fixtures/compile/exceptions/NoInstance.ficus
     test/fixtures/compile/exceptions/OtherMarker.ficus
     test/fixtures/compile/exceptions/Positive.ficus
+    test/fixtures/compile/exceptions/PrimitiveErrors.ficus
+    test/fixtures/compile/exceptions/RenamedErrors.ficus
     test/fixtures/compile/exceptions/Superclass.ficus
     test/fixtures/compile/exceptions/WrongCatch.ficus
     test/fixtures/compile/exceptions/WrongResult.ficus
     test/fixtures/compile/exceptions/WrongTarget.ficus
     test/fixtures/compile/exceptions/WrongThrow.ficus
+    test/fixtures/compile/file-io/FileIO.ficus
+    test/fixtures/compile/file-io/RenamedFileIO.ficus
     test/fixtures/compile/invalid/main.ficus
     test/fixtures/compile/library/Handles.ficus
     test/fixtures/compile/library/Main.ficus
@@ -552,10 +566,12 @@ data-files:
     library/Ficus/Builtin/Bool.ficus
     library/Ficus/Builtin/Byte.ficus
     library/Ficus/Builtin/Char.ficus
+    library/Ficus/Builtin/Errors.ficus
     library/Ficus/Builtin/Exception.ficus
     library/Ficus/Builtin/Float.ficus
     library/Ficus/Builtin/Handle.ficus
     library/Ficus/Builtin/Int.ficus
+    library/Ficus/Builtin/IOMode.ficus
     library/Ficus/Builtin/Ref.ficus
     library/Ficus/Builtin/String.ficus
     library/Ficus/Builtin/Unit.ficus
@@ -723,7 +739,6 @@ test-suite ficus-test
       Ficus.Core.Spec
       Ficus.Error.ParserSpec
       Ficus.Error.PrettySpec
-      Ficus.ExceptionSpec
       Ficus.Infer.CheckSpec
       Ficus.Infer.CorpusSpec
       Ficus.Infer.DeclarationSpec
@@ -734,15 +749,17 @@ test-suite ficus-test
       Ficus.Infer.TypeSpec
       Ficus.Parser.PrettySpec
       Ficus.Parser.Spec
-      Ficus.RecordPatternSpec
-      Ficus.RefSpec
       Ficus.Resolve.Spec
       Ficus.Resolve.Support
       Ficus.Resolve.WildcardSpec
-      Ficus.V1Spec
       FicusBackend.DriverSpec
+      FicusBackend.ExceptionSpec
+      FicusBackend.FileIOSpec
+      FicusBackend.RecordPatternSpec
+      FicusBackend.RefSpec
       FicusBackend.Runtime.Direct
       FicusBackend.Runtime.Spec
+      FicusBackend.V1Spec
       FicusLsp.ProtocolSpec
       FicusLsp.Spec
       Paths_ficus

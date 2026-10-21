@@ -36,6 +36,7 @@ tree ty form =
     Map.empty
     Map.empty
     Map.empty
+    Map.empty
     [C.NonRecursive (node 0 (C.Binding (GlobalRef (GlobalId owner ValueNS "value")) (monomorphic ty) (node 1 (C.TypedExpr ty form)) (C.BindingFacts 0 Nothing)))]
     Map.empty
   where

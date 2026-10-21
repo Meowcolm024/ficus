@@ -16,7 +16,6 @@ import Ficus.Library.Contracts
 import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Resolve
 import Ficus.Syntax.Abstract qualified as A
-import Ficus.Syntax.Concrete qualified as Concrete
 import Ficus.Syntax.Concrete.Pretty (prettyModule)
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Name
@@ -204,9 +203,6 @@ checkLibrarySource :: (FilePath, T.Text) -> Assertion
 checkLibrarySource (path, source) = case parseModule path source of
   Left diagnostic -> assertFailure (show diagnostic)
   Right original -> do
-    if "/library/Ficus/Builtin/" `T.isInfixOf` T.pack path
-      then Concrete.moduleImports original @?= []
-      else pure ()
     let formatted = prettyModule original
     case parseModule path formatted of
       Left diagnostic -> assertFailure (show diagnostic)

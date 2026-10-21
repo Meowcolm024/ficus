@@ -1,0 +1,8 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN IO_MODE IOMode #-}
+type IOMode = { ReadMode; WriteMode; AppendMode; ReadWriteMode }
+{-# BUILTIN IO_READ_MODE ReadMode #-}
+{-# BUILTIN IO_WRITE_MODE WriteMode #-}
+{-# BUILTIN IO_APPEND_MODE AppendMode #-}
+{-# BUILTIN IO_READ_WRITE_MODE ReadWriteMode #-}

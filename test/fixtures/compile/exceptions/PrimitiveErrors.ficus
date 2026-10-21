@@ -1,0 +1,24 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Control.Exception (..)
+use Ficus.Builtin.Int (intDiv, intRem, intLt)
+use Ficus.Builtin.Ref (newRef, readRef, modifyRef)
+use Ficus.Builtin.Float (floatDiv, floatToInt)
+use Ficus.Builtin.Handle (read, write, stdin, stdout)
+use Ficus.Builtin.String (stringEq, stringLength)
+
+division () = catch (_ -> intDiv 1 0) ((e : ArithmeticError) -> with e { DivisionByZero -> 31; _ -> 0 })
+remainder () = catch (_ -> intRem 1 0) ((e : ArithmeticError) -> with e { DivisionByZero -> 32; _ -> 0 })
+conversion () = catch (_ -> floatToInt (floatDiv 0.0 0.0)) ((e : ArithmeticError) -> with e { InvalidConversion message -> 33; _ -> 0 })
+direction () = catch (_ -> { read stdout 1; 0 }) ((e : IOError) -> with e { IOError operation message -> 34 })
+
+writeFailure () = catch (_ -> { write stdout "x"; 0 }) ((e : IOError) -> with e { IOError operation message -> if { stringEq operation "write" -> if { intLt 0 (stringLength message) -> 36; _ -> 0 }; _ -> 0 } })
+readFailure () = catch (_ -> { read stdin 1; 0 }) ((e : IOError) -> with e { IOError operation message -> if { stringEq operation "read" -> 37; _ -> 0 } })
+
+explicit () = catch (_ -> throw DivisionByZero) ((e : ArithmeticError) -> with e { DivisionByZero -> 39; _ -> 0 })
+mismatch () = catch (_ -> catch (_ -> intDiv 1 0) ((e : IOError) -> 0)) ((e : ArithmeticError) -> 40)
+failedStore () = { cell = newRef 1; catch (_ -> modifyRef cell (n -> intDiv n 0)) ((e : ArithmeticError) -> ()); readRef cell }
+
+matchFailure () = catch (_ -> with False { True -> 0 }) ((MatchError message) -> if { stringEq message "pattern match failed" -> 41; _ -> 0 })
+conditionalFailure () = catch (_ -> if { False -> 0 }) ((MatchError message) -> if { stringEq message "no conditional branch matched" -> 42; _ -> 0 })
+onlyTrue True = 0
+parameterFailure () = catch (_ -> onlyTrue False) ((MatchError message) -> 43)

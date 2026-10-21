@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+type Problem = Zero
+{-# BUILTIN DIVISION_BY_ZERO Zero #-}

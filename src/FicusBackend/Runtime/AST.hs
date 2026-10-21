@@ -4,6 +4,7 @@ module FicusBackend.Runtime.AST (module FicusBackend.Runtime.AST, Primitive (..)
 
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
+import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Data.Vector (Vector)
 import Ficus.Primitive.Registry (Primitive (..))
@@ -62,7 +63,6 @@ data ExprF
   | If [Node (Expr, Expr)] Expr
   | Select Expr ConstructorIndex FieldIndex
   | Primitive PrimitiveIndex [Expr] Text
-  | Raise Text
   deriving (Eq, Show)
 
 data CaseTest = ConstructorTest ConstructorIndex FrameSize | LiteralTest RuntimeLiteral deriving (Eq, Show)
@@ -94,10 +94,15 @@ pairConstructor = ConstructorIndex 2
 primitiveArity :: Primitive nominal -> Arity
 primitiveArity = Arity . P.primitiveArity
 
+-- Numeric identities and payload representation for source-defined errors.
+data ErrorConstructor = ErrorConstructor ConstructorIndex (Maybe ConstructorIndex) deriving (Eq, Show)
+
 data Program = Program
   { programFunctions :: Vector Function,
     programGlobalCount :: Int,
     programConstructors :: Vector (Node ConstructorLayout),
+    programFileModes :: Map ConstructorIndex P.FileMode,
+    programErrors :: Map P.PrimitiveError ErrorConstructor,
     programPrimitives :: Vector (Primitive ()),
     programInitialization :: [Node GlobalGroup]
   }

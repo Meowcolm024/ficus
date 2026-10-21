@@ -1,4 +1,4 @@
-module Ficus.V1Spec (tests) where
+module FicusBackend.V1Spec (tests) where
 
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List.NonEmpty (NonEmpty (..))

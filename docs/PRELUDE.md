@@ -34,7 +34,7 @@ Control
 
 Indented entries denote modules such as `Ficus.Builtin.Int` and `Class.Show`. Ellipses and the Map and Environment examples indicate future extensions, not shipped modules. `System.IO` names an operations module; it does not introduce an `IO` type.
 
-`Ficus.Builtin.*` holds declarations backed by `BUILTIN` and their minimal support definitions. It never imports `Data.*` or the higher-level trait/system layers. The six reserved primitive types are already in scope and are not redeclared there. Ordinary library types such as `Handle`, `Byte`, and `Vec` retain their defining module identity. Public operations and wrappers may be exposed through `Data.*`, `System.*`, or `Control.*` without changing that identity.
+`Ficus.Builtin.*` holds declarations backed by `BUILTIN` and their minimal support definitions. These modules are preferably self-contained, but imports from other library modules are permitted when the dependency graph remains acyclic. The six reserved primitive types are already in scope and are not redeclared there. Ordinary library types such as `Handle`, `Byte`, and `Vec` retain their defining module identity. Public operations and wrappers may be exposed through `Data.*`, `System.*`, or `Control.*` without changing that identity.
 
 `Class.*` defines the basic traits and associated constrained functions. Under the existing ownership rule, implementations for primitive types and built-in list/product/function constructors must live in the module defining the trait: for example, `Show Int` belongs in `Class.Show`. Implementations for ordinary library types may instead live with their type. Keep this distinction when selecting module dependencies.
 
@@ -483,9 +483,8 @@ write : Handle -> String -> Unit
 `read` consumes at most the requested number of Unicode code points, including
 line terminators. Non-positive counts skip IO; EOF produces the empty string.
 `write` adds no newline. Standard input is readable; standard output and error
-are writable. Invalid directions and IO errors are primitive failures. Standard
-handle values do not perform effects during initialization. No close operation
-is provided. `print` and `println` use `write stdout`; `readLine ()` uses
+are writable. Invalid directions and host IO errors throw typed `IOError` values. Standard
+handle values do not perform effects during initialization. The v0 API has no close operation; the v1 extension below adds file handles. `print` and `println` use `write stdout`; `readLine ()` uses
 `readLineFrom stdin`, where `readLineFrom : Handle -> String` is a source helper
 that removes LF/CRLF and preserves an unterminated final line.
 
@@ -494,6 +493,15 @@ and are not automatically re-exported by Prelude. There is no longer a separate
 `Ficus.Builtin.IO` module or primitive print/println/readLine key.
 
 The same applies to the proposed initial v2+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit builtin-backed concurrency module, not Prelude.
+
+
+The v1 `System.IO` extension also exports `openFile : String -> IOMode -> Handle`,
+`close : Handle -> Unit`, and `IOMode(..)` with `ReadMode`, `WriteMode`,
+`AppendMode`, and `ReadWriteMode`. The ADT and primitive constructor associations
+live in `Ficus.Builtin.IOMode`; handle primitives import it explicitly. Files use
+UTF-8 and preserve line endings. Closing flushes the file; subsequent operations
+through aliases fail with `IOError`. Closing a standard stream is rejected.
+These names require explicit imports and are not added to Prelude.
 
 The implemented v1 extension re-exports the marker through `Class.Exception`:
 
@@ -511,7 +519,12 @@ catch : Exception e => (Unit -> a) -> (e -> a) -> a
 `Ficus.Builtin.Exception` defines the marker, standard primitive/list/product
 instances, and operations without importing other library modules.
 `Class.Exception` re-exports the marker; `Control.Exception` re-exports the marker
-and operations. Dictionaries retain nominal tokens even when payload wrappers
+and operations, plus `ArithmeticError(..)`, `IOError(..)`, and `MatchError(..)` from
+`Ficus.Builtin.Errors`. The error types and their primitive constructors are
+ordinary source definitions with compiler-key associations. Integer zero division
+and remainder, invalid float-to-int conversions, and handle/host IO failures throw
+these catchable errors; failed patterns and unmatched conditionals throw
+`MatchError message`. Dictionaries retain nominal tokens even when payload wrappers
 are erased. Parameterized user instances explicitly require component exception
 evidence, including phantom arguments. Catches are dynamically scoped, match only
 exact types, and leave generic runtime errors untouched. No cleanup combinators
@@ -540,7 +553,7 @@ Fresh factories such as `make () = newRef []` can be polymorphic.
 
 `Class.Debug` supplies `Debug a => Debug (Ref a)` and renders the current contents
 as `Ref (...)`, reading the cell once. This placement satisfies instance
-ownership while keeping builtin modules independent of trait and data modules.
+ownership and avoids an unnecessary builtin dependency on the Debug trait.
 These declarations require explicit imports and are not re-exported by Prelude.
 
 ## 15. Validation and later work

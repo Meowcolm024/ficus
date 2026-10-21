@@ -101,7 +101,7 @@ tests =
           testCase "division by zero returns a structured error" $ do
             prepared <- plan "DivisionMain"
             executeRun quiet prepared [] >>= \case
-              Left problem -> assertBool "division failure message" ("integer division by zero" `T.isSuffixOf` R.errorMessage problem)
+              Left problem -> assertBool "division failure message" ("integer division by zero" `T.isInfixOf` R.errorMessage problem && "uncaught exception" `T.isSuffixOf` R.errorMessage problem)
               Right value -> assertFailure (show value),
           invalidEntry "BadMain" 3,
           invalidEntry "PolyMain" 3,
@@ -256,7 +256,7 @@ tests =
               Left errors -> do
                 map D.diagnosticCode errors @?= ["R0001"]
                 map (sourceFile . D.diagnosticSpan) errors @?= ["<runtime>"]
-                assertBool "builtin location is embedded in the message" (all (T.isInfixOf "Int.ficus:10:1: integer division by zero" . D.diagnosticMessage) errors)
+                assertBool "builtin location is embedded in the message" (all (T.isInfixOf "Int.ficus:11:1: integer division by zero: uncaught exception" . D.diagnosticMessage) errors)
               Right _ -> assertFailure "division succeeded"
             result current "6 * 7" "42",
           testCase "declarations retain inferred types and execute" $ do

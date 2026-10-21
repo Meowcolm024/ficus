@@ -25,6 +25,7 @@ import Ficus.Infer.Monad qualified as I
 import Ficus.Infer.Syntax
 import Ficus.Infer.Type
 import Ficus.Initialization
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Abstract.Validate
 import Ficus.Syntax.Core qualified as C
@@ -57,6 +58,7 @@ elaborateInteractiveModule = elaborateWithMode InteractiveInitialization
 elaborateWithMode :: InitializationMode -> [CheckedInterface] -> A.AbstractModule -> Elaboration
 elaborateWithMode mode imports source = case validateAbstract source of
   Left message -> Incomplete Nothing [E.diagnostic E.InvalidCoreTree (A.abstractSpan source) message]
+  Right () | not (null conflicts) -> Incomplete Nothing conflicts
   Right () ->
     let visible = Set.fromList (A.visibleImplementations source)
         merged = mergeInterfaces imports
@@ -84,6 +86,10 @@ elaborateWithMode mode imports source = case validateAbstract source of
                     retainedOverrides = (overrides `Set.union` localOverrides) `Set.intersection` Map.keysSet (implementationDeclarations interface)
                  in Complete (CheckedModule accepted (CheckedInterface interface retainedOverrides) (Map.restrictKeys types exports)) warnings
   where
+    dataKeys = Set.fromList (P.builtinDataKeys)
+    associations = [(key, ident) | CheckedInterface declarations _ <- imports, (key, ident) <- Map.toList (Map.restrictKeys (builtinTypeAssociations declarations) dataKeys)]
+    mergedAssociations = Map.fromList associations
+    conflicts = [E.diagnostic E.BuiltinContractMismatch (A.abstractSpan source) "conflicting visible builtin data associations" | any (\(key, ident) -> Map.lookup key mergedAssociations /= Just ident) associations]
     isError = (== D.Error) . D.diagnosticSeverity . D.toDiagnostic
     closeType = traverse (\case Bound ident -> Right (C.BoundVariable ident); _ -> Left ())
 

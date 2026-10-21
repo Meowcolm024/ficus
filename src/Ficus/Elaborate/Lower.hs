@@ -70,6 +70,7 @@ lowerModule inferred source = runInferFrom (inferenceState inferred) (runExceptT
             C.coreInitialization = inferenceInitialization inferred,
             C.coreSpan = A.abstractSpan source,
             C.coreOrigin = A.abstractOrigin source,
+            C.coreBuiltins = Map.restrictKeys (builtinTypeAssociations prepared) (Set.fromList (P.builtinDataKeys)),
             C.coreKinds = typeKinds (declarationTypes prepared),
             C.coreImports = Map.restrictKeys (Map.map (evidenceScheme prepared) imported `Map.union` importedImplementations) references,
             C.coreConstructors = constructorDeclarations prepared,

@@ -24,9 +24,11 @@ Unchecked items are pending; a settled design is not a completed feature.
 
 - [x] Empty types and empty matches, including constructor-free `Data.Void` and source-defined `absurd` ([SPEC §24.1](SPEC.md#241-types-and-patterns)).
 - [x] `STANDALONE`: acyclic expansive initializers, ordinary restrictions for cycles/members, and rejection of every incoming import ([SPEC §24.4](SPEC.md#244-pragmas)).
-- [x] Explicit record patterns with constructor-style grouping, optional fields, type-directed refutability, and recursive-pattern binding rejection; parser/formatter, evaluator, diagnostic-span, and highlighting coverage ([tests](../test/Ficus/RecordPatternSpec.hs)).
+- [x] Explicit record patterns with constructor-style grouping, optional fields, type-directed refutability, and recursive-pattern binding rejection; parser/formatter, evaluator, diagnostic-span, and highlighting coverage ([tests](../test/FicusBackend/RecordPatternSpec.hs)).
 - [x] Mutable `Ref`, `newRef`, `readRef`, and `modifyRef` in `Ficus.Builtin.Ref` / `Data.Ref`, shared `REF_*` registry contracts, and `Debug (Ref a)`, preserving the existing value restriction.
-- [x] Typed exceptions: trait-targeted `BUILTIN EXCEPTION`, nominal component tokens, constrained primitives, dynamically scoped catches, library/driver integration, and differential/REPL fixtures ([tests](../test/Ficus/ExceptionSpec.hs)).
+- [x] Typed exceptions: trait-targeted `BUILTIN EXCEPTION`, nominal component tokens, constrained primitives, dynamically scoped catches, library/driver integration, and differential/REPL fixtures ([tests](../test/FicusBackend/ExceptionSpec.hs)).
+- [x] Source-defined builtin data types and primitive constructors (`DataBuiltin` / `ConstrBuiltin`), with typed arithmetic/conversion/IO/match failures, removal of Runtime `Raise Text`, validated runtime layouts, and contract/differential fixtures.
+- [x] File IO: `openFile`, `close`, source-defined builtin `IOMode` constructors, typed failures, and compiled/direct temporary-file tests ([tests](../test/FicusBackend/FileIOSpec.hs)).
 - [ ] Exception cleanup combinators and higher-kinded exception heads.
 - [ ] Definition pragmas in implementation, `where`, local, and `do` declaration contexts.
 - [ ] Definition-local `ETA` expansion with preserved initializer timing.
@@ -59,8 +61,8 @@ Unchecked items are pending; a settled design is not a completed feature.
 - [ ] Select and implement a WebAssembly GC or LLVM backend, runtime representation, and memory management.
 - [ ] Higher-rank polymorphism; other excluded extensions need designs before implementation.
 
-For v1 acceptance evidence, see [test/Ficus/V1Spec.hs](../test/Ficus/V1Spec.hs),
-[test/Ficus/RefSpec.hs](../test/Ficus/RefSpec.hs), the parser
+For v1 acceptance evidence, see [test/FicusBackend/V1Spec.hs](../test/FicusBackend/V1Spec.hs),
+[test/FicusBackend/RefSpec.hs](../test/FicusBackend/RefSpec.hs), the parser
 fixtures, and the runtime differential tests. Reference tests cover aliasing,
 updater order and failure, debug output, builtin contracts, and unsafe
 generalization. Update this checklist with each feature change.

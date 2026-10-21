@@ -29,7 +29,7 @@ import FicusBackend.Runtime qualified as Runtime
 import FicusBackend.Runtime.AST qualified as R
 import FicusBackend.Runtime.Direct
 import FicusBackend.Runtime.Error qualified as E
-import FicusBackend.Runtime.Primitive (evaluatePrimitive)
+import FicusBackend.Runtime.Primitive qualified as Primitive
 import FicusBackend.Runtime.Value
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -53,9 +53,23 @@ program body =
   R.Program
     V.empty
     1
-    (V.fromList [node (R.ConstructorLayout (R.FrameSize count)) | count <- [0, 2, 2]])
+    (V.fromList [node (R.ConstructorLayout (R.FrameSize count)) | count <- [0, 2, 2, 0, 0, 0, 1, 2, 0]])
+    Map.empty
+    testErrors
     (V.fromList P.allPrimitives)
     [node (R.GlobalGroup False ((R.GlobalIndex 0, node (R.Binding body False)) :| []))]
+
+testErrors :: Map.Map P.PrimitiveError R.ErrorConstructor
+testErrors = Map.fromList [(P.DivisionByZeroError, R.ErrorConstructor (R.ConstructorIndex 3) (Just (R.ConstructorIndex 5))), (P.InvalidConversionError, R.ErrorConstructor (R.ConstructorIndex 3) (Just (R.ConstructorIndex 6))), (P.IOError, R.ErrorConstructor (R.ConstructorIndex 4) (Just (R.ConstructorIndex 7))), (P.MatchError, R.ErrorConstructor (R.ConstructorIndex 8) Nothing)]
+
+evaluatePrimitive :: Text -> Effects -> R.Primitive () -> [Value] -> EvalM Value
+evaluatePrimitive = Primitive.evaluatePrimitive testErrors Map.empty
+
+errorDeclarations :: Text
+errorDeclarations = "\n{-# BUILTIN ARITHMETIC_ERROR ArithmeticError #-}\ntype ArithmeticError = { DivisionByZero; InvalidConversion String }\n{-# BUILTIN DIVISION_BY_ZERO DivisionByZero #-}\n{-# BUILTIN INVALID_CONVERSION InvalidConversion #-}\n{-# BUILTIN IO_ERROR IOError #-}\ntype IOError = IOError String String\n{-# BUILTIN IO_FAILURE IOError #-}\n"
+
+matchDeclarations :: Text
+matchDeclarations = "\n{-# BUILTIN MATCH_ERROR MatchError #-}\ntype MatchError = MatchError String\n{-# BUILTIN MATCH_FAILURE MatchError #-}\n"
 
 quiet :: Effects
 quiet = Effects (\_ _ -> pure ()) (\_ _ -> pure "")
@@ -93,7 +107,7 @@ compareEvaluatorsWithInput input checked ident arguments = do
 checkedSource :: Text -> IO LoweredProgram
 checkedSource source = do
   let owner = N.ModuleId ("Runtime" :| [])
-  resolved <- resolveSources fixtureConfig fixtureSugar (\_ -> pure (Right (Source "Runtime.ficus" ("{-# NO_IMPLICIT_PRELUDE #-}\n" <> source)))) [owner]
+  resolved <- resolveSources fixtureConfig fixtureSugar (\_ -> pure (Right (Source "Runtime.ficus" ("{-# NO_IMPLICIT_PRELUDE #-}\n" <> source <> if any (`T.isInfixOf` source) ["BUILTIN INT_DIV", "BUILTIN INT_REM", "BUILTIN FLOAT_TO_INT", "BUILTIN HANDLE_READ", "BUILTIN HANDLE_WRITE"] then errorDeclarations <> matchDeclarations else matchDeclarations)))) [owner]
   assertBool (show (frontendDiagnostics resolved)) (all ((/= D.Error) . D.diagnosticSeverity . D.toDiagnostic) (frontendDiagnostics resolved))
   case Map.lookup owner (frontendModules resolved) of
     Nothing -> assertFailure "source did not resolve" >> fail "source did not resolve"
@@ -164,7 +178,7 @@ tests =
             expectSource "check () = { (identity, other) = (x -> x, y -> y); if { identity True -> other 4; _ -> identity 8 } }\n" (int 4) [],
           testCase "single-field constructor and record wrappers erase" $ do
             lowered <- checkedSource "type Box a = Box a\ntype Record a = { value : a }\ncheck () = with Box (Record with { value = 8 }) { Box record -> record.value }\n"
-            V.length (R.programConstructors (Runtime.validatedProgram (loweredProgram lowered))) @?= 3
+            V.length (R.programConstructors (Runtime.validatedProgram (loweredProgram lowered))) @?= 4
             expectSource "type Box a = Box a\ntype Record a = { value : a }\ncheck () = with Box (Record with { value = 8 }) { Box record -> record.value }\n" (int 8) [],
           testCase "wrapper matching preserves strict field evaluation" $
             expectSource (printing <> "type Box a = Box a\nfield () = { print \"field\"; 3 }\ncheck () = with Box (field ()) { Box x -> x }\n") (int 3) ["field"],
@@ -205,17 +219,20 @@ tests =
         ],
       testGroup
         "execution API"
-        [ testCase "generic error operations preserve their payload" $ do
-            let tree = program (node (R.Raise "custom runtime failure"))
+        [ testCase "internal runtime failures remain separate" $ do
+            result <- runEvaluation (raiseRuntime "internal failure" :: EvalM Value)
+            fmap observe result @?= Left (E.RuntimeError "internal failure"),
+          testCase "typed match-failure operations preserve their context" $ do
+            let tree = program (primitive R.MatchFailure [literal (R.String "custom runtime failure")])
             case Runtime.validateProgram tree of
               Left errors -> assertFailure (show errors)
-              Right checked -> compareEvaluators checked (R.GlobalIndex 0) [] >>= (@?= (Left (E.RuntimeError "custom runtime failure"), []))
+              Right checked -> compareEvaluators checked (R.GlobalIndex 0) [] >>= (@?= (Left (E.RuntimeError "custom runtime failure: uncaught exception"), []))
             D.diagnosticCode (D.toDiagnostic (E.RuntimeError "custom runtime failure")) @?= "R0001",
           testCase "primitive argument errors keep their own messages" $ do
-            let tree = program (node (R.Primitive (R.PrimitiveIndex (maybe (-1) id (P.primitiveIndex R.IntDivide))) [node (R.Raise "argument failure"), literal (R.Integer 0)] "primitive site: "))
+            let tree = program (node (R.Primitive (R.PrimitiveIndex (maybe (-1) id (P.primitiveIndex R.IntDivide))) [primitive R.MatchFailure [literal (R.String "argument failure")], literal (R.Integer 0)] "primitive site: "))
             case Runtime.validateProgram tree of
               Left errors -> assertFailure (show errors)
-              Right checked -> compareEvaluators checked (R.GlobalIndex 0) [] >>= (@?= (Left (E.RuntimeError "argument failure"), [])),
+              Right checked -> compareEvaluators checked (R.GlobalIndex 0) [] >>= (@?= (Left (E.RuntimeError "argument failure: uncaught exception"), [])),
           testCase "an instance initializes globals once across repeated entry calls" $ do
             case Runtime.validateProgram (program (termExpr (Trace "init" (Number 7)))) of
               Left errors -> assertFailure (show errors)
@@ -320,7 +337,7 @@ tests =
           testCase "primitive failures retain their embedded context" $ forM_ [(R.IntDivide, [R.Integer 1, R.Integer 0]), (R.IntRemainder, [R.Integer 1, R.Integer 0]), (R.FloatToInt, [R.Floating (0 / 0)]), (R.FloatToInt, [R.Floating (1 / 0)]), (R.FloatToInt, [R.Floating 9223372036854775808])] $ \(operation, operands) -> do
             result <- runEvaluation (evaluatePrimitive "fixture: " quiet operation (map LiteralValue operands))
             case result of Left problem -> assertBool "failure message retains its context" ("fixture: " `T.isPrefixOf` E.errorMessage problem); Right value -> assertFailure (show (observe value)),
-          testCase "IO exceptions become primitive failures" $ do
+          testCase "IO exceptions become typed failures" $ do
             result <- runEvaluation (evaluatePrimitive "fixture: " (Effects (\_ _ -> ioError (userError "fixture")) (\_ _ -> pure "")) (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "x")])
             case result of Left problem -> assertBool "failure message retains its context" ("fixture: " `T.isPrefixOf` E.errorMessage problem); Right _ -> assertFailure "IO exception disappeared",
           testCase "standard handles retain distinct identities" $
@@ -374,12 +391,12 @@ tests =
       fmap observe result @?= Right (LiteralObservation expected)
 
 matchError :: Span -> E.RuntimeError
-matchError site = E.RuntimeError (T.pack (sourceFile site) <> ":" <> T.pack (show (line (start site))) <> ":" <> T.pack (show (column (start site))) <> ": pattern match failed")
+matchError site = E.RuntimeError (T.pack (sourceFile site) <> ":" <> T.pack (show (line (start site))) <> ":" <> T.pack (show (column (start site))) <> ": pattern match failed: uncaught exception")
 
 fixtureSpan :: Text -> Text -> Span
 fixtureSpan source fragment = Span "Runtime.ficus" (end (sourceEndSpan "" before)) (end (sourceEndSpan "" (before <> T.dropEnd 1 fragment)))
   where
-    (before, _) = T.breakOn fragment ("{-# NO_IMPLICIT_PRELUDE #-}\n" <> source)
+    (before, _) = T.breakOn fragment ("{-# NO_IMPLICIT_PRELUDE #-}\n" <> source <> if any (`T.isInfixOf` source) ["BUILTIN INT_DIV", "BUILTIN INT_REM", "BUILTIN FLOAT_TO_INT", "BUILTIN HANDLE_READ", "BUILTIN HANDLE_WRITE"] then errorDeclarations <> matchDeclarations else matchDeclarations)
 
 termSource :: Term -> Text
 termSource value = case value of
@@ -427,7 +444,7 @@ holeCase :: String -> C.Expr C.CoreType -> TestTree
 holeCase name body = testCase name $ do
   let owner = N.ModuleId ("Hole" :| [])
       binding = coreNode (C.Binding (N.GlobalRef (N.GlobalId owner N.ValueNS "entry")) (Type.monomorphic coreInt) body (C.BindingFacts 0 Nothing))
-      tree = C.CoreModule owner OrdinaryInitialization origin (SourceOrigin origin) Map.empty Map.empty Map.empty Map.empty Map.empty [C.NonRecursive binding] Map.empty
+      tree = C.CoreModule owner OrdinaryInitialization origin (SourceOrigin origin) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty [C.NonRecursive binding] Map.empty
   case lowerProgram [tree] of
     Right _ -> assertFailure "hole reached Runtime"
     Left errors -> map (\problem -> (B.errorKind problem, B.errorSpan problem)) errors @?= [(B.ExpressionHole, origin)]
@@ -446,12 +463,12 @@ termExpr value = case value of
   Add a b -> primitive R.IntAdd [termExpr a, termExpr b]
   Trace message body -> node (R.Let (node (R.Binding (primitive (R.HandleWrite ()) [primitive (R.HandleStdout ()) [], literal (R.String message)]) False)) (termExpr body))
   Choice choice yes no -> node (R.If [node (literal (R.Boolean choice), termExpr yes)] (termExpr no))
-  Failure -> node (R.Raise "pattern match failed")
+  Failure -> primitive R.MatchFailure [literal (R.String "pattern match failed")]
 
 termValue :: Term -> (Either E.RuntimeError Observation, [Text])
 termValue value = case value of
   Number number -> (Right (int number), [])
-  Failure -> (Left (E.RuntimeError "pattern match failed"), [])
+  Failure -> (Left (E.RuntimeError "pattern match failed: uncaught exception"), [])
   Trace message body -> let (result, trace) = termValue body in (result, message : trace)
   Choice choice yes no -> termValue (if choice then yes else no)
   Add a b -> case termValue a of

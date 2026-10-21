@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN IO_MODE Mode #-}
+type Mode = Reading Int
+{-# BUILTIN IO_READ_MODE Reading #-}

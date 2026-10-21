@@ -10,6 +10,7 @@ import Data.Vector qualified as V
 import Data.Word (Word8)
 import FicusBackend.Runtime.AST
 import FicusBackend.Runtime.Error qualified as E
+import System.IO qualified as IO
 
 -- Typed throws remain distinct until the public execution boundary.
 data EvaluationError = RuntimeFailure E.RuntimeError | Thrown ExceptionToken Value Text
@@ -63,11 +64,11 @@ data ClosureValue = ClosureValue
     closureArguments :: Vector Value
   }
 
-data Value = TokenValue ExceptionToken | LiteralValue RuntimeLiteral | Aggregate ConstructorIndex (Vector Value) | VectorValue (Vector Value) | ByteValue Word8 | HandleValue StandardHandle | RefValue (IORef Value) | FunctionValue ClosureValue
+data Value = TokenValue ExceptionToken | LiteralValue RuntimeLiteral | Aggregate ConstructorIndex (Vector Value) | VectorValue (Vector Value) | ByteValue Word8 | HandleValue StandardHandle | FileHandleValue IO.Handle | RefValue (IORef Value) | FunctionValue ClosureValue
 
 -- Closures and mutable references are observed opaquely; inspecting a value
 -- neither reads a cell nor recursively follows potentially cyclic references.
-data Observation = TokenObservation ExceptionToken | LiteralObservation RuntimeLiteral | AggregateObservation ConstructorIndex [Observation] | VectorObservation [Observation] | ByteObservation Word8 | HandleObservation StandardHandle | RefObservation | FunctionObservation Arity Int
+data Observation = TokenObservation ExceptionToken | LiteralObservation RuntimeLiteral | AggregateObservation ConstructorIndex [Observation] | VectorObservation [Observation] | ByteObservation Word8 | HandleObservation StandardHandle | FileHandleObservation | RefObservation | FunctionObservation Arity Int
   deriving (Eq, Show)
 
 observe :: Value -> Observation
@@ -78,6 +79,7 @@ observe value = case value of
   VectorValue fields -> VectorObservation (map observe (V.toList fields))
   ByteValue byte -> ByteObservation byte
   HandleValue handle -> HandleObservation handle
+  FileHandleValue _ -> FileHandleObservation
   RefValue _ -> RefObservation
   FunctionValue closure -> FunctionObservation (codeArity (closureCode closure)) (V.length (closureArguments closure))
 

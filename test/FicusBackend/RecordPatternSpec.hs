@@ -1,4 +1,4 @@
-module Ficus.RecordPatternSpec (tests) where
+module FicusBackend.RecordPatternSpec (tests) where
 
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List.NonEmpty (NonEmpty (..))

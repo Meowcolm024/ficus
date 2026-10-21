@@ -1,0 +1,19 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN EXCEPTION Signal #-}
+trait Signal a = {}
+{-# BUILTIN THROW raise #-}
+raise : Signal e => e -> a
+{-# BUILTIN CATCH rescue #-}
+rescue : Signal e => (Unit -> a) -> (e -> a) -> a
+{-# BUILTIN ARITHMETIC_ERROR Problem #-}
+type Problem = { Zero; Bad String }
+{-# BUILTIN DIVISION_BY_ZERO Zero #-}
+{-# BUILTIN INVALID_CONVERSION Bad #-}
+impl Signal Problem = {}
+{-# BUILTIN INT_DIV divide #-}
+divide : Int -> Int -> Int
+check () = rescue (_ -> divide 1 0) ((e : Problem) -> with e { Zero -> 35; _ -> 0 })
+
+{-# BUILTIN MATCH_ERROR MatchError #-}
+type MatchError = MatchError String
+{-# BUILTIN MATCH_FAILURE MatchError #-}

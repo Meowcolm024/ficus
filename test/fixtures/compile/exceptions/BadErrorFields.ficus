@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN ARITHMETIC_ERROR Problem #-}
+type Problem = Wrong Int
+{-# BUILTIN INVALID_CONVERSION Wrong #-}

@@ -1,4 +1,5 @@
 {-# NO_IMPLICIT_PRELUDE #-}
+use Ficus.Builtin.Errors (..)
 
 {-# BUILTIN INT_ADD intAdd #-}
 intAdd : Int -> Int -> Int

@@ -1,4 +1,6 @@
 {-# NO_IMPLICIT_PRELUDE #-}
+use Ficus.Builtin.Errors (..)
+use Ficus.Builtin.IOMode (IOMode)
 
 {-# BUILTIN HANDLE Handle #-}
 Handle : Type
@@ -13,3 +15,8 @@ stderr : Handle
 read : Handle -> Int -> String
 {-# BUILTIN HANDLE_WRITE write #-}
 write : Handle -> String -> Unit
+
+{-# BUILTIN HANDLE_OPEN_FILE openFile #-}
+openFile : String -> IOMode -> Handle
+{-# BUILTIN HANDLE_CLOSE close #-}
+close : Handle -> Unit

@@ -61,6 +61,9 @@ lowerProgramWithLayouts previousLayouts modules = do
       providers = Map.fromList [(key owner (C.bindingReference (C.nodeValue binding)), C.bindingScheme (C.nodeValue binding)) | (_, (owner, binding)) <- indexed]
   unless (length allBindings == Map.size globalTable) (Left [E.BackendError E.InvalidCore origin "duplicate linked Core declaration"])
   mapM_ (checkImports providers) modules
+  let builtinEntries = [(key', ident) | tree <- modules, (key', ident) <- Map.toList (C.coreBuiltins tree)]
+      builtinTable = Map.fromList builtinEntries
+  unless (all (\(key', ident) -> Map.lookup key' builtinTable == Just ident) builtinEntries) (Left [E.BackendError E.InvalidCore origin "conflicting linked builtin associations"])
   let (representations, layouts, dictionaryLayouts, layoutState) = representationTables previousLayouts modules
       recordTable = Map.unions [Map.map (C.recordConstructor . C.nodeValue) (C.coreRecords tree) | tree <- modules]
       action = fmap concat $ forM modules $ \tree -> do
@@ -68,7 +71,19 @@ lowerProgramWithLayouts previousLayouts modules = do
             context = Context (C.coreId tree) Map.empty globalTable representations recordTable dictionaryLayouts tokens
         mapM (lowerGroup context) (C.coreBindings tree)
   (initializers, state) <- runStateT action (LowerState 0 IntMap.empty)
-  let program = R.Program (V.fromList (IntMap.elems (functions state))) (length indexed) layouts (V.fromList P.allPrimitives) initializers
+  let RuntimeLayouts _ _ tokens = layoutState
+      errorConstructors =
+        Map.fromList
+          [ (kind, R.ErrorConstructor token payload)
+          | (kind, typeKey, constructorKey, _) <- P.primitiveErrors,
+            Just owner <- [Map.lookup typeKey builtinTable],
+            Just constructor <- [Map.lookup constructorKey builtinTable],
+            Just token <- [Map.lookup owner tokens],
+            Just representation' <- [Map.lookup (C.DataConstructor constructor) representations],
+            payload <- case representation' of Boxed tag -> [Just tag]; Erased -> [Nothing]; Immediate _ -> []
+          ]
+      fileModes = Map.fromList [(tag, mode) | (key', mode) <- P.fileModeConstructors, Just ident <- [Map.lookup key' builtinTable], Just (Boxed tag) <- [Map.lookup (C.DataConstructor ident) representations]]
+      program = R.Program (V.fromList (IntMap.elems (functions state))) (length indexed) layouts fileModes errorConstructors (V.fromList P.allPrimitives) initializers
   checked <- validateProgram program
   pure (LoweredProgram checked (Map.fromList [(ident, index') | ((_, N.GlobalRef ident), index') <- Map.toList globalTable]) (Map.mapMaybe (\case Boxed tag -> Just tag; _ -> Nothing) representations) globalTable layoutState)
   where
@@ -101,11 +116,14 @@ errorContext source =
 primitiveContext :: C.Node a -> P.Primitive nominal -> T.Text
 primitiveContext source primitive = case primitive of
   P.Throw _ -> errorContext source
+  P.MatchFailure -> errorContext source
   P.IntDivide -> errorContext source
   P.IntRemainder -> errorContext source
   P.FloatToInt -> errorContext source
   P.HandleRead _ -> errorContext source
   P.HandleWrite _ -> errorContext source
+  P.HandleOpenFile _ _ -> errorContext source
+  P.HandleClose _ -> errorContext source
   _ -> ""
 
 failure :: E.ErrorKind -> C.Node a -> T.Text -> Lower b
@@ -140,6 +158,7 @@ representationTables previous modules = (allRepresentations, layouts, dictionary
               C.ExceptionDictionary _ ty _ <- [C.formOf node],
               Just (ident, arguments) <- [nominalHead ty]
             ]
+            `Map.union` Map.fromList [(ident, R.Node (R.ConstructorLayout (R.FrameSize 0))) | tree <- modules, (key', ident) <- Map.toList (C.coreBuiltins tree), key' `elem` P.builtinDataTypes]
         )
     (tokenIndices, layouts) = foldl allocate (previousTokens, aggregateLayouts) tokenCandidates
     descendants node = node : concatMap descendants (C.children node)
@@ -221,7 +240,7 @@ expression context source = case C.formOf source of
       condition <- expression context test
       result <- expression context body
       pure (R.Node (condition, result))
-    rest <- maybe (pure (R.Node (R.Raise (errorContext source <> "no conditional branch matched")))) (expression context) fallback
+    rest <- maybe (matchFailure source "no conditional branch matched") (expression context) fallback
     pure (R.Node (R.If conditions rest))
   C.SelectField receiver (C.FieldId owner index') -> do
     constructor <- maybe (failure E.InvalidCore source "missing record descriptor") pure (Map.lookup owner (records context))
@@ -251,7 +270,12 @@ expression context source = case C.formOf source of
     values <- mapM (expression context) arguments
     index' <- maybe (failure E.InvalidCore source "primitive is absent from the shared registry") pure (P.primitiveIndex primitive)
     pure (R.Node (R.Primitive (R.PrimitiveIndex index') values (primitiveContext source primitive)))
-  C.Fail -> pure (R.Node (R.Raise (errorContext source <> "pattern match failed")))
+  C.Fail -> matchFailure source "pattern match failed"
+
+matchFailure :: C.Node a -> T.Text -> Lower R.Expr
+matchFailure source message = do
+  index' <- maybe (failure E.InvalidCore source "missing match-failure primitive") pure (P.primitiveIndex P.MatchFailure)
+  pure (R.Node (R.Primitive (R.PrimitiveIndex index') [R.Node (R.Literal (R.String message))] (errorContext source)))
 
 lowerCase :: Context -> C.Expr C.CoreType -> [C.Alternative C.CoreType] -> C.Expr C.CoreType -> Lower R.Expr
 lowerCase context receiver alternatives fallback = do

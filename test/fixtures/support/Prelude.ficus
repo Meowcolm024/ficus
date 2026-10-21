@@ -174,3 +174,18 @@ throw : Exception e => e -> a
 
 {-# BUILTIN CATCH catch #-}
 catch : Exception e => (Unit -> a) -> (e -> a) -> a
+
+{-# BUILTIN ARITHMETIC_ERROR ArithmeticError #-}
+type ArithmeticError = { DivisionByZero; InvalidConversion String }
+{-# BUILTIN DIVISION_BY_ZERO DivisionByZero #-}
+{-# BUILTIN INVALID_CONVERSION InvalidConversion #-}
+impl Exception ArithmeticError = {}
+{-# BUILTIN IO_ERROR IOError #-}
+type IOError = IOError String String
+{-# BUILTIN IO_FAILURE IOError #-}
+impl Exception IOError = {}
+
+{-# BUILTIN MATCH_ERROR MatchError #-}
+type MatchError = MatchError String
+{-# BUILTIN MATCH_FAILURE MatchError #-}
+impl Exception MatchError = {}

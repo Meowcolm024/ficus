@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN INT_DIV divide #-}
+divide : Int -> Int -> Int
+check () = divide 1 2

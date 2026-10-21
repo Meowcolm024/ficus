@@ -10,3 +10,7 @@ update : Cell a -> (a -> a) -> Unit
 
 check : Unit -> Bool
 check () = { cell = create False; update cell (_ -> True); get cell }
+
+{-# BUILTIN MATCH_ERROR MatchError #-}
+type MatchError = MatchError String
+{-# BUILTIN MATCH_FAILURE MatchError #-}

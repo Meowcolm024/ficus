@@ -1,0 +1,19 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Ficus.Builtin.Errors (..)
+{-# BUILTIN HANDLE Stream #-}
+Stream : Type
+{-# BUILTIN IO_MODE Access #-}
+type Access = { Input; Output; Extend; Update }
+{-# BUILTIN IO_READ_MODE Input #-}
+{-# BUILTIN IO_WRITE_MODE Output #-}
+{-# BUILTIN IO_APPEND_MODE Extend #-}
+{-# BUILTIN IO_READ_WRITE_MODE Update #-}
+{-# BUILTIN HANDLE_OPEN_FILE acquire #-}
+acquire : String -> Access -> Stream
+{-# BUILTIN HANDLE_CLOSE release #-}
+release : Stream -> Unit
+{-# BUILTIN HANDLE_READ get #-}
+get : Stream -> Int -> String
+{-# BUILTIN HANDLE_WRITE put #-}
+put : Stream -> String -> Unit
+check path = { output = acquire path Output; put output "renamed"; release output; input = acquire path Input; text = get input 100; release input; text }

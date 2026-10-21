@@ -1,6 +1,7 @@
 {-# NO_IMPLICIT_PRELUDE #-}
 
-use Ficus.Builtin.Handle (Handle, stdin, stdout, stderr, read, write) pub
+use Ficus.Builtin.Handle (Handle, stdin, stdout, stderr, read, write, openFile, close) pub
+use Ficus.Builtin.IOMode (IOMode(..)) pub
 use Ficus.Builtin.String (stringAppend, stringToChars, charsToString)
 use Data.List (reverse)
 

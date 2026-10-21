@@ -126,6 +126,7 @@ data CoreModule ty = CoreModule
     coreInitialization :: InitializationMode,
     coreSpan :: Span,
     coreOrigin :: Provenance,
+    coreBuiltins :: Map Text GlobalId,
     coreKinds :: Map GlobalId Kind,
     coreImports :: Map Reference (Scheme ty),
     coreConstructors :: Map ConstructorId (Node (ConstructorDescriptor ty)),

@@ -34,6 +34,7 @@ primitiveSignature operation =
     convert template = case template of
       P.ScalarType intrinsic -> primitive intrinsic
       P.ListTypeOf element -> list (convert element)
+      P.FunctionTypeOf input output -> function (convert input) (convert output)
       P.NominalType ident arguments ->
         let kind = foldr KindArrow TypeKind (replicate (length arguments) TypeKind)
          in foldl Application (Constructor ident kind) (map convert arguments)

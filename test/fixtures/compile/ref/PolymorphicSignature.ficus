@@ -1,0 +1,5 @@
+use Prelude (..)
+check () =
+    cell : Ref a
+    cell = newRef []
+    cell

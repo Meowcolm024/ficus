@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN REF Cell #-}
+Cell : Type -> Type
+{-# BUILTIN REF_NEW bad #-}
+bad : Int -> Cell Int

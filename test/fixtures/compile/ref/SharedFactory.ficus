@@ -1,0 +1,9 @@
+use Prelude (..)
+check () =
+    cell = newRef []
+    make () = cell
+    ints = make ()
+    bools = make ()
+    modifyRef ints (_ -> [1])
+    modifyRef bools (_ -> [True])
+    ()

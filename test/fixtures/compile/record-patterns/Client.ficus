@@ -1,0 +1,3 @@
+use Records as R
+use Records (Point, value)
+check () = with (R.Point 3 5) { R.Point with { alpha = a; zebra = z } -> a + z + value }

@@ -1,0 +1,6 @@
+use Prelude (..)
+check () =
+    cell = newRef (x -> x)
+    modifyRef cell (_ -> (x -> x + 1))
+    function = readRef cell
+    function True

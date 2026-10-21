@@ -1,0 +1,2 @@
+type Point = { x : Int; y : Int }
+f () = value where { Point with { x = value } = Point (loop ()) 0; loop () = value }

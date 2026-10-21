@@ -1,0 +1,7 @@
+{-# STANDALONE #-}
+type Point = { x : Int; y : Int }
+Point with { x = first; y = second } = make ()
+Point with {} = discard ()
+make () = { print "first"; Point 4 5 }
+discard () = { print "discard"; Point 0 0 }
+check () = first + second

@@ -43,10 +43,11 @@ data ClosureValue = ClosureValue
     closureArguments :: Vector Value
   }
 
-data Value = LiteralValue RuntimeLiteral | Aggregate ConstructorIndex (Vector Value) | VectorValue (Vector Value) | ByteValue Word8 | HandleValue StandardHandle | FunctionValue ClosureValue
+data Value = LiteralValue RuntimeLiteral | Aggregate ConstructorIndex (Vector Value) | VectorValue (Vector Value) | ByteValue Word8 | HandleValue StandardHandle | RefValue (IORef Value) | FunctionValue ClosureValue
 
--- Inspection deliberately does not pretend host closures have equality.
-data Observation = LiteralObservation RuntimeLiteral | AggregateObservation ConstructorIndex [Observation] | VectorObservation [Observation] | ByteObservation Word8 | HandleObservation StandardHandle | FunctionObservation Arity Int
+-- Closures and mutable references are observed opaquely; inspecting a value
+-- neither reads a cell nor recursively follows potentially cyclic references.
+data Observation = LiteralObservation RuntimeLiteral | AggregateObservation ConstructorIndex [Observation] | VectorObservation [Observation] | ByteObservation Word8 | HandleObservation StandardHandle | RefObservation | FunctionObservation Arity Int
   deriving (Eq, Show)
 
 observe :: Value -> Observation
@@ -56,6 +57,7 @@ observe value = case value of
   VectorValue fields -> VectorObservation (map observe (V.toList fields))
   ByteValue byte -> ByteObservation byte
   HandleValue handle -> HandleObservation handle
+  RefValue _ -> RefObservation
   FunctionValue closure -> FunctionObservation (codeArity (closureCode closure)) (V.length (closureArguments closure))
 
 invalidValue :: Text -> EvalM a

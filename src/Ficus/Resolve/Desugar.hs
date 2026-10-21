@@ -7,6 +7,7 @@ import Control.Monad (foldM, forM, forM_, unless, when)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Strict
+import Data.Graph (SCC (..))
 import Data.List (nub, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
@@ -22,6 +23,7 @@ import Ficus.Resolve.Header
 import Ficus.Resolve.Pragma
 import Ficus.Resolve.Scope
 import Ficus.Syntax.Abstract qualified as A
+import Ficus.Syntax.Abstract.Dependencies (bindingComponents)
 import Ficus.Syntax.Abstract.Validate (validateAbstract)
 import Ficus.Syntax.Concrete qualified as C
 import Ficus.Syntax.Literal qualified as L
@@ -42,7 +44,8 @@ data Env = Env
     envValues :: Map Text Reference,
     envTypes :: Map Text TypeVarId,
     envConfig :: ResolveConfig,
-    envSugar :: SugarRegistry
+    envSugar :: SugarRegistry,
+    envFields :: Map (GlobalId, Text) FieldDescriptor
   }
 
 data ResolveState = ResolveState
@@ -70,7 +73,7 @@ resolveModuleWithNames interactive config registry header input interfaces =
         | otherwise = case filter (constructorVisible (own `Map.union` interactive) . candidateEntity) candidates of
             [] -> Nothing
             available -> Just available
-      env = Env header scope own interactive Map.empty Map.empty config registry
+      env = Env header scope own interactive Map.empty Map.empty config registry fields
       (_, headerErrors) = scanHeader (headerId header) input
       initial = ResolveState 0 (reverse (headerErrors ++ nameErrors ++ importErrors)) [] Map.empty []
       action = do
@@ -188,18 +191,6 @@ freshBinder s spelling = do
   i <- newId
   generated "binder" s (LocalId i, spelling)
 
-patternNames :: C.Pattern -> [C.Name]
-patternNames p = case C.concrete p of
-  C.IdentP n | C.nameSpace n == C.LowerName && C.nameText n /= "_" -> [n]
-  C.ConstructorP f xs -> concatMap patternNames (f : xs)
-  C.OpAppP a _ b -> patternNames a ++ patternNames b
-  C.ParenP a -> patternNames a
-  C.AnnotatedP a _ -> patternNames a
-  C.ProductP xs -> concatMap patternNames xs
-  C.ListP xs -> concatMap patternNames xs
-  C.NegateP a -> patternNames a
-  _ -> []
-
 bindPatterns :: [C.Pattern] -> Resolve (Map Text Reference, [A.Pattern])
 bindPatterns ps = do
   bindings <- foldM bind Map.empty (concatMap patternNames ps)
@@ -234,6 +225,22 @@ patternNode p =
       case A.nodeValue ctor of
         A.ConstructorPattern gid before -> pure (A.ConstructorPattern gid (before ++ args))
         _ -> failAt WrongNamespace (C.location f) "expected constructor pattern"
+    C.RecordP receiver fields -> do
+      entity <- case C.concrete receiver of
+        C.IdentP n -> lookupEntity ConstructorNS n
+        C.DottedP names -> case reverse names of
+          n : prefix -> qualified ConstructorNS (reverse prefix) n
+          [] -> failAt InvalidAbstractTree (C.location receiver) "empty record constructor path"
+        _ -> failAt WrongNamespace (C.location receiver) "expected a record constructor"
+      unless (A.entityRole entity == RecordConstructorRole) (failAt WrongNamespace (C.location receiver) "named record patterns require a record constructor")
+      owner <- maybe (failAt InvalidAbstractTree (C.location receiver) "record constructor has no owner") pure (A.entityOwner entity)
+      descriptors <- asks (sortOn fieldSpan . Map.elems . Map.filter ((== owner) . fieldOwner) . envFields)
+      let labels = Set.fromList (map fieldLabel descriptors)
+      supplied <- foldM (resolveField labels) Map.empty (C.blockItems fields)
+      ordered <- forM descriptors $ \descriptor -> case Map.lookup (fieldLabel descriptor) supplied of
+        Just suppliedPattern -> pure suppliedPattern
+        Nothing -> generated "omitted record field" (C.location p) A.Wildcard
+      pure (A.ConstructorPattern (A.entityId entity) ordered)
     C.OpAppP a n b -> do e <- lookupEntity ConstructorNS n; A.ConstructorPattern (A.entityId e) <$> mapM patternNode [a, b]
     C.ParenP q -> A.nodeValue <$> patternNode q
     C.AnnotatedP q t -> A.AnnotatedPattern <$> patternNode q <*> typeNode False t
@@ -242,6 +249,13 @@ patternNode p =
     C.UnitP -> pure A.UnitPattern
     C.ProductP xs -> A.ProductPattern <$> mapM patternNode xs
     C.ListP xs -> A.ListPattern <$> mapM patternNode xs
+  where
+    resolveField labels seen field = case C.concrete field of
+      C.PatternField n q -> do
+        when (Map.member (C.nameText n) seen) (failAt DuplicateRecordPatternField (C.nameLocation n) "duplicate record pattern field")
+        unless (Set.member (C.nameText n) labels) (failAt UnknownRecordPatternField (C.nameLocation n) "record has no field with this label")
+        resolved <- patternNode q
+        pure (Map.insert (C.nameText n) resolved seen)
 
 withTypes :: [C.TypeBinder] -> Resolve a -> Resolve ([A.TypeBinder], a)
 withTypes bs action = do
@@ -577,7 +591,30 @@ localBindings ds = do
       pure (Map.insert (C.nameText n) (LocalRef i) table)
 
 declarations :: Bool -> [C.Declaration] -> Resolve A.BindingGroup
-declarations recursive ds = declarationsWith recursive Map.empty ds
+declarations recursive ds = do
+  let patterns = [d | d@(C.Located _ _ (C.PatternBinding _ _ _)) <- ds]
+  (allocated, _) <- localBindings patterns
+  let names = Set.fromList [C.nameText n | C.Located _ _ (C.PatternBinding p _ _) <- patterns, n <- patternNames p]
+      ordinary d = case C.concrete d of
+        C.TypeSignature n _ -> C.nameText n `Set.notMember` names
+        _ -> True
+  group <- declarationsWith recursive allocated (filter ordinary ds)
+  aliases <- fmap concat $ forM patterns $ \d -> case C.concrete d of
+    C.PatternBinding p _ _ -> forM (patternNames p) $ \n -> do
+      entity <- lookupEntity ValueNS n
+      reference <- maybe (failAt InvalidAbstractTree (C.nameLocation n) "missing top-level pattern binder") pure (Map.lookup (C.nameText n) allocated)
+      let signatures = [(name, sig) | C.Located _ _ (C.TypeSignature name sig) <- ds, C.nameText name == C.nameText n]
+      forM_ (drop 1 signatures) $ \(name, _) -> emit (diagnostic DuplicateSignature (C.nameLocation name) "duplicate signature")
+      annotation <- case signatures of
+        (_, sig) : _ -> Just <$> scheme sig
+        [] -> pure Nothing
+      body <- generated "top-level pattern export" (C.nameLocation n) (A.Ref reference)
+      clause <- generated "top-level pattern export" (C.nameLocation n) (A.Clause [] [] body (A.BindingGroup A.Recursive []) A.AtInitialization)
+      generated "top-level pattern export" (C.nameLocation n) (A.ValueDefinition (GlobalRef (A.entityId entity)) annotation (A.ClausesBody 0 (clause :| [])))
+    _ -> pure []
+  let result = group {A.declarations = A.declarations group ++ aliases}
+  rejectRecursivePatterns ds result
+  pure result
 
 declarationsWith :: Bool -> Map Text Reference -> [C.Declaration] -> Resolve A.BindingGroup
 declarationsWith recursive allocated ds = do
@@ -612,7 +649,9 @@ declarationsWith recursive allocated ds = do
   -- Restore declaration source order after grouping clauses.
   let allDeclarations = catMaybes values ++ catMaybes others
       sorted = sortNodes allDeclarations
-  pure (A.BindingGroup (if recursive then A.Recursive else A.Sequential) sorted)
+  let result = A.BindingGroup (if recursive then A.Recursive else A.Sequential) sorted
+  rejectRecursivePatterns ds result
+  pure result
   where
     sameType n = \case
       C.TypeAlias name _ _ -> C.nameText name == C.nameText n
@@ -620,6 +659,35 @@ declarationsWith recursive allocated ds = do
       C.TraitDeclaration _ name _ _ -> C.nameText name == C.nameText n
       _ -> False
     sortNodes = map snd . Map.toAscList . Map.fromList . map (\d -> ((start (A.nodeSpan d), A.nodeId d), d))
+
+rejectRecursivePatterns :: [C.Declaration] -> A.BindingGroup -> Resolve ()
+rejectRecursivePatterns source group = when (A.scopeMode group == A.Recursive) $ do
+  let cyclic = Set.fromList (concat [refs | CyclicSCC refs <- bindingComponents group])
+      records = Map.fromList [(C.location d, p) | d@(C.Located _ _ (C.PatternBinding p _ _)) <- source, containsRecord p]
+  forM_ (A.declarations group) $ \declaration -> case (Map.lookup (A.nodeSpan declaration) records, A.nodeValue declaration) of
+    (Just original, A.PatternDefinition p _)
+      | not (Set.null (references p `Set.intersection` cyclic)) ->
+          failAt RecursiveRecordPattern (C.location original) "record pattern bindings cannot be recursive; match with with inside a named function instead"
+    _ -> pure ()
+  where
+    containsRecord p = case C.concrete p of
+      C.RecordP _ _ -> True
+      C.ParenP q -> containsRecord q
+      C.AnnotatedP q _ -> containsRecord q
+      C.ConstructorP q ps -> any containsRecord (q : ps)
+      C.OpAppP a _ b -> containsRecord a || containsRecord b
+      C.ProductP ps -> any containsRecord ps
+      C.ListP ps -> any containsRecord ps
+      C.NegateP q -> containsRecord q
+      _ -> False
+    references p = case A.nodeValue p of
+      A.Bind b -> Set.singleton (LocalRef (fst (A.nodeValue b)))
+      A.ConstructorPattern _ ps -> Set.unions (map references ps)
+      A.ProductPattern ps -> Set.unions (map references ps)
+      A.ListPattern ps -> Set.unions (map references ps)
+      A.AnnotatedPattern q _ -> references q
+      A.NegatedPattern q -> references q
+      _ -> Set.empty
 
 valueDefinition :: Map Text Reference -> Text -> [C.Declaration] -> Resolve A.Declaration
 valueDefinition allocated key ds = do

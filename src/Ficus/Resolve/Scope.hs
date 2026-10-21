@@ -40,6 +40,7 @@ collectNames owner m =
     entity ns role parent n = ((ns, C.nameText n), Entity (GlobalId owner ns (C.nameText n)) role (C.nameLocation n) parent)
     entries d = case C.concrete d of
       C.FunctionClause n _ _ _ _ -> [entity ValueNS ValueRole Nothing n | C.nameText n /= "_"]
+      C.PatternBinding p _ _ -> [entity ValueNS ValueRole Nothing n | n <- patternNames p]
       C.TypeSignature n _ -> [entity ValueNS ValueRole Nothing n | C.nameText n /= "_"]
       C.KindSignature n _ -> [entity TypeNS DataRole Nothing n | not (any (definesType (C.nameText n)) (C.moduleDeclarations m))]
       C.TypeAlias n _ _ -> [entity TypeNS AliasRole Nothing n]
@@ -57,6 +58,7 @@ collectNames owner m =
       _ -> False
     declared d = case C.concrete d of
       C.FunctionClause {} -> entries d
+      C.PatternBinding {} -> entries d
       C.TypeAlias {} -> entries d
       C.DataDeclaration {} -> entries d
       C.TraitDeclaration {} -> entries d
@@ -72,8 +74,9 @@ collectNames owner m =
     checkSignature (seen, ds) n = case Map.lookup (C.nameText n) seen of
       Just old -> (seen, ds ++ [(diagnostic DuplicateSignature (C.nameLocation n) "duplicate kind signature") {relatedSpans = [(C.nameLocation old, "first signature")]}])
       Nothing -> (Map.insert (C.nameText n) n seen, ds)
+    patternSites = [C.nameLocation n | C.Located _ _ (C.PatternBinding p _ _) <- C.moduleDeclarations m, n <- patternNames p]
     checkDuplicate (seen, ds) (key, e) = case Map.lookup key seen of
-      Just old | entityRole old == ValueRole && entityRole e == ValueRole -> (seen, ds)
+      Just old | entityRole old == ValueRole && entityRole e == ValueRole && entitySpan old `notElem` patternSites && entitySpan e `notElem` patternSites -> (seen, ds)
       Just old -> (seen, ds ++ [(diagnostic (if entityRole old == MethodRole && entityRole e == MethodRole && entityOwner old == entityOwner e then DuplicateSignature else DuplicateDeclaration) (entitySpan e) "duplicate declaration") {relatedSpans = [(entitySpan old, "earlier declaration")]}])
       Nothing -> (Map.insert key e seen, ds)
     add (table, ds) (key@(ns, spelling), e)
@@ -153,3 +156,16 @@ constructorVisible :: NameSummary -> Entity -> Bool
 constructorVisible names entity = case entityOwner entity of
   Just owner@(GlobalId _ TypeNS name) -> maybe True ((== owner) . entityId) (Map.lookup (TypeNS, name) names)
   _ -> True
+
+patternNames :: C.Pattern -> [C.Name]
+patternNames p = case C.concrete p of
+  C.IdentP n | C.nameSpace n == C.LowerName && C.nameText n /= "_" -> [n]
+  C.RecordP _ fields -> concat [patternNames q | C.Located _ _ (C.PatternField _ q) <- C.blockItems fields]
+  C.ConstructorP f xs -> concatMap patternNames (f : xs)
+  C.OpAppP a _ b -> patternNames a ++ patternNames b
+  C.ParenP a -> patternNames a
+  C.AnnotatedP a _ -> patternNames a
+  C.ProductP xs -> concatMap patternNames xs
+  C.ListP xs -> concatMap patternNames xs
+  C.NegateP a -> patternNames a
+  _ -> []

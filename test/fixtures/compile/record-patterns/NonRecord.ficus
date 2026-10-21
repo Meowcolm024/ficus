@@ -1,0 +1,2 @@
+type Box = Box Int
+f (Box with {}) = 0

@@ -204,6 +204,7 @@ normalize m =
       LitP l -> LitP l
       NegateP p -> NegateP (pat p)
       ConstructorP p ps -> ConstructorP (pat p) (map pat ps)
+      RecordP p fields -> RecordP (pat p) (block (node (\(PatternField n q) -> PatternField (name n) (pat q))) fields)
       OpAppP a op b -> OpAppP (pat a) (name op) (pat b)
       ParenP p -> ParenP (pat p)
       AnnotatedP p t -> AnnotatedP (pat p) (typeExpr t)

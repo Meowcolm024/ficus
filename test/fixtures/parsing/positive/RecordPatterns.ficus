@@ -1,0 +1,12 @@
+argument (Point with { x = x; y = y; }) extra = (x, y, extra)
+lambda = (Point with { x = value }) -> value
+qualified (Data.Point.Point with { x = value }) = value
+empty p = with p { Point with {} -> () }
+nested p = with p { Box with { item = Point with { x = x } } -> x }
+annotated ((Point with { x = x }) : Point) = x
+local p = { Point with { x = x } = p; x }
+whereGroup p = x where { Point with { x = x } = p }
+doForms action p = do { Point with { x = x } <- action; Point with { y = y } = p; (x, y) }
+Point with { x = global } = value
+(Point with { y = another }) = value
+constructor p = with p { Just (Point with { x = value }) -> value; Nothing -> 0 }

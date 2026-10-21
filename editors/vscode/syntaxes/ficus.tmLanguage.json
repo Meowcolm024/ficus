@@ -14,6 +14,7 @@
     { "include": "#trait-head" },
     { "include": "#type-annotation" },
     { "include": "#explicit-type-argument" },
+    { "include": "#record-pattern" },
     { "include": "#qualified-term" },
     { "include": "#qualified-value" },
     { "include": "#keyword" },
@@ -22,6 +23,81 @@
     { "include": "#term-identifier" }
   ],
   "repository": {
+    "record-pattern": {
+      "begin": "(?<![\\p{L}\\p{M}\\p{N}_'])(\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*(?:\\.\\p{Lu}[\\p{L}\\p{M}\\p{N}_']*)*)[ \\t]+(with)[ \\t]*(\\{)",
+      "end": "\\}",
+      "name": "meta.record-pattern.ficus",
+      "beginCaptures": {
+        "1": {
+          "patterns": [
+            {
+              "include": "#qualified-term"
+            },
+            {
+              "include": "#term-identifier"
+            }
+          ]
+        },
+        "2": {
+          "name": "keyword.control.ficus"
+        },
+        "3": {
+          "name": "punctuation.definition.bracket.ficus"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.bracket.ficus"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#record-fields"
+        }
+      ]
+    },
+    "record-fields": {
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#character"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{M}\\p{N}_'])\\p{Ll}[\\p{L}\\p{M}\\p{N}_']*(?=[ \\t]*=(?![!#$%&*+/<=>?@\\\\^|~:\\-]))",
+          "name": "variable.other.member.ficus"
+        },
+        {
+          "include": "#record-pattern"
+        },
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.bracket.ficus"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.bracket.ficus"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#record-fields"
+            }
+          ]
+        },
+        {
+          "include": "$self"
+        }
+      ]
+    },
     "explicit-type-argument": {
       "patterns": [
         {

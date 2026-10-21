@@ -3,6 +3,7 @@ module FicusBackend.Runtime.Primitive (evaluatePrimitive, ioEffects) where
 import Control.Exception (IOException, try)
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class (liftIO)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -74,6 +75,13 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
   (VecLength (), [VectorValue values]) -> integer (fromIntegral (V.length values))
   (ByteFromInt (), [LiteralValue (Integer value)]) -> pure (ByteValue (fromIntegral value))
   (ByteToInt (), [ByteValue value]) -> integer (fromIntegral value)
+  (RefNew (), [value]) -> RefValue <$> liftIO (newIORef value)
+  (RefRead (), [RefValue cell]) -> liftIO (readIORef cell)
+  (RefModify (), [RefValue cell, update]) -> do
+    previous <- liftIO (readIORef cell)
+    updated <- applyValueWithEffects effects update previous
+    liftIO (writeIORef cell updated)
+    pure (LiteralValue Unit)
   (HandleStdin (), []) -> pure (HandleValue StandardInput)
   (HandleStdout (), []) -> pure (HandleValue StandardOutput)
   (HandleStderr (), []) -> pure (HandleValue StandardError)

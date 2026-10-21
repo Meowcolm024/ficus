@@ -1,0 +1,1 @@
+f (Point with { Item = value }) = value

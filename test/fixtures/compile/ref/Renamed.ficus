@@ -1,0 +1,12 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN REF Cell #-}
+Cell : Type -> Type
+{-# BUILTIN REF_NEW create #-}
+create : a -> Cell a
+{-# BUILTIN REF_READ get #-}
+get : Cell a -> a
+{-# BUILTIN REF_MODIFY update #-}
+update : Cell a -> (a -> a) -> Unit
+
+check : Unit -> Bool
+check () = { cell = create False; update cell (_ -> True); get cell }

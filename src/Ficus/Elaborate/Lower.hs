@@ -463,16 +463,43 @@ lowerTop context group = case schedule group of
   Right components -> fmap concat $ forM components $ \component -> case component of
     Acyclic source -> case A.nodeValue source of
       A.ValueDefinition {} -> (: []) . C.NonRecursive <$> lowerBinding context source
-      A.PatternDefinition _ body -> do
-        scheme <- declarationScheme context source
-        inner <- withMapping context source
-        (withEvidence, parameters) <- evidenceParameters inner source (schemePredicates scheme)
-        value <- expression withEvidence body >>= abstractEvidence source parameters >>= closeInternal source
-        binder <- freshBinder source "$discard" C.ValueBinder (C.typeOf value)
-        binding <- generated source "discard initializer" (C.Binding (C.binderReference binder) (evidenceScheme (declarations context) scheme) value (C.BindingFacts 0 (initializerExpansiveOrigin source)))
-        pure [C.NonRecursive binding]
+      A.PatternDefinition pattern' body -> map C.NonRecursive <$> lowerTopPatternBinding context source pattern' body
       _ -> pure []
     Cyclic sources -> (: []) . C.Recursive <$> traverse (lowerBinding context) sources
+
+-- Top-level pattern variables occupy ordinary module initialization slots. A
+-- shared payload evaluates and matches the RHS once, including all-wildcard
+-- patterns; outward aliases retain independent polymorphic instantiations.
+lowerTopPatternBinding :: Context -> A.Declaration -> A.Pattern -> A.Expr -> Lower [C.Binding InferType]
+lowerTopPatternBinding context source pattern' rhs = do
+  scheme <- declarationScheme context source
+  inner <- withMapping context source
+  (withEvidence, parameters) <- evidenceParameters inner source (schemePredicates scheme)
+  value <- expression withEvidence rhs
+  let binders = patternBinders pattern'
+  values <- forM binders $ \binder -> do
+    ty <- nodeType inner binder
+    makeExpression binder ty (C.Var (LocalRef (fst (A.nodeValue binder))) [])
+  packed <- productExpression pattern' values
+  failed <- makeExpression pattern' (C.typeOf packed) C.Fail
+  matched <- letValue source value $ \reference -> matchPattern withEvidence reference pattern' packed failed
+  payload <- freshBinder source "$pattern" C.ValueBinder (C.typeOf packed)
+  let payloadScheme = evidenceScheme (declarations context) scheme {schemeType = C.typeOf packed}
+  payloadBody <- abstractEvidence source parameters matched >>= closeInternal source
+  payloadBinding <- generated source "top-level pattern initializer" (C.Binding (C.binderReference payload) payloadScheme payloadBody (C.BindingFacts 0 (initializerExpansiveOrigin source)))
+  aliases <- forM (zip [0 ..] binders) $ \(index, binder) -> do
+    let reference = LocalRef (fst (A.nodeValue binder))
+    ownScheme <- maybe (failure binder "pattern variable has no checked scheme") (traverse (resolved context)) (Map.lookup reference (schemes context))
+    let owned = Set.fromList (map quantifierId (quantifiers ownScheme))
+    arguments <- forM (quantifiers payloadScheme) $ \q ->
+      if quantifierId q `Set.member` owned
+        then pure (Variable (Bound (quantifierId q)) (quantifierKind q))
+        else lift (fresh (A.nodeSpan binder) (quantifierKind q))
+    let instantiated = S.apply (binderSubstitution (quantifiers payloadScheme) arguments) (schemeType payloadScheme)
+    receiver <- makeExpression binder instantiated (C.Var (C.binderReference payload) arguments)
+    selected <- selectProduct binder index (length binders) receiver >>= closeInternal binder
+    generated binder "top-level pattern variable" (C.Binding reference ownScheme selected (C.BindingFacts 0 Nothing))
+  pure (payloadBinding : aliases)
 
 lowerBinding :: Context -> A.Declaration -> Lower (C.Binding InferType)
 lowerBinding context source = case A.nodeValue source of

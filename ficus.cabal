@@ -44,6 +44,29 @@ extra-source-files:
     test/fixtures/compile/library/negative/WrongScalar.ficus
     test/fixtures/compile/library/negative/WrongVector.ficus
     test/fixtures/compile/library/Renamed.ficus
+    test/fixtures/compile/record-patterns/Client.ficus
+    test/fixtures/compile/record-patterns/Duplicate.ficus
+    test/fixtures/compile/record-patterns/NonRecord.ficus
+    test/fixtures/compile/record-patterns/Positive.ficus
+    test/fixtures/compile/record-patterns/Records.ficus
+    test/fixtures/compile/record-patterns/RecursiveTop.ficus
+    test/fixtures/compile/record-patterns/RecursiveWhere.ficus
+    test/fixtures/compile/record-patterns/RefutableDo.ficus
+    test/fixtures/compile/record-patterns/TopEffect.ficus
+    test/fixtures/compile/record-patterns/Unknown.ficus
+    test/fixtures/compile/ref/CapturedGetter.ficus
+    test/fixtures/compile/ref/Failure.ficus
+    test/fixtures/compile/ref/FunctionCell.ficus
+    test/fixtures/compile/ref/GlobalCell.ficus
+    test/fixtures/compile/ref/MissingAssociation.ficus
+    test/fixtures/compile/ref/MixedCell.ficus
+    test/fixtures/compile/ref/PolymorphicSignature.ficus
+    test/fixtures/compile/ref/Positive.ficus
+    test/fixtures/compile/ref/Renamed.ficus
+    test/fixtures/compile/ref/SharedFactory.ficus
+    test/fixtures/compile/ref/SpecializedAllocation.ficus
+    test/fixtures/compile/ref/Unresolved.ficus
+    test/fixtures/compile/ref/WrongUpdater.ficus
     test/fixtures/compile/typing/Bridge.ficus
     test/fixtures/compile/typing/Definitions.ficus
     test/fixtures/compile/typing/Dependent.ficus
@@ -168,8 +191,11 @@ extra-source-files:
     test/fixtures/parsing/negative/RecordComma.ficus
     test/fixtures/parsing/negative/RecordFieldSignature.ficus
     test/fixtures/parsing/negative/RecordNotIndented.ficus
-    test/fixtures/parsing/negative/RecordPatternBinder.ficus
-    test/fixtures/parsing/negative/RecordPatternMatch.ficus
+    test/fixtures/parsing/negative/RecordPatternLayout.ficus
+    test/fixtures/parsing/negative/RecordPatternPunning.ficus
+    test/fixtures/parsing/negative/RecordPatternTrailingComma.ficus
+    test/fixtures/parsing/negative/RecordPatternTypeMember.ficus
+    test/fixtures/parsing/negative/RecordPatternUnparenthesized.ficus
     test/fixtures/parsing/negative/RecordPunning.ficus
     test/fixtures/parsing/negative/RecordWithBadLayout.ficus
     test/fixtures/parsing/negative/RecordWithEmptyUpdate.ficus
@@ -218,6 +244,9 @@ extra-source-files:
     test/fixtures/parsing/positive/Operators.ficus
     test/fixtures/parsing/positive/PatternsAnnotations.ficus
     test/fixtures/parsing/positive/PragmaComments.ficus
+    test/fixtures/parsing/positive/RecordPatternBinder.ficus
+    test/fixtures/parsing/positive/RecordPatternMatch.ficus
+    test/fixtures/parsing/positive/RecordPatterns.ficus
     test/fixtures/parsing/positive/RecordWith.ficus
     test/fixtures/parsing/positive/RefutabilityIsSemantic.ficus
     test/fixtures/parsing/positive/SharedPrefixes.ficus
@@ -495,6 +524,7 @@ data-files:
     library/Data/Maybe.ficus
     library/Data/Ordering.ficus
     library/Data/Product.ficus
+    library/Data/Ref.ficus
     library/Data/Result.ficus
     library/Data/String.ficus
     library/Data/Unit.ficus
@@ -506,6 +536,7 @@ data-files:
     library/Ficus/Builtin/Float.ficus
     library/Ficus/Builtin/Handle.ficus
     library/Ficus/Builtin/Int.ficus
+    library/Ficus/Builtin/Ref.ficus
     library/Ficus/Builtin/String.ficus
     library/Ficus/Builtin/Unit.ficus
     library/Ficus/Builtin/Vec.ficus
@@ -682,6 +713,8 @@ test-suite ficus-test
       Ficus.Infer.TypeSpec
       Ficus.Parser.PrettySpec
       Ficus.Parser.Spec
+      Ficus.RecordPatternSpec
+      Ficus.RefSpec
       Ficus.Resolve.Spec
       Ficus.Resolve.Support
       Ficus.Resolve.WildcardSpec

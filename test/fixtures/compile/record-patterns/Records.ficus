@@ -1,0 +1,2 @@
+type Point = { zebra : Int; alpha : Int }
+Point with { zebra = value } = Point 11 22

@@ -6,6 +6,7 @@ import Data.List (find, mapAccumL, nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Ficus.Compile qualified as Compile
@@ -266,22 +267,23 @@ declarations tokens group = concatMap declaration (A.declarations group)
 semanticSpans :: FilePath -> Text -> [Symbol] -> [(Span, TokenClass, Bool)]
 semanticSpans file source symbols = case lexSource file source of
   Left _ -> []
-  Right (tokens, comments) -> sortOn (offset . start . first) (mapMaybe classify tokens ++ [(commentSpan comment, Comment, False) | comment <- comments])
+  Right (tokens, comments) -> sortOn (offset . start . first) (mapMaybe (classify (recordFieldLabels tokens)) tokens ++ [(commentSpan comment, Comment, False) | comment <- comments])
   where
     first (location, _, _) = location
     -- Interpolation references inherit the complete literal's source span.
     -- Let the lexical grammar color its escapes, braces, and embedded names;
     -- a semantic token for the whole literal would override those scopes.
-    classify token
+    classify _ token
       | Token.tokenKind token == Token.StringLiteral,
         hasStringInterpolation (Token.tokenText token) =
           Nothing
-    classify token =
+    classify labels token =
       let matching = sortOn (\symbol -> (not (symbolDeclared symbol), offset (end (symbolSpan symbol)) - offset (start (symbolSpan symbol)))) [symbol | symbol <- symbols, Just _ <- [symbolClass symbol], within (symbolSpan symbol) (Token.tokenSpan token)]
           lexical = case Token.tokenKind token of
             -- The lexer treats import soft keywords as ordinary identifiers.
             -- Without a resolved symbol, keep the editor's contextual scope.
             Token.Lower
+              | Token.tokenSpan token `Set.member` labels -> Just Property
               | Token.tokenText token `elem` ["as", "pub"] -> Nothing
               | otherwise -> Just Variable
             Token.Upper -> Just (if "." `T.isPrefixOf` T.stripStart (T.drop (offset (end (Token.tokenSpan token)) + 1) source) then Namespace else TypeName)
@@ -295,6 +297,27 @@ semanticSpans file source symbols = case lexSource file source of
        in case matching of
             symbol : _ -> (\kind -> (Token.tokenSpan token, kind, symbolDeclared symbol)) <$> symbolClass symbol
             [] -> (\kind -> (Token.tokenSpan token, kind, False)) <$> lexical
+
+-- Explicit named record blocks share field-label syntax in constructions,
+-- updates and patterns. Track braces so nested expression blocks retain their
+-- ordinary binding scopes, including when semantic checking is incomplete.
+recordFieldLabels :: [Token.Token] -> Set.Set Span
+recordFieldLabels = Set.fromList . scan []
+  where
+    scan scopes (receiver : intro : open : rest)
+      | (Token.tokenKind receiver `elem` [Token.Upper, Token.Lower] || Token.tokenText receiver == ")"),
+        Token.tokenText intro == "with",
+        Token.tokenText open == "{" =
+          scan (True : scopes) rest
+    scan scopes (token : rest)
+      | Token.tokenText token == "{" = scan (False : scopes) rest
+      | Token.tokenText token == "}" = scan (drop 1 scopes) rest
+    scan scopes@(True : _) (label : equals : rest)
+      | Token.tokenKind label == Token.Lower,
+        Token.tokenText equals == "=" =
+          Token.tokenSpan label : scan scopes (equals : rest)
+    scan scopes (_ : rest) = scan scopes rest
+    scan _ [] = []
 
 -- The lexer has already validated the literal. Consume escape pairs before
 -- looking for an interpolation opener, including escaped backslashes.

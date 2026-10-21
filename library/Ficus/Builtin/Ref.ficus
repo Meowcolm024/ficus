@@ -1,0 +1,10 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+
+{-# BUILTIN REF Ref #-}
+Ref : Type -> Type
+{-# BUILTIN REF_NEW newRef #-}
+newRef : a -> Ref a
+{-# BUILTIN REF_READ readRef #-}
+readRef : Ref a -> a
+{-# BUILTIN REF_MODIFY modifyRef #-}
+modifyRef : Ref a -> (a -> a) -> Unit

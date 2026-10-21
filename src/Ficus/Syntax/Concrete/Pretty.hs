@@ -164,6 +164,7 @@ patternDoc p = case concrete p of
   LitP l -> literal l
   NegateP x -> spaces [chunk "-", patternDoc x]
   ConstructorP c ps -> spaces (patternDoc c : map patternDoc ps)
+  RecordP c fields -> spaces [patternDoc c, chunk "with", block patternField fields]
   OpAppP a op b -> spaces [patternDoc a, chunk (nameText op), patternDoc b]
   ParenP x -> parens (patternDoc x)
   AnnotatedP x t -> parens (spaces [patternDoc x, chunk ":", typeDoc t])
@@ -171,6 +172,9 @@ patternDoc p = case concrete p of
   ProductP ps -> parens (commas (map patternDoc ps))
   ListP ps -> chunk "[" ++ commas (map patternDoc ps) ++ chunk "]"
   DottedP ns -> dottedNames ns
+
+patternField :: PatternField -> Doc
+patternField f = case concrete f of PatternField n p -> spaces [name n, chunk "=", patternDoc p]
 
 typeDoc :: TypeExpr -> Doc
 typeDoc t = case concrete t of

@@ -1,0 +1,8 @@
+{-# STANDALONE #-}
+use Prelude (..)
+
+cell = newRef 1
+failUpdate : Unit -> Unit
+failUpdate () = modifyRef cell (value -> value / 0)
+current : Unit -> Int
+current () = readRef cell

@@ -129,3 +129,29 @@ id : {a} -> a -> a
 id @a (value : a) = value
 const : {a} -> {b} -> a -> b -> a
 const @a @b (value : a) (ignored : b) = value
+
+-- Mutable-reference fixtures share these bindings without loading the library.
+{-# BUILTIN REF Ref #-}
+Ref : Type -> Type
+{-# BUILTIN REF_NEW newRef #-}
+newRef : a -> Ref a
+{-# BUILTIN REF_READ readRef #-}
+readRef : Ref a -> a
+{-# BUILTIN REF_MODIFY modifyRef #-}
+modifyRef : Ref a -> (a -> a) -> Unit
+
+trait Debug a =
+    debug : a -> String
+impl Debug Int =
+    debug value = intShow value
+impl Debug a => Debug (Ref a) =
+    debug cell = "Ref (" ++ debug (readRef cell) ++ ")"
+
+{-# BUILTIN HANDLE Handle #-}
+Handle : Type
+{-# BUILTIN HANDLE_STDOUT stdout #-}
+stdout : Handle
+{-# BUILTIN HANDLE_WRITE write #-}
+write : Handle -> String -> Unit
+print : String -> Unit
+print text = write stdout text

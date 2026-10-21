@@ -71,7 +71,7 @@ Modules marked `NO_IMPLICIT_PRELUDE` receive none of these declarations. The res
 | Builtin-backed declarations | `Ficus.Builtin.Int`, `.Float`, `.Char`, `.String`, `.Handle`, `.Vec`, `.Byte`; `.Bool` and `.Unit` document compiler-reserved declarations without imports or new keys |
 | Basic classes | `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Debug`, `Show`, `Eq`, `Ord`, `Pure`, `Seq`, `Bind`, `Functor`, `Applicative`, `Monad`, `Alternative`, `Semigroup`, `Monoid`, `Default`, `Bifunctor`, `Foldable`, `Traversable`, each under `Class` |
 | System | `System.IO` |
-| Data | `Data.List`, `.Function`, `.Product`, `.Ordering`, `.Maybe`, `.Result`, `.Const`, `.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Vec`, `.Byte`, `.Void` |
+| Data | `Data.List`, `.Function`, `.Product`, `.Ordering`, `.Maybe`, `.Result`, `.Const`, `.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Vec`, `.Byte`, `.Void`; `.Ref` is an implemented v1 extension |
 | Control | No v0 modules; exceptions and concurrency remain later work |
 
 `Handle` stays out of the `Data` layer; its public IO operations belong in `System.IO`. Primitive data modules expose operations on the already-reserved types rather than defining replacement types. `Data.Const` denotes the constant type constructor, distinct from the ordinary `const` function in `Data.Function`.
@@ -509,15 +509,31 @@ catch : Exception e => (Unit -> a) -> (e -> a) -> a
 
 `Exception` has no source-level methods, but typed `catch` requires a runtime nominal type identity. Whether that identity lives in exception evidence or another runtime representation remains open; it cannot simply be erased to unit. The trait does not make exception effects implicit in unrelated Prelude functions.
 
-The settled v1+ mutable-reference API likewise belongs to an explicit builtin-backed module:
+The implemented v1 mutable-reference API lives in `Ficus.Builtin.Ref` and is
+selectively re-exported by `Data.Ref`:
 
 ```text
+use Data.Ref (Ref, newRef, readRef, modifyRef)
+
 newRef : a -> Ref a
 modifyRef : Ref a -> (a -> a) -> Unit
 readRef : Ref a -> a
 ```
 
-They use the v0 value restriction and are not re-exported by Prelude.
+The compiler keys are `REF`, `REF_NEW`, `REF_MODIFY`, and `REF_READ`. Allocation
+creates a fresh cell; aliases share it. Modification reads, calls the updater
+once, and writes only after it returns successfully. Updater effects are not
+rolled back on failure, and the operation has no atomicity guarantee.
+
+The existing value restriction applies without exceptions: allocated cells stay
+monomorphic, captured cells do not become polymorphic through a lambda, explicit
+signatures cannot generalize allocations, and unresolved weak types are errors.
+Fresh factories such as `make () = newRef []` can be polymorphic.
+
+`Class.Debug` supplies `Debug a => Debug (Ref a)` and renders the current contents
+as `Ref (...)`, reading the cell once. This placement satisfies instance
+ownership while keeping builtin modules independent of trait and data modules.
+These declarations require explicit imports and are not re-exported by Prelude.
 
 ## 15. Validation and later work
 

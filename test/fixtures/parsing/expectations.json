@@ -78,8 +78,6 @@
   "negative/RecordComma.ficus": {"kind": "SyntaxError", "span": [1, 26, 1, 26]},
   "negative/RecordFieldSignature.ficus": {"kind": "SyntaxError", "span": [1, 18, 1, 18]},
   "negative/RecordNotIndented.ficus": {"kind": "LayoutError", "span": [2, 1, 2, 1]},
-  "negative/RecordPatternBinder.ficus": {"kind": "SyntaxError", "span": [1, 10, 1, 13]},
-  "negative/RecordPatternMatch.ficus": {"kind": "SyntaxError", "span": [1, 22, 1, 25]},
   "negative/RecordPunning.ficus": {"kind": "SyntaxError", "span": [1, 23, 1, 23]},
   "negative/RecordWithBadLayout.ficus": {"kind": "LayoutError", "span": [2, 1, 2, 1]},
   "negative/RecordWithEmptyUpdate.ficus": {"kind": "SyntaxError", "span": [1, 20, 1, 20]},
@@ -121,5 +119,10 @@
   "negative/NestedTypeQuantifier.ficus": {"kind": "SyntaxError", "span": [1, 6, 1, 6]},
   "negative/ConcreteTypeBinder.ficus": {"kind": "SyntaxError", "span": [1, 4, 1, 6]},
   "negative/TabEof.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 9]},
-  "negative/TabEscape.ficus": {"kind": "LexicalError", "span": [1, 10, 1, 11]}
+  "negative/TabEscape.ficus": {"kind": "LexicalError", "span": [1, 10, 1, 11]},
+  "negative/RecordPatternPunning.ficus": {"kind": "SyntaxError", "span": [1, 19, 1, 19]},
+  "negative/RecordPatternLayout.ficus": {"kind": "SyntaxError", "span": [2, 5, 2, 5]},
+  "negative/RecordPatternTrailingComma.ficus": {"kind": "SyntaxError", "span": [1, 26, 1, 26]},
+  "negative/RecordPatternTypeMember.ficus": {"kind": "SyntaxError", "span": [1, 17, 1, 20]},
+  "negative/RecordPatternUnparenthesized.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 12]}
 }

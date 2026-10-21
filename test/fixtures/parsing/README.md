@@ -32,6 +32,9 @@ claiming to implement their semantic diagnostics.
 
 `positive/RefutabilityIsSemantic.ficus` deliberately includes patterns whose
 coverage may fail after typing. Parser acceptance does not depend on a whitelist
-of supposedly irrefutable syntax. RecordPatternBinder/Match negatives are v0
-version gates. V1 record/type-member cases are inventoried in
-`../record-patterns/`; v2 lazy-arrow cases are in `../lazy-arrows/`.
+of supposedly irrefutable syntax. `positive/RecordPatternBinder.ficus`,
+`positive/RecordPatternMatch.ficus`, and `positive/RecordPatterns.ficus` cover
+explicit named record patterns. Negative cases reject layout blocks, punning,
+commas, and unsupported type-member labels. Executed semantic cases are in
+`../compile/record-patterns/`; existential type-member proposals remain in
+`../record-patterns/`. V2 lazy-arrow cases are in `../lazy-arrows/`.

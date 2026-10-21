@@ -1,0 +1,39 @@
+use Prelude (Ref, newRef, readRef, modifyRef)
+
+roundTrip : Unit -> Int
+roundTrip () = { cell = newRef 10; modifyRef cell (value -> value + 5); readRef cell }
+
+aliasing : Unit -> Int
+aliasing () = { cell = newRef 1; alias = cell; modifyRef alias (value -> value + 1); readRef cell }
+
+independent : Unit -> Int
+independent () = { first = newRef 1; second = newRef 1; modifyRef first (_ -> 9); readRef second }
+
+functionValue : Unit -> Int
+functionValue () = { cell = newRef (x -> x + 1); modifyRef cell (previous -> (x -> previous x * 2)); (readRef cell) 3 }
+
+make () = newRef []
+freshPolymorphic : Unit -> Bool
+freshPolymorphic () = { ints = make (); bools = make (); modifyRef ints (_ -> [1]); modifyRef bools (_ -> [True]); with (readRef ints, readRef bools) { ([1], [True]) -> True; _ -> False } }
+
+effectOrder : Unit -> Int
+effectOrder () =
+    cell = newRef 0
+    select () = { print "ref"; cell }
+    updater () = { print "updater"; value -> { print "apply"; value + 1 } }
+    modifyRef (select ()) (updater ())
+    readRef cell
+
+readTiming : Unit -> (Int * Int)
+readTiming () = { cell = newRef 1; before = readRef cell; modifyRef cell (_ -> 2); (before, readRef cell) }
+
+allocate = newRef
+aliasAllocation : Unit -> Int
+aliasAllocation () = { cell = allocate 3; modifyRef cell (value -> value * 2); readRef cell }
+
+-- A reference may hold a closure capturing itself; inspection must remain opaque.
+cyclicValue : Unit -> Ref (Unit -> Unit)
+cyclicValue () = { cell = newRef (_ -> ()); modifyRef cell (_ -> (_ -> { _ = readRef cell; () })); cell }
+
+referenceDebug : Unit -> String
+referenceDebug () = { cell = newRef 1; before = debug cell; modifyRef cell (_ -> 2); before ++ ";" ++ debug cell }

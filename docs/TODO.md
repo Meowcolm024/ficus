@@ -24,9 +24,9 @@ Unchecked items are pending; a settled design is not a completed feature.
 
 - [x] Empty types and empty matches, including constructor-free `Data.Void` and source-defined `absurd` ([SPEC §24.1](SPEC.md#241-types-and-patterns)).
 - [x] `STANDALONE`: acyclic expansive initializers, ordinary restrictions for cycles/members, and rejection of every incoming import ([SPEC §24.4](SPEC.md#244-pragmas)).
-- [ ] Explicit record patterns, optional fields, and type-directed refutability; reject recursive pattern bindings.
-- [ ] Mutable `Ref`, `newRef`, `readRef`, and `modifyRef` with the existing value restriction.
-- [ ] Typed exceptions: settle runtime type identity, cleanup, and `throw`/`catch` contracts before implementation.
+- [x] Explicit record patterns with constructor-style grouping, optional fields, type-directed refutability, and recursive-pattern binding rejection; parser/formatter, evaluator, diagnostic-span, and highlighting coverage ([tests](../test/Ficus/RecordPatternSpec.hs)).
+- [x] Mutable `Ref`, `newRef`, `readRef`, and `modifyRef` in `Ficus.Builtin.Ref` / `Data.Ref`, shared `REF_*` registry contracts, and `Debug (Ref a)`, preserving the existing value restriction.
+- [ ] Typed exceptions: first add trait-targeted `BUILTIN EXCEPTION`, then identity evidence, constrained primitive contracts, lowering, and runtime propagation ([plan](PLAN.md#exception-implementation-sequence)); settle cleanup and remaining operational contracts before implementation.
 - [ ] Definition pragmas in implementation, `where`, local, and `do` declaration contexts.
 - [ ] Definition-local `ETA` expansion with preserved initializer timing.
 - [ ] `PRIVATE` / `PRIVATE member`, including constructor and field visibility.
@@ -58,6 +58,8 @@ Unchecked items are pending; a settled design is not a completed feature.
 - [ ] Select and implement a WebAssembly GC or LLVM backend, runtime representation, and memory management.
 - [ ] Higher-rank polymorphism; other excluded extensions need designs before implementation.
 
-For acceptance evidence for the two initial v1 additions, see
-[test/Ficus/V1Spec.hs](../test/Ficus/V1Spec.hs), the parser fixtures, and the
-runtime differential tests. Update this checklist with each feature change.
+For v1 acceptance evidence, see [test/Ficus/V1Spec.hs](../test/Ficus/V1Spec.hs),
+[test/Ficus/RefSpec.hs](../test/Ficus/RefSpec.hs), the parser
+fixtures, and the runtime differential tests. Reference tests cover aliasing,
+updater order and failure, debug output, builtin contracts, and unsafe
+generalization. Update this checklist with each feature change.

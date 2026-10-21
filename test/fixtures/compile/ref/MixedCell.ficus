@@ -1,0 +1,6 @@
+use Prelude (..)
+check () =
+    cell = newRef []
+    modifyRef cell (_ -> [1])
+    modifyRef cell (_ -> [True])
+    readRef cell

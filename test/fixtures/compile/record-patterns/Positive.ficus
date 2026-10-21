@@ -1,0 +1,25 @@
+type Point = { x : Int; y : Int }
+type Box a = { item : a; other : Int }
+
+top : Int
+Point with { x = top } = Point 7 8
+
+argument (Point with { y = second; x = first }) n = first + second + n
+lambda () = ((Point with { x = value }) -> value) (Point 4 9)
+empty () = with (Point 1 2) { Point with {} -> 5 }
+nested () = with (Box (Point 2 3) 9) { Box with { item = Point with { y = result } } -> result }
+local () = { Point with { x = value } = Point 3 4; value }
+scoped () = value where { Point with { y = value } = Point 3 6 }
+bound () = do { Point with { x = value } <- Just (Point 3 4); Just value }
+declared () = do { Point with { y = value } = Point 3 4; Just value }
+partial () = with (Point 3 4) { Point with { x = 0 } -> 1; Point with {} -> 2 }
+polymorphic () = { Box with { item = identity } = Box (x -> x) 0; (identity 1, identity True) }
+effect () = { Point with { x = value } = make (); value }
+make () = { print "once"; Point 6 7 }
+check () = argument (Point 1 2) 3 + lambda () + empty () + nested () + local () + scoped () + top + partial ()
+
+Box with { item = identityTop } = Box (x -> x) 0
+polymorphicTop () = (identityTop 1, identityTop True)
+monadic () = (with (bound ()) { Just value -> value; Nothing -> 0 }) + (with (declared ()) { Just value -> value; Nothing -> 0 })
+loop (Point with { x = n }) = with n { 0 -> 0; _ -> loop (Point 0 0) }
+recursive () = loop (Point 1 2)

@@ -1,0 +1,2 @@
+use Prelude (..)
+check () = { cell = newRef []; 0 }

@@ -10,9 +10,25 @@ import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Name
 
 referencedValues :: C.Expr ty -> Set Reference
-referencedValues expression = own `Set.union` Set.unions (map referencedValues (C.children expression))
+referencedValues expression = case C.formOf expression of
+  C.Var reference _ -> Set.singleton reference
+  C.Lambda binder body -> Set.delete (C.binderReference binder) (referencedValues body)
+  C.Let binding body ->
+    referencedValues (C.bindingBody (C.nodeValue binding))
+      `Set.union` Set.delete (C.bindingReference (C.nodeValue binding)) (referencedValues body)
+  C.LetRec bindings body ->
+    let bound = Set.fromList [C.bindingReference (C.nodeValue binding) | binding <- NE.toList bindings]
+     in Set.unions (referencedValues body : map (referencedValues . C.bindingBody . C.nodeValue) (NE.toList bindings)) `Set.difference` bound
+  C.Case receiver alternatives fallback ->
+    Set.unions
+      (referencedValues receiver : referencedValues fallback : map alternative alternatives)
+  _ -> Set.unions (map referencedValues (C.children expression))
   where
-    own = case C.formOf expression of C.Var reference _ -> Set.singleton reference; _ -> Set.empty
+    alternative node = case C.nodeValue node of
+      (C.ConstructorTest _ _ binders, body) ->
+        referencedValues body
+          `Set.difference` Set.fromList (map C.binderReference binders)
+      (C.LiteralTest _, body) -> referencedValues body
 
 -- Evidence lambdas may defer initialization, but they do not make a recursive
 -- initializer safe. Only a source value parameter protects a recursive read.

@@ -23,3 +23,10 @@ example x c = do
         _ -> "line\nend"
 
 pair = (1, 'a', '\'', True, False, a :: b, a |> b)
+
+-- Named record patterns: qualified constructors, nested fields and omissions.
+type Point = { x : Int; y : Int }
+project (Geometry.Point with { y = value }) = value
+nested (Box with { item = Point with { x = value } }) = value
+empty (Point with {}) = 0
+Point with { x = top } = Point 1 2

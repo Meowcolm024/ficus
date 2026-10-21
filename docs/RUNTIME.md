@@ -299,3 +299,13 @@ their original environments, while calls use the current invocation's effects.
 Only a successful submission commits updated snapshots, values, and layouts.
 Reload starts a fresh environment. See SPEC §22.1 for rebinding and constructor
 ownership rules.
+
+## Mutable references
+
+`REF_NEW`, `REF_READ`, and `REF_MODIFY` use a dedicated `RefValue (IORef Value)`.
+Cells are fully initialized at allocation and are distinct from the optionally
+uninitialized cells used for recursive lexical bindings. The updater runs through
+the ordinary closure application path with the current invocation's effects;
+its result is stored only after successful completion. Runtime observation is
+opaque, so it neither reads mutable contents nor follows cycles. Source `Debug`
+uses the library instance to read and display contents explicitly.

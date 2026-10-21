@@ -1,0 +1,2 @@
+type Point = { x : Int; y : Int }
+f p = with p { Point with { x = a; x = b } -> a }

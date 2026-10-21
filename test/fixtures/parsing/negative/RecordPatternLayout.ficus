@@ -1,0 +1,2 @@
+f (Point with
+    x = value) = value

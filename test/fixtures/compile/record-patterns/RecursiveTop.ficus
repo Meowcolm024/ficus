@@ -1,0 +1,2 @@
+type Point = { x : Int; y : Int }
+Point with { x = value } = Point value 0

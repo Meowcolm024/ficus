@@ -5,6 +5,7 @@ use Class.Functor (map)
 use Class.Foldable (foldr)
 use Ficus.Builtin.String (stringAppend, stringToChars)
 use Ficus.Builtin.Char (charShow)
+use Ficus.Builtin.Ref (Ref, readRef)
 use Data.Ordering (Ordering(..))
 trait Debug a =
     debug : a -> String
@@ -37,3 +38,6 @@ escape character = with character
 
 impl Debug Ordering =
     debug value = show value
+
+impl Debug a => Debug (Ref a) =
+    debug cell = stringAppend "Ref (" (stringAppend (debug (readRef cell)) ")")

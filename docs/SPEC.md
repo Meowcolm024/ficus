@@ -4,7 +4,7 @@
 
 Ficus is a strict, impure, expression-oriented functional language for scripting, with Hindley–Milner inference, nominal ADTs, structural products and lists, pattern matching, and single-parameter traits.
 
-Sections 2–22 specify v0; Section 23 lists exclusions. Section 24 groups planned v1+ features, and Sections 25–26 track later and open designs. Planned features are unavailable in v0. Library APIs are non-normative unless stated otherwise. Implementation details belong in [IMPL.md](IMPL.md).
+Sections 2–22 specify v0; Section 23 lists exclusions. Section 24 groups implemented and planned v1+ features, and Sections 25–26 track later and open designs. Planned features are unavailable in v0. Library APIs are non-normative unless stated otherwise. Implementation details belong in [IMPL.md](IMPL.md).
 
 ## 2. Source files and modules
 
@@ -429,7 +429,7 @@ Person with
 People.Person with { name = "Ada"; age = 36 }
 ```
 
-Named fields may appear in any order and evaluate in source order. `person.name` projects a field. Record patterns are deferred; initial-language matching uses the positional constructor.
+Named fields may appear in any order and evaluate in source order. `person.name` projects a field. Positional constructor matching remains supported. Explicit named record patterns are an implemented v1 extension (Section 24.1).
 
 Field labels are local to their nominal record type, so different record types may reuse a label. Projection binds tighter than application regardless of whitespace: `f x . field` means `f (x.field)`; projecting the result requires `(f x) . field`. Projection chains associate left:
 
@@ -474,7 +474,7 @@ with (person with { age = 37 }) { Person name age -> age }
 
 An update evaluates its receiver exactly once, then replacement initializers left-to-right in source order, and produces a new record without mutating the receiver. Unchanged reference-valued fields retain their references; updating the enclosing record does not copy the referenced mutable contents. Field initializers use ordinary lexical scope, not an implicit binding of old fields. Each field may have a `where` group scoped only to its initializer, with the ordinary initialization timing. Updates are expansive expressions for initialization and generalization checks.
 
-Construction, update, and the proposed record patterns require explicit `label = expression` or `label = pattern` fields. Duplicate labels and punning such as `{ age }` are invalid; field labels are not standalone values. Updates of records with existential type members remain open and are not admitted by this v0 rule.
+Construction, update, and explicit record patterns require explicit `label = expression` or `label = pattern` fields. Duplicate labels and punning such as `{ age }` are invalid; field labels are not standalone values. Updates of records with existential type members remain open and are not admitted by this v0 rule.
 
 The record field block must start with `{` or on a more-indented next line. `f Person with x = 1 y` is invalid because no field block starts after `with`. In `f (Person with { x = 1 }) y`, the braces delimit construction before `y` is parsed as the next argument.
 
@@ -799,7 +799,7 @@ displayPoly : Show a => a -> String
 displayPoly = show    -- signed: polymorphic despite having no lambda parameter
 ```
 
-Weak type variables left by the value or monomorphism restriction may be fixed by later uses within the module, but are never generalized implicitly. Any weak variable still unresolved when module inference ends is a static error, even when it has no trait predicate (for example, an unused local `r = newRef []` once references are available).
+Weak type variables left by the value or monomorphism restriction may be fixed by later uses within the module, but are never generalized implicitly. Any weak variable still unresolved when module inference ends is a static error, even when it has no trait predicate (for example, an unused local `r = newRef []`).
 
 A constrained type is ambiguous when a variable used by a predicate does not occur in the unconstrained value type:
 
@@ -982,13 +982,13 @@ intAdd : Int -> Int -> Int
 
 `BUILTIN key name` associates a compiler implementation with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source definition are static errors. Placement and argument checks are semantic, not special parser productions.
 
-`HANDLE` and `BYTE` supply opaque types of kind `Type`; `VEC` supplies an opaque type of kind `Type -> Type`. Their conventional names are `Handle`, `Byte`, and `Vec`. `Void` and `absurd` are ordinary source definitions; there are no `VOID` or `ABSURD` compiler keys. For example, `HANDLE` supplies an opaque type conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
+`HANDLE` and `BYTE` supply opaque types of kind `Type`; `VEC` and `REF` supply opaque types of kind `Type -> Type`. Their conventional names are `Handle`, `Byte`, `Vec`, and `Ref`. `Void` and `absurd` are ordinary source definitions; there are no `VOID` or `ABSURD` compiler keys. For example, `HANDLE` supplies an opaque type conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
 
 A builtin-supplied type is an opaque nominal constructor with no source constructor; a value is a primitive of its declared type. Keys are metadata, not names in language scope. Targets obey ordinary namespaces, mutual top-level visibility, duplicate-declaration, import/export, and ownership rules. Their identity is their defining module and declared name, not their key. Symbolic targets use their ordinary parenthesized identifier syntax.
 
-The compiler registry additionally includes these value contracts. `Vec` and
-`Byte` below refer to the ordinarily declared types associated with
-`VEC` and `BYTE`, including when those declarations are renamed or
+The compiler registry additionally includes these value contracts. `Vec`,
+`Byte`, and `Ref` below refer to the ordinarily declared types associated with
+`VEC`, `BYTE`, and `REF`, including when those declarations are renamed or
 imported. Contracts require the complete polymorphic signature, up to bound
 variable renaming; a specialization or additional trait predicate is invalid.
 
@@ -1017,6 +1017,9 @@ variable renaming; a specialization or additional trait predicate is invalid.
 | `HANDLE_STDIN`, `HANDLE_STDOUT`, `HANDLE_STDERR` | `Handle` |
 | `HANDLE_READ` | `Handle -> Int -> String` |
 | `HANDLE_WRITE` | `Handle -> String -> Unit` |
+| `REF_NEW` | `a -> Ref a` |
+| `REF_READ` | `Ref a -> a` |
+| `REF_MODIFY` | `Ref a -> (a -> a) -> Unit` |
 
 Integer division truncates toward zero; remainder has the dividend's sign.
 Division or remainder by zero is a primitive failure. The minimum signed integer
@@ -1062,7 +1065,7 @@ The bundled v0 library uses `Ficus.Builtin.*` for compiler-key bindings,
 Builtin modules never import the data layer. Every library module explicitly
 disables implicit Prelude and imports its dependencies; Prelude selectively
 re-exports the reviewed API in [PRELUDE.md](PRELUDE.md#1-organization).
-`Handle`, `Vec`, and `Byte` require explicit imports. `Result e a` uses `Err` and
+`Handle`, `Vec`, `Byte`, and `Ref` require explicit imports. `Result e a` uses `Err` and
 `Ok`; `Ordering` uses `Less`, `Equal`, and `Greater`. `Void` and `absurd` are
 source-defined in `Data.Void` and re-exported by Prelude.
 
@@ -1231,7 +1234,7 @@ The initial language excludes:
 - effect systems, concurrency, and async syntax;
 - macros, ownership types, and custom memory management.
 
-Empty type bodies, empty matches, and `STANDALONE` are implemented v1 extensions to this baseline. The remaining exclusions do not settle future syntax or semantics. Planned v1+ designs are grouped in Section 24; later work is listed in Section 25.
+Empty type bodies, empty matches, `STANDALONE`, and the `Data.Ref` mutable-reference API are implemented v1 extensions to this baseline. The remaining exclusions do not settle future syntax or semantics. Planned v1+ designs are grouped in Section 24; later work is listed in Section 25.
 
 ## 24. v1+ language features and libraries
 
@@ -1260,7 +1263,29 @@ An empty `with` eliminates an impossible scrutinee and may have any result type.
 
 An empty match is exhaustive for a nominal type declared with an empty body, including aliases and imports. Other scrutinee types receive the ordinary non-exhaustiveness warning, not a static error. Propagating uninhabitedness through other types and subpatterns remains future work. The grammar admits explicit `{}` for empty type bodies and match blocks; layout blocks remain nonempty.
 
-#### Record patterns
+#### Record patterns (implemented)
+
+The v1 grammar extends `constructor_pattern` with the named
+`record_pattern` alternative (and therefore admits it in `simple_pattern`):
+
+```ebnf
+constructor_pattern = (upper_name | qualified_constructor), { binder_pattern }
+                    | record_pattern ;
+record_pattern = (upper_name | qualified_constructor), "with", "{",
+                 [ record_pattern_field, { ";", record_pattern_field }, [ ";" ] ], "}" ;
+record_pattern_field = lower_ident, "=", pattern ;
+```
+
+Like positional constructor applications, a record pattern must be parenthesized
+when used as a single function/lambda parameter or as a constructor argument:
+`f (Point with { x = x }) = x`. It is not an atomic `binder_pattern`.
+Record-pattern fields always use explicit braces, including an empty `{}`;
+layout field blocks remain exclusive to record construction and update.
+A top-level record-pattern binding extends `top_decl` with a record pattern
+followed by `=`, an expression, and an optional `where` clause. Its head may
+also be parenthesized or annotated. Other unnamed top-level patterns remain
+unsupported. The bound values are public under the ordinary module rules.
+Existential type-member patterns remain a separate proposal in Section 24.6.
 
 Record patterns use explicit braces and mirror named construction without punning, for example `Point with { x = px; y = py }`. Fields may be omitted: `Point with { x = px }` ignores `y`, and `Point with {}` ignores every field. Omitted fields introduce no bindings; supplied labels must be distinct and belong to the record. They are allowed in `with` clauses, lambda/function arguments, non-recursive value bindings, and both forms of `do` binding: `pattern <- expr` and `pattern = expr`. They are not allowed in recursive `let` groups. At top level or inside `where`, reject a binding headed by a record pattern when it participates in a recursive binding group; the error should suggest matching with `with` inside a named function instead. In `do`, a record pattern may appear on the left of either `<-` or `=`, for example:
 
@@ -1277,35 +1302,67 @@ Record-pattern refutability is checked against the resolved record type and the 
 
 #### Mutable references (settled)
 
-The mutable-reference design is settled for v1+ as written. An explicit builtin-backed state module provides:
+The mutable-reference API is implemented as a v1 extension. `Ficus.Builtin.Ref`
+owns the opaque type and primitive bindings; `Data.Ref` selectively re-exports
+them and requires an explicit import. Neither module implicitly imports Prelude,
+and Prelude does not re-export this API:
 
 ```text
 {-# BUILTIN REF Ref #-}
 Ref : Type -> Type
 
-{-# BUILTIN NEW_REF newRef #-}
+{-# BUILTIN REF_NEW newRef #-}
 newRef : a -> Ref a
 
-{-# BUILTIN MODIFY_REF modifyRef #-}
+{-# BUILTIN REF_MODIFY modifyRef #-}
 modifyRef : Ref a -> (a -> a) -> Unit
 
-{-# BUILTIN READ_REF readRef #-}
+{-# BUILTIN REF_READ readRef #-}
 readRef : Ref a -> a
 ```
 
-`newRef` allocates a mutable cell. `readRef` returns its current value. `modifyRef ref f` reads the current value, applies `f`, stores the result, and returns `()`.
+Each call to `newRef` allocates a fresh mutable cell containing its already
+evaluated argument. `readRef` returns the current stored value. Ordinary aliases,
+record fields, and closure captures retain the same cell rather than copying it.
+`modifyRef ref f` evaluates its operands left-to-right, reads the current value,
+applies `f` exactly once, stores the successfully returned value, and returns
+`()`. If `f` fails, the final store is not performed; effects already performed
+by `f`, including other mutations, are not rolled back. No atomicity guarantee
+is provided.
 
-The v1+ `Ref` design retains the v0 value restriction: expansive bindings such as `ref = newRef []` must not be generalized. Atomicity and interaction with fibers remain unspecified.
+The trait-owning `Class.Debug` module supplies `Debug a => Debug (Ref a)`.
+`debug ref` reads the cell once and displays `Ref (` followed by `debug` of that
+value and `)`. It observes current contents and does not provide reference
+identity, equality, or cycle detection.
+
+The existing value restriction is unchanged: `newRef`, `readRef`, and `modifyRef`
+calls are expansive, and an allocated cell is never implicitly generalized.
+Weak variables may be fixed by subsequent uses, but unresolved weak variables
+remain errors. A value lambda that allocates on every call, such as
+`make () = newRef []`, may generalize; a lambda capturing an existing cell cannot
+generalize that cell's content type. Signatures cannot bypass these restrictions.
+Ordinary module initializers and implementation members retain their
+non-expansiveness rules; `STANDALONE` and interactive allocation retain the value
+restriction. Interaction with future fibers remains unspecified.
 
 ### 24.3 Exceptions (proposed interfaces)
 
 #### Exception primitives
 
-The initial v1+ Prelude defines the marker trait:
+The proposed v1+ Prelude exposes the compiler-recognized marker trait:
 
 ```text
+{-# BUILTIN EXCEPTION Exception #-}
 trait Exception e = {}
 ```
+
+This planned extension permits `BUILTIN` to target an ordinarily declared
+top-level trait in the same module. The `EXCEPTION` contract requires one
+`Type` parameter, no methods, and no superclasses. Association follows ordinary
+trait identity through renaming and imports; the spelling `Exception` has no
+special meaning. Wrong target categories, incompatible trait shapes, and
+conflicting associations are static errors. The pragma retains the generic
+syntax of Section 19. This extension is not yet implemented.
 
 An explicit v1+ builtin-backed exception module provides:
 
@@ -1474,7 +1531,7 @@ SomeException with { Err = String; showErr = (e : String) -> e }
 with package { SomeException with { Err = e; showErr = se } -> ... }
 ```
 
-The v1+ grammar extends record field blocks with `upper_ident, "=", type_expr`. In pattern contexts, a record pattern is `(upper_name | qualified_constructor), "with", block(record_pattern_field)`, where `record_pattern_field = ident, "=", pattern`; it is a self-delimiting binder pattern. Parse field patterns uniformly, then require an uppercase type-member slot to contain a bare lowercase type binder during semantic validation. This preserves ordinary constructor patterns in lowercase value fields. Explicit braces delimit record patterns; record construction retains its existing explicit/layout field blocks. Type-expression arrows in uppercase construction fields stay inside the field until its separator or closing delimiter.
+The v1+ grammar extends record field blocks with `upper_ident, "=", type_expr`. In pattern contexts, a record pattern is `(upper_name | qualified_constructor), "with", block(record_pattern_field)`, where `record_pattern_field = ident, "=", pattern`; it follows the constructor-pattern grouping rules of Section 24.1. Parse field patterns uniformly, then require an uppercase type-member slot to contain a bare lowercase type binder during semantic validation. This preserves ordinary constructor patterns in lowercase value fields. Explicit braces delimit record patterns; record construction retains its existing explicit/layout field blocks. Type-expression arrows in uppercase construction fields stay inside the field until its separator or closing delimiter.
 
 All supplied labels must be distinct and belong to the record. In construction, check each supplied type against the member's kind and check value fields against that witness, irrespective of field order. In a pattern, `Err = e` binds a fresh abstract witness, never tests for equality with a concrete type; `Err = String` is invalid there. Type members are not ordinary record type parameters, so `SomeException @String` cannot supply the hidden witness. Ordinary `@` type application still applies to explicitly quantified parameters, not record members.
 

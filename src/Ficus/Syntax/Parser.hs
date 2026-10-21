@@ -213,6 +213,7 @@ topDeclaration =
     <|> implementation
     <|> located (PragmaDeclaration <$> pragma)
     <|> signature
+    <|> topRecordDeclaration
     <|> alias
     <|> namedValue
     <|> invalidTopPattern
@@ -225,6 +226,19 @@ topDeclaration =
         Nothing -> case p of
           Just _ -> failAt InvalidDeclarationHead (tokenSpan t) "top-level binding name required"
           Nothing -> optional anyOperator *> failHere InvalidSyntax "invalid binding name"
+
+-- Named record patterns are the explicit v1 exception to named top-level heads.
+topRecordDeclaration :: Parser Declaration
+topRecordDeclaration = do
+  candidate <- lookAhead (try (patternParser <* text "="))
+  when (not (recordHead candidate)) empty
+  patternDeclaration
+  where
+    recordHead p = case concrete p of
+      RecordP _ _ -> True
+      ParenP q -> recordHead q
+      AnnotatedP q _ -> recordHead q
+      _ -> False
 
 signature :: Parser Declaration
 signature = do
@@ -670,6 +684,7 @@ patternParser = operators OpAppP upperOperator simplePattern
       located (IdentP <$> lowerName)
         <|> located (LitP <$> literal)
         <|> negativePattern
+        <|> recordPattern
         <|> constructor
         <|> patternList
         <|> parentheses patternParser typeExpression UnitP ProductP ParenP AnnotatedP
@@ -681,6 +696,22 @@ patternParser = operators OpAppP upperOperator simplePattern
             b : _ -> at ((location a) {end = end (location b)}) (ConstructorP a bs)
             [] -> a
         )
+
+recordPattern :: Parser Pattern
+recordPattern = do
+  void (lookAhead (try (constructorName *> text "with")))
+  located $ do
+    receiver <- constructorName
+    intro <- text "with"
+    -- A record pattern is self-delimiting; construction alone admits layout.
+    void (lookAhead (text "{"))
+    fields <- block True False intro $ located $ do
+      n <- lowerName
+      void (text "=")
+      PatternField n <$> patternParser
+    pure (RecordP receiver fields)
+  where
+    constructorName = located (DottedP <$> qualifiedUpper) <|> located (IdentP <$> upperName)
 
 negativePattern :: Parser Pattern
 negativePattern = located $ do

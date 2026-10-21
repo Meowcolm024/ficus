@@ -1,0 +1,2 @@
+type Point = { x : Int; y : Int }
+f (Point with { z = a }) = a

@@ -15,6 +15,9 @@ data ResolveCode
   | DuplicateSignature
   | MissingSignatureTarget
   | ClauseArityMismatch
+  | UnknownRecordPatternField
+  | DuplicateRecordPatternField
+  | RecursiveRecordPattern
   | InvalidAbstractTree
   | UnknownPragma
   | UnsupportedFeature
@@ -52,6 +55,9 @@ renderResolveCode = \case
   DuplicateSignature -> "N0010"
   MissingSignatureTarget -> "N0011"
   ClauseArityMismatch -> "N0012"
+  UnknownRecordPatternField -> "N0013"
+  DuplicateRecordPatternField -> "N0014"
+  RecursiveRecordPattern -> "N0015"
   InvalidAbstractTree -> "N0099"
   UnknownPragma -> "N0101"
   UnsupportedFeature -> "N0102"

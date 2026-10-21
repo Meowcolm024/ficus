@@ -92,6 +92,9 @@ a well-scoped but incompatible annotation is a T error.
 | N0010 | DuplicateSignature | Later signature target; first signature |
 | N0011 | MissingSignatureTarget | Signature name without a defining clause or valid BUILTIN association |
 | N0012 | ClauseArityMismatch | Later inconsistent clause head (name and written parameters); first clause head establishing the expected written value arity |
+| N0013 | UnknownRecordPatternField | Unknown supplied label in a named record pattern |
+| N0014 | DuplicateRecordPatternField | Later duplicate label in a named record pattern |
+| N0015 | RecursiveRecordPattern | Record pattern heading a binding that participates in a recursive component |
 | N0099 | InvalidAbstractTree | Invalid node's origin; internal boundary error, not a substitute for a source diagnostic |
 | N0101 | UnknownPragma | Directive name |
 | N0102 | UnsupportedFeature | Directive/construct unavailable in selected language version |

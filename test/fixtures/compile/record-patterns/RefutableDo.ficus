@@ -1,0 +1,2 @@
+type Box a = { item : a; other : Int }
+f action = do { Box with { item = Just value } <- action; Just value }

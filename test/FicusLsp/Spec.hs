@@ -115,6 +115,16 @@ tests =
         assertBool "constructor token" (any (\(location, kind, _) -> S.line (S.start location) == 3 && kind == Index.Constructor) tokens)
         assertBool "parameter token" (any (\(_, kind, _) -> kind == Index.Parameter) tokens)
         case Protocol.semanticTokens file source index of Left message -> assertFailure (T.unpack message); Right _ -> pure (),
+      testCase "named record patterns distinguish fields, constructors and bound parameters" $ do
+        let source = prefix <> "type Point = { x : Int; y : Int }\ncheck (Point with { y = value }) = value\n"
+        result <- checked [(file, source)]
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+            tokens = Index.semanticSpans file source index
+            at column = [kind | (location, kind, _) <- tokens, S.line (S.start location) == 3, S.column (S.start location) == column]
+        at 8 @?= [Index.Constructor]
+        at 21 @?= [Index.Property]
+        at 25 @?= [Index.Parameter],
       testCase "document outline lists top-level declarations once and omits local bindings" $ do
         let source = prefix <> "type Box a = Box a\nchoose : Bool -> Int\nchoose True = 1\nchoose False = 0\nouter x = { value = x; value }\nother x = { value = x; value }\n"
         result <- checked [(file, source)]

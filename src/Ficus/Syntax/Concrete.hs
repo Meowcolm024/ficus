@@ -15,6 +15,8 @@ module Ficus.Syntax.Concrete
     ExprF (..),
     Pattern,
     PatternF (..),
+    PatternField,
+    PatternFieldF (..),
     TypeExpr,
     TypeF (..),
     KindExpr,
@@ -134,6 +136,7 @@ data PatternF
   | LitP Literal
   | NegateP Pattern
   | ConstructorP Pattern [Pattern]
+  | RecordP Pattern (Block PatternField)
   | OpAppP Pattern Name Pattern
   | ParenP Pattern
   | AnnotatedP Pattern TypeExpr
@@ -142,6 +145,10 @@ data PatternF
   | ListP [Pattern]
   | DottedP [Name]
   deriving (Eq, Show)
+
+type PatternField = Located PatternFieldF
+
+data PatternFieldF = PatternField Name Pattern deriving (Eq, Show)
 
 type TypeExpr = Located TypeF
 
@@ -353,6 +360,11 @@ validateConcrete m = do
       LitP _ -> Right ()
       NegateP p -> pat p
       ConstructorP p ps -> pat p *> mapM_ pat ps
+      RecordP p fields -> do
+        pat p
+        if blockDelimiter fields /= Explicit
+          then Left "record patterns require explicit braces"
+          else block (node (\(PatternField n q) -> name n *> pat q)) fields
       OpAppP a op b -> pat a *> name op *> pat b
       ParenP p -> pat p
       AnnotatedP p t -> pat p *> typeExpr t

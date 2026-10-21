@@ -1,0 +1,8 @@
+use Prelude (..)
+check () =
+    cell = newRef []
+    get () = readRef cell
+    modifyRef cell (_ -> [1])
+    answer : [Bool]
+    answer = get ()
+    answer

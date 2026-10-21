@@ -59,7 +59,7 @@ inferModule environment tree = inferModuleWithMode (if standaloneEnabled (A.abst
 inferModuleWithMode :: InitializationMode -> Declarations -> A.AbstractModule -> Inference
 inferModuleWithMode mode imported tree =
   let action = do
-        prepared <- prepareDeclarations imported tree
+        prepared <- prepareDeclarationsWithMode mode imported tree
         let names = Map.fromList [(A.occurrenceReference occurrence, (A.occurrenceSpelling occurrence, A.occurrenceSpan occurrence)) | occurrence <- A.abstractOccurrences tree]
             importedValues = Map.map signatureScheme (valueSignatures imported)
             methods = Map.fromList [(GlobalRef method, scheme) | trait <- Map.elems (traitDeclarations prepared), (method, scheme) <- Map.toList (traitMethods (C.nodeValue trait))]

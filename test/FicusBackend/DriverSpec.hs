@@ -43,6 +43,30 @@ result current source expected = do
   (_, output) <- Repl.submit quiet current source >>= requireRight
   output @?= Just expected
 
+commandInput :: [Text] -> IO (Maybe Repl.ReplCommand, [Text], [Text])
+commandInput lines' = do
+  remaining <- newIORef lines'
+  prompts <- newIORef []
+  let readLine prompt = do
+        modifyIORef' prompts (<> [prompt])
+        readIORef remaining >>= \case
+          [] -> pure Nothing
+          line : rest -> do
+            modifyIORef' remaining (const rest)
+            pure (Just line)
+  command <- Repl.readCommand readLine
+  rest <- readIORef remaining
+  displayed <- readIORef prompts
+  pure (command, rest, displayed)
+
+multilineSource :: [Text] -> IO Text
+multilineSource body = do
+  (command, remaining, _) <- commandInput ([":{"] ++ body ++ [":}"])
+  remaining @?= []
+  case command of
+    Just (Repl.Submit source) -> pure source
+    _ -> assertFailure (show command) >> fail "expected multiline submission"
+
 fixture :: Text -> IO CompileResult
 fixture name = compileFiles libraryResolveConfig librarySugarRegistry (ModuleOptions [] ["library"] Nothing) ((root </> T.unpack name ++ ".ficus") :| [])
 
@@ -145,6 +169,45 @@ tests =
             map Repl.parseCommand [":k Functor", ":kind Functor"] @?= replicate 2 (Repl.KindOf "Functor")
             Repl.parseCommand ":k" @?= Repl.InvalidCommand ":kind requires a type-level expression"
             Repl.parseCommand ":load \"some folder/Foo.ficus\"" @?= Repl.Load "some folder/Foo.ficus",
+          testCase "help documents multiline delimiters" $
+            assertBool "help lists multiline delimiters" (all (`T.isInfixOf` Repl.helpText) [":{", ":}"]),
+          testCase "multiline input preserves source and consumes only its block" $ do
+            let body = ["  value =", "    \" :} \"", "", ":q", ":{"]
+            (command, remaining, prompts) <- commandInput (["  :{  "] ++ body ++ ["  :}  ", "2 + 2"])
+            command @?= Just (Repl.Submit (T.unlines body))
+            remaining @?= ["2 + 2"]
+            prompts @?= "ficus> " : replicate (length body + 1) "ficus| ",
+          testCase "multiline input handles empty blocks EOF and stray closing delimiters" $ do
+            (empty, _, _) <- commandInput [":{", ":}"]
+            empty @?= Just (Repl.Submit "")
+            (unfinished, remaining, _) <- commandInput [":{", "value = 1"]
+            remaining @?= []
+            unfinished @?= Nothing
+            (stray, _, _) <- commandInput [":}"]
+            assertBool "stray closing delimiter rejected" (case stray of Just (Repl.InvalidCommand _) -> True; _ -> False)
+            (eof, _, _) <- commandInput []
+            eof @?= Nothing
+            (ordinary, rest, prompts) <- commandInput [":t id", "1 + 1"]
+            ordinary @?= Just (Repl.TypeOf "id")
+            rest @?= ["1 + 1"]
+            prompts @?= ["ficus> "],
+          testCase "multiline declarations define types traits and orphan implementations" $ do
+            current <- session
+            source <- multilineSource ["type Token = Token", "trait Label a =", "  label : a -> String", "impl Label Token =", "  label _ = \"token\""]
+            (defined, _) <- Repl.submit quiet current source >>= requireRight
+            result defined "label Token" "\"token\""
+            replacement <- multilineSource ["impl Show Int =", "  show _ = \"multiline\""]
+            (replaced, _) <- Repl.submit quiet defined replacement >>= requireRight
+            result replaced "show (42 : Int)" "\"multiline\"",
+          testCase "multiline expressions preserve indentation and evaluate effects once" $ do
+            current <- session
+            trace <- newIORef []
+            let effects = R.Effects (\_ text -> modifyIORef' trace (<> [text])) (\_ _ -> pure "")
+            source <- multilineSource ["{", "  println \"once\";", "", "  40 + 2", "}"]
+            readIORef trace >>= (@?= [])
+            (_, output) <- Repl.submit effects current source >>= requireRight
+            output @?= Just "42"
+            readIORef trace >>= (@?= ["once\n"]),
           testCase "kind inspection displays only kinds" $ do
             current <- session
             Repl.inspectKind current "Int" >>= (@?= Right "Int : Type")
@@ -214,6 +277,71 @@ tests =
             current <- session
             (next, _) <- Repl.submit quiet current "use Data.Vec (..)" >>= requireRight
             result next "vecLength (listToVec [1, 2, 3])" "3",
+          testCase "interactive orphan implementations replace imported and earlier instances" $ do
+            current <- session
+            (saved, _) <- Repl.submit quiet current "old () = show (1 : Int)" >>= requireRight
+            (first, _) <- Repl.submit quiet saved "impl Show Int = { show _ = \"first\" }" >>= requireRight
+            result first "show (1 : Int)" "\"first\""
+            (second, _) <- Repl.submit quiet first "impl Show Int = { show _ = \"second\" }" >>= requireRight
+            (later, _) <- Repl.submit quiet second "fresh () = show (1 : Int)" >>= requireRight
+            result later "fresh ()" "\"second\""
+            result later "old ()" "\"1\""
+            result later "show True" "\"True\""
+            (imported, _) <- Repl.submit quiet later "use Data.Vec (..)" >>= requireRight
+            result imported "show (1 : Int)" "\"second\"",
+          testCase "interactive orphan implementations may introduce a new instance" $ withDirectory $ \directory -> do
+            let file = directory </> "Foreign.ficus"
+            TIO.writeFile file "type Foreign = Foreign\n"
+            current <- session
+            loaded <- Repl.loadSession current file >>= requireRight
+            (next, _) <- Repl.submit quiet loaded "impl Show Foreign = { show _ = \"foreign\" }" >>= requireRight
+            result next "show Foreign" "\"foreign\"",
+          testCase "new types traits and implementations work across REPL submissions" $ do
+            current <- session
+            (typed, _) <- Repl.submit quiet current "type Box a = Box a" >>= requireRight
+            (trait, _) <- Repl.submit quiet typed "trait Describe a = { describe : a -> String }" >>= requireRight
+            (implemented, _) <- Repl.submit quiet trait "impl Show a => Describe (Box a) = { describe (Box value) = show value }" >>= requireRight
+            (later, _) <- Repl.submit quiet implemented "describeBox value = describe (Box value)" >>= requireRight
+            result later "describeBox (42 : Int)" "\"42\""
+            Repl.inspectKind later "Box" >>= (@?= Right "Box : Type -> Type")
+            Repl.inspectKind later "Describe" >>= (@?= Right "Describe : Type -> Constraint")
+            (saved, _) <- Repl.submit quiet later "oldBox () = describe (Box (42 : Int))" >>= requireRight
+            (replaced, _) <- Repl.submit quiet saved "impl Describe (Box a) = { describe _ = \"box\" }" >>= requireRight
+            result replaced "describe (Box True)" "\"box\""
+            result replaced "describeBox (42 : Int)" "\"box\""
+            result replaced "oldBox ()" "\"42\"",
+          testCase "new types traits and implementations work within one REPL submission" $ do
+            current <- session
+            (next, _) <- Repl.submit quiet current (T.unlines ["type Token = Token", "trait Label a = { label : a -> String }", "impl Label Token = { label _ = \"token\" }"]) >>= requireRight
+            result next "label Token" "\"token\"",
+          testCase "failed interactive implementations preserve the previous instance" $ do
+            current <- session
+            (first, _) <- Repl.submit quiet current "impl Show Int = { show _ = \"first\" }" >>= requireRight
+            Repl.submit quiet first "impl Show Int = {}" >>= \case
+              Left errors -> do
+                map D.diagnosticCode errors @?= ["T0403"]
+                map (column . start . D.diagnosticSpan) errors @?= [1]
+              Right _ -> assertFailure "incomplete implementation accepted"
+            result first "show (1 : Int)" "\"first\"",
+          testCase "overlapping implementations in one REPL submission remain errors" $ do
+            current <- session
+            let declaration = "impl Show Int = { show _ = \"duplicate\" }"
+            Repl.submit quiet current (T.unlines [declaration, declaration]) >>= \case
+              Left errors -> do
+                map D.diagnosticCode errors @?= ["T0406"]
+                map (\problem -> let site = D.diagnosticSpan problem in (sourceFile site, column (start site), column (end site))) errors @?= [("<repl:1>", 1, T.length declaration)]
+              Right _ -> assertFailure "overlapping implementations accepted in one submission"
+            result current "show (1 : Int)" "\"1\"",
+          testCase "loaded files retain orphan implementation checks" $ withDirectory $ \directory -> do
+            let file = directory </> "Orphan.ficus"
+            TIO.writeFile file "impl Show Int = { show _ = \"orphan\" }\n"
+            current <- session
+            Repl.loadSession current file >>= \case
+              Left errors -> do
+                let orphans = filter ((== "T0408") . D.diagnosticCode) errors
+                map (\problem -> let site = D.diagnosticSpan problem in (sourceFile site, line (start site), column (start site), column (end site))) orphans @?= [(file, 1, 6, 13)]
+              Right _ -> assertFailure "orphan implementation accepted in a file"
+            result current "show (1 : Int)" "\"1\"",
           testCase "import shorthand is not accepted" $ do
             current <- session
             Repl.submit quiet current "import Data.Vec" >>= \case

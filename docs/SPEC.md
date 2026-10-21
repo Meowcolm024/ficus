@@ -1158,13 +1158,24 @@ to standard error. Exception handling at the entry point belongs to v1+.
 `ficus repl [FILE]` starts an interactive session and optionally loads a module;
 it does not require or invoke `main`. Expressions execute strictly and their
 results are displayed through the library's `Debug` contract, so a result needs
-a visible `Debug` instance. Single-line top-level declarations may be added using
+a visible `Debug` instance. Top-level declarations may be added using
 ordinary declaration syntax. Acyclic interactive bindings may have expansive
 right-hand sides, which evaluate when the submission is accepted. This is an
 interactive initialization policy, independent of the `STANDALONE` pragma
 in source files. Value and monomorphism restrictions still apply; signatures
 cannot generalize expansive expressions. Cyclic initializers and implementation
 members retain their ordinary non-expansiveness and recursive-read checks.
+
+Interactive `impl` declarations are exempt from the orphan ownership rule.
+A new implementation replaces previously visible implementations for the same
+trait and outer type constructor, including library implementations and earlier
+interactive declarations. Subsequent submissions select the newest implementation;
+previously compiled values and closures retain their original dictionaries.
+Evidence passed through a function's constraints is selected by its caller as usual.
+Implementation-only submissions remain visible to later commands. Overlapping
+implementations within one submission remain errors, and all other head, context,
+member, and superclass checks still apply. Ordinary source files, including files
+read by `:load`, retain the orphan and overlap rules.
 
 A later submission may rebind a value or type name. New lookups see the newest
 binding; old closures, values, and inferred schemes retain their original
@@ -1185,6 +1196,17 @@ The commands `:load FILE` / `:l FILE`, `:type EXPR` / `:t EXPR`,
 `:kind TYPE` / `:k TYPE`, `:help` / `:h`, and `:quit` / `:q` load or reload a
 file, inspect a term's type, inspect a type-level expression's kind, show command help,
 and exit. End of input also exits.
+
+Entering `:{` on its own line starts multiline input with a `ficus| `
+continuation prompt. A line containing only `:}` ends the block and submits its
+body as one expression or declaration group. Whitespace around the delimiter
+lines is ignored; indentation, blank lines, and line breaks within the body are
+preserved. Nothing in the block is compiled or evaluated until it closes.
+Commands within a block are source text rather than REPL commands, and blocks
+do not nest. An empty block is a no-op. A stray `:}` reports a command error.
+End of input before `:}` discards its contents and exits; interrupting a block
+discards it and returns to the main prompt with
+the previous environment.
 
 Type inspection accepts term expressions, including literals, applications,
 and lambdas. Bare value and constructor names retain their stored schemes,

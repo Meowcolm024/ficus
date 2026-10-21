@@ -6,6 +6,7 @@ module FicusBackend.Driver.Repl
     sessionDiagnosticSources,
     ReplCommand (..),
     parseCommand,
+    readCommand,
     helpText,
     newSession,
     loadSession,
@@ -76,6 +77,7 @@ helpText =
       ":type EXPR, :t EXPR  Infer a term expression's type without evaluation",
       ":kind TYPE, :k TYPE  Infer a type-level expression's kind",
       ":quit, :q          Exit the REPL",
+      ":{                 Begin multiline input; end with :} on its own line",
       "Enter expressions or declarations; use declarations bring modules into scope."
     ]
 
@@ -96,6 +98,7 @@ parseCommand input = case T.words stripped of
               ":type" -> typeOf argument
               ":k" -> kindQuery argument
               ":kind" -> kindQuery argument
+              ":}" -> InvalidCommand "no multiline input is open"
               _ -> InvalidCommand "unknown command; use :help for available commands"
   _ -> Submit stripped
   where
@@ -116,6 +119,26 @@ parseCommand input = case T.words stripped of
     unquote value
       | T.length value >= 2 && T.isPrefixOf "\"" value && T.isSuffixOf "\"" value = T.dropEnd 1 (T.drop 1 value)
       | otherwise = value
+
+-- | Collect a complete submission before parsing or executing any source.
+-- Keeping the line reader injectable lets terminal and scripted input share
+-- the same delimiter handling without depending on a terminal library here.
+readCommand :: (Monad m) => (Text -> m (Maybe Text)) -> m (Maybe ReplCommand)
+readCommand readLine = do
+  input <- readLine "ficus> "
+  case input of
+    Nothing -> pure Nothing
+    Just line
+      | T.strip line == ":{" -> multiline []
+      | otherwise -> pure (Just (parseCommand line))
+  where
+    multiline reversed = do
+      input <- readLine "ficus| "
+      case input of
+        Nothing -> pure Nothing
+        Just line
+          | T.strip line == ":}" -> pure (Just (Submit (T.unlines (reverse reversed))))
+          | otherwise -> multiline (line : reversed)
 
 replOwner :: Session -> ModuleId
 replOwner session = ModuleId ("FicusInteractive" :| ["Cell" <> T.justifyRight 12 '0' (T.pack (show (sessionNext session)))])
@@ -172,7 +195,7 @@ interactiveOwner (ModuleId (first :| _)) = first == "FicusInteractive"
 sourceText :: Session -> Text -> Text
 sourceText session suffix = T.unlines (dependencies ++ sessionImports session ++ [suffix])
   where
-    owners = Set.toAscList (Set.fromList [owner | entity <- Map.elems (sessionVisible session), GlobalId owner _ _ <- [entityId entity]])
+    owners = Set.toAscList (Map.keysSet (sessionScopes session) `Set.union` Set.fromList [owner | entity <- Map.elems (sessionVisible session), GlobalId owner _ _ <- [entityId entity]])
     dependencies = ["use " <> moduleText owner <> " as FicusReplDependency" <> T.pack (show index) | (index, owner) <- zip [0 :: Int ..] owners]
 
 provider :: Session -> Text -> P.ModuleProvider IO

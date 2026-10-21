@@ -1,4 +1,4 @@
-module Ficus.Infer.Declaration (Declarations (..), TraitDeclaration (..), ImplementationDeclaration (..), emptyDeclarations, prepareDeclarations) where
+module Ficus.Infer.Declaration (Declarations (..), TraitDeclaration (..), ImplementationDeclaration (..), emptyDeclarations, prepareDeclarations, prepareDeclarationsWithMode, sameImplementationHead) where
 
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.Graph (SCC (..), stronglyConnComp)
@@ -13,6 +13,7 @@ import Ficus.Infer.Monad
 import Ficus.Infer.Syntax
 import Ficus.Infer.Type
 import Ficus.Infer.Unify qualified as U
+import Ficus.Initialization
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Abstract.Dependencies
 import Ficus.Syntax.Core qualified as C
@@ -51,7 +52,10 @@ emptyDeclarations :: Declarations
 emptyDeclarations = Declarations Map.empty emptyTypes Map.empty Set.empty Map.empty Map.empty Map.empty Map.empty
 
 prepareDeclarations :: Declarations -> A.AbstractModule -> Infer Declarations
-prepareDeclarations imported tree = do
+prepareDeclarations = prepareDeclarationsWithMode OrdinaryInitialization
+
+prepareDeclarationsWithMode :: InitializationMode -> Declarations -> A.AbstractModule -> Infer Declarations
+prepareDeclarationsWithMode mode imported tree = do
   let declarations = A.declarations (A.abstractDeclarations tree)
       summary = K.inferKinds (typeKinds (declarationTypes imported)) tree
       localAliases = [(ident, d) | d <- declarations, A.AliasDefinition ident _ _ _ <- [A.nodeValue d]]
@@ -146,11 +150,24 @@ prepareDeclarations imported tree = do
         unless validHead (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan head') "implementation head must apply a nominal constructor to distinct bare variables"))
         forM_ (zip context predicates) $ \(predicateSource, p) ->
           unless (validContext p) (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan predicateSource) "implementation context must constrain a head variable"))
-        unless (owns (predicateTrait predicate') || case base of Constructor constructor _ -> owns constructor; _ -> False) (emit (E.diagnostic E.OrphanImplementation (A.nodeSpan head') "an implementation must be declared by the trait or type constructor's module"))
+        unless (mode == InteractiveInitialization || owns (predicateTrait predicate') || case base of Constructor constructor _ -> owns constructor; _ -> False) (emit (E.diagnostic E.OrphanImplementation (A.nodeSpan head') "an implementation must be declared by the trait or type constructor's module"))
         unless (Map.keysSet required == Map.keysSet methods) (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan source) "an implementation must supply every declared method exactly once"))
         let implementation = ImplementationDeclaration quantified predicates predicate' methods
-        pure environment {implementationDeclarations = Map.insert ident (coreNode source implementation) (implementationDeclarations environment)}
+            keep previousId previous = case previousId of
+              ImplementationId (previousOwner, _) -> mode /= InteractiveInitialization || previousOwner == owner || not (sameImplementationHead implementation (C.nodeValue previous))
+            retained = Map.filterWithKey keep (implementationDeclarations environment)
+        pure environment {implementationDeclarations = Map.insert ident (coreNode source implementation) retained}
       _ -> pure environment
+
+-- Valid heads apply a nominal constructor to distinct bare variables, so the
+-- trait and outer constructor determine overlap, independently of binder IDs.
+sameImplementationHead :: ImplementationDeclaration -> ImplementationDeclaration -> Bool
+sameImplementationHead left right =
+  let a = implementationHead left
+      b = implementationHead right
+   in predicateTrait a == predicateTrait b && case (fst (semanticSpine (predicateArgument a)), fst (semanticSpine (predicateArgument b))) of
+        (Constructor x _, Constructor y _) -> x == y
+        _ -> False
 
 appliedType :: Declarations -> GlobalId -> [Quantifier] -> InferType
 appliedType environment ident parameters = foldl Application (Constructor ident kind) [Variable (Bound (quantifierId q)) (quantifierKind q) | q <- parameters]

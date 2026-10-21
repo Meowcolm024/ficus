@@ -64,6 +64,7 @@ ficus> vecLength (listToVec [1, 2, 3])
 | `:kind TYPE` | `:k TYPE` | Infer a type-level expression's kind |
 | `:help` | `:h` | Show commands and usage |
 | `:quit` | `:q` | Exit; end of input also exits |
+| `:{` … `:}` | | Enter a multiline expression or declaration group |
 
 For example, `:k Functor` shows `Functor : (Type -> Type) -> Constraint`.
 `:t 1` shows `1 : Int`; applications and lambdas also work.
@@ -92,6 +93,21 @@ rerun. Replacing a type creates a new nominal type and may reuse constructors
 owned by the type being replaced. Constructor names belonging to unrelated
 types cannot be overwritten. Value restrictions and recursive safety checks
 still apply; ordinary source-file rules are unchanged.
+
+Use `:{` and `:}` on their own lines to enter multiline input. Indentation and
+blank lines are preserved, and the block runs only after `:}`:
+
+```text
+ficus> :{
+ficus| impl Show Int =
+ficus|   show _ = "custom"
+ficus| :}
+ficus> show (42 : Int)
+"custom"
+```
+
+Interactive implementations may be orphan instances and replace earlier
+instances for subsequent submissions. Ctrl-C discards an unfinished block.
 
 ## Check and format source
 

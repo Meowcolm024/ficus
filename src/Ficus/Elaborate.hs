@@ -45,7 +45,8 @@ data CheckedModule = CheckedModule
 -- The constructor is private. Inference types in this internal cache are
 -- closed bound variables; no solver metavariable or source implementation body
 -- can be exported through the public elaboration API.
-newtype CheckedInterface = CheckedInterface Declarations deriving (Eq, Show)
+-- The set records accepted interactive overrides for subsequent cell selection.
+data CheckedInterface = CheckedInterface Declarations (Set.Set ImplementationId) deriving (Eq, Show)
 
 elaborateModule :: [CheckedInterface] -> A.AbstractModule -> Elaboration
 elaborateModule imports source = elaborateWithMode (if standaloneEnabled (A.abstractOptions source) then StandaloneInitialization else OrdinaryInitialization) imports source
@@ -59,7 +60,9 @@ elaborateWithMode mode imports source = case validateAbstract source of
   Right () ->
     let visible = Set.fromList (A.visibleImplementations source)
         merged = mergeInterfaces imports
-        imported = merged {implementationDeclarations = Map.restrictKeys (implementationDeclarations merged) visible}
+        visibleDeclarations = merged {implementationDeclarations = Map.restrictKeys (implementationDeclarations merged) visible}
+        overrides = Set.unions [ids | CheckedInterface _ ids <- imports]
+        imported = if mode == InteractiveInitialization then selectInteractiveImplementations overrides visibleDeclarations else visibleDeclarations
         inferred = inferModuleWithMode mode imported source
         diagnostics = I.diagnostics (inferenceState inferred)
      in case lowerModule inferred source of
@@ -77,7 +80,9 @@ elaborateWithMode mode imports source = case validateAbstract source of
                         { valueSignatures = Map.map (\scheme -> Signature scheme False (A.abstractSpan source)) publicValues,
                           implementationDeclarations = fmap (fmap (\implementation -> implementation {implementationMembers = Map.empty})) (implementationDeclarations declarations)
                         }
-                 in Complete (CheckedModule accepted (CheckedInterface interface) (Map.restrictKeys types exports)) warnings
+                    localOverrides = if mode == InteractiveInitialization then Map.keysSet (implementationDeclarations declarations) `Set.difference` Map.keysSet (implementationDeclarations imported) else Set.empty
+                    retainedOverrides = (overrides `Set.union` localOverrides) `Set.intersection` Map.keysSet (implementationDeclarations interface)
+                 in Complete (CheckedModule accepted (CheckedInterface interface retainedOverrides) (Map.restrictKeys types exports)) warnings
   where
     isError = (== D.Error) . D.diagnosticSeverity . D.toDiagnostic
     closeType = traverse (\case Bound ident -> Right (C.BoundVariable ident); _ -> Left ())
@@ -102,4 +107,16 @@ mergeInterfaces interfaces =
       implementationDeclarations = Map.unions (map implementationDeclarations entries)
     }
   where
-    entries = [entry | CheckedInterface entry <- interfaces]
+    entries = [entry | CheckedInterface entry _ <- interfaces]
+
+-- Cell module identities increase with submission order. Transitive interfaces
+-- can reintroduce superseded dictionaries; retain only the latest interactive
+-- override for each head when checking a new cell. Old modules keep their own
+-- evidence and dictionary bindings.
+selectInteractiveImplementations :: Set.Set ImplementationId -> Declarations -> Declarations
+selectInteractiveImplementations overrides declarations = declarations {implementationDeclarations = foldl select entries (Set.toAscList overrides)}
+  where
+    entries = implementationDeclarations declarations
+    select retained ident = case Map.lookup ident entries of
+      Nothing -> retained
+      Just node -> Map.insert ident node (Map.filter (not . sameImplementationHead (C.nodeValue node) . C.nodeValue) retained)

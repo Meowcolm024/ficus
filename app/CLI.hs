@@ -157,10 +157,10 @@ selectedModule file result = do
 
 replLoop :: DiagnosticStyle -> Repl.Session -> InputT IO ()
 replLoop diagnosticStyle session = handleInterrupt (outputStrLn "Interrupted." >> replLoop diagnosticStyle session) $ withInterrupt $ do
-  input <- getInputLine "ficus> "
+  input <- Repl.readCommand (\prompt -> fmap T.pack <$> getInputLine (T.unpack prompt))
   case input of
     Nothing -> pure ()
-    Just line -> case Repl.parseCommand (T.pack line) of
+    Just commandToRun -> case commandToRun of
       Repl.Quit -> pure ()
       Repl.Help -> outputStrLn (T.unpack Repl.helpText) >> replLoop diagnosticStyle session
       Repl.InvalidCommand message -> outputStrLn (T.unpack message) >> replLoop diagnosticStyle session

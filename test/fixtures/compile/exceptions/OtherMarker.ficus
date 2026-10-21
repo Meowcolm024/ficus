@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN EXCEPTION Other #-}
+trait Other e = {}

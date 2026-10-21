@@ -1,0 +1,2 @@
+type Box a = Box a
+impl Exception (Box a) = {}

@@ -1151,7 +1151,7 @@ the canonical `Data.Result.Result` type, including ordinary aliases and
 re-exports. Returning `Unit` or `Ok ()` exits successfully. Returning `Err message`
 writes the message to standard error and exits with status 1. Compilation,
 entry-point, and runtime errors also exit with status 1 and report diagnostics
-to standard error. Exception handling at the entry point belongs to v1+.
+to standard error. Uncaught typed exceptions in the implemented v1 extension follow Section 24.3.
 
 ### 22.1 Interactive execution
 
@@ -1367,26 +1367,26 @@ Ordinary module initializers and implementation members retain their
 non-expansiveness rules; `STANDALONE` and interactive allocation retain the value
 restriction. Interaction with future fibers remains unspecified.
 
-### 24.3 Exceptions (proposed interfaces)
+### 24.3 Exceptions
 
 #### Exception primitives
 
-The proposed v1+ Prelude exposes the compiler-recognized marker trait:
+The implemented v1 extension exposes in Prelude the compiler-recognized marker trait:
 
 ```text
 {-# BUILTIN EXCEPTION Exception #-}
 trait Exception e = {}
 ```
 
-This planned extension permits `BUILTIN` to target an ordinarily declared
+This extension permits `BUILTIN` to target an ordinarily declared
 top-level trait in the same module. The `EXCEPTION` contract requires one
 `Type` parameter, no methods, and no superclasses. Association follows ordinary
 trait identity through renaming and imports; the spelling `Exception` has no
 special meaning. Wrong target categories, incompatible trait shapes, and
 conflicting associations are static errors. The pragma retains the generic
-syntax of Section 19. This extension is not yet implemented.
+syntax of Section 19. The association is checked before primitive elaboration.
 
-An explicit v1+ builtin-backed exception module provides:
+`Ficus.Builtin.Exception`, re-exported by `Control.Exception`, provides:
 
 ```text
 {-# BUILTIN THROW throw #-}
@@ -1400,7 +1400,33 @@ catch : Exception e => (Unit -> a) -> (e -> a) -> a
 
 `Exception e` has no source-level methods. Typed `catch` distinguishes nominal exception types, including through polymorphic `Exception e` uses, even when those types have identical value representations.
 
-These interfaces may change if existential errors are adopted (Section 24.6). Cleanup, nesting, interaction with effects, and standard `Exception` instances remain open.
+Catches are dynamically scoped around the call to `action ()`. Ordinary strict
+argument evaluation happens before that call; exceptions while evaluating the
+action or handler expressions are outside this catch. A normal action result
+skips the handler. The nearest active catch with exactly the same nominal type
+handles a throw. The handler runs outside its own catch; throws from it propagate
+to enclosing catches. Type aliases preserve identity, while distinct nominal
+types and distinct type arguments remain distinct after wrapper erasure.
+
+Exception implementations follow ordinary ownership and overlap rules. A
+parameterized head must have only `Type` parameters and explicitly require
+`Exception` for each head parameter, including phantom parameters. This supplies identity
+evidence for every argument; higher-kinded exception heads are not supported.
+The standard trait module `Class.Exception` supplies instances for `Int`,
+`Float`, `Bool`, `Char`, `String`, `Unit`, lists, and products, with the required
+component constraints. User nominal types require explicit implementations.
+
+Typed exceptions do not catch generic runtime failures (Section 21), host IO
+errors, or host asynchronous exceptions. Completed output and reference writes
+are preserved. A throwing `modifyRef` updater skips its final store, while any
+writes already performed by the updater remain visible. No implicit cleanup or
+resource finalization runs; cleanup APIs are deferred. An uncaught typed
+exception is reported as a generic runtime error with throw context; `run` exits
+with status 1 and the REPL reports the error and remains available under its
+ordinary failed-submission rules. No `Show` constraint is implicitly required.
+
+Existential errors (Section 24.6), cleanup combinators, and fibers remain
+separate future extensions.
 
 ### 24.4 Pragmas
 

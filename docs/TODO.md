@@ -26,7 +26,8 @@ Unchecked items are pending; a settled design is not a completed feature.
 - [x] `STANDALONE`: acyclic expansive initializers, ordinary restrictions for cycles/members, and rejection of every incoming import ([SPEC §24.4](SPEC.md#244-pragmas)).
 - [x] Explicit record patterns with constructor-style grouping, optional fields, type-directed refutability, and recursive-pattern binding rejection; parser/formatter, evaluator, diagnostic-span, and highlighting coverage ([tests](../test/Ficus/RecordPatternSpec.hs)).
 - [x] Mutable `Ref`, `newRef`, `readRef`, and `modifyRef` in `Ficus.Builtin.Ref` / `Data.Ref`, shared `REF_*` registry contracts, and `Debug (Ref a)`, preserving the existing value restriction.
-- [ ] Typed exceptions: first add trait-targeted `BUILTIN EXCEPTION`, then identity evidence, constrained primitive contracts, lowering, and runtime propagation ([plan](PLAN.md#exception-implementation-sequence)); settle cleanup and remaining operational contracts before implementation.
+- [x] Typed exceptions: trait-targeted `BUILTIN EXCEPTION`, nominal component tokens, constrained primitives, dynamically scoped catches, library/driver integration, and differential/REPL fixtures ([tests](../test/Ficus/ExceptionSpec.hs)).
+- [ ] Exception cleanup combinators and higher-kinded exception heads.
 - [ ] Definition pragmas in implementation, `where`, local, and `do` declaration contexts.
 - [ ] Definition-local `ETA` expansion with preserved initializer timing.
 - [ ] `PRIVATE` / `PRIVATE member`, including constructor and field visibility.
@@ -34,7 +35,7 @@ Unchecked items are pending; a settled design is not a completed feature.
 - [ ] Module `OPTIONS` interpretation and CLI precedence.
 - [ ] Structural `DERIVE` for empty `Show`/`Eq` implementations.
 - [ ] Expression interpolation: settle delimiters and escapes.
-- [ ] Expanded libraries: `System.Environment`, `Data.Map`, `Control.Exception`, JSON, and regular expressions.
+- [ ] Expanded libraries: `System.Environment`, `Data.Map`, JSON, and regular expressions.
 - [ ] Existential record members: settle witness inference, escape checks, updates, and exception API interaction (proposal).
 - [ ] Coverage through uninhabited fields and subpatterns beyond direct empty nominal types.
 

@@ -77,3 +77,6 @@ tests =
     check (key, TypeBuiltin kind) = do
       typeKindFromKey key @?= Just kind
       primitiveFromKey key @?= Nothing
+    check (key, TraitBuiltin _) = do
+      typeKindFromKey key @?= Nothing
+      primitiveFromKey key @?= Nothing

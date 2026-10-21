@@ -1,7 +1,7 @@
 module FicusBackend.Runtime.Primitive (evaluatePrimitive, ioEffects) where
 
 import Control.Exception (IOException, try)
-import Control.Monad.Except (throwError)
+import Control.Monad.Except (catchError, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
@@ -9,7 +9,6 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
 import FicusBackend.Runtime.AST
-import FicusBackend.Runtime.Error qualified as E
 import FicusBackend.Runtime.Value
 import System.IO qualified as IO
 
@@ -75,6 +74,11 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
   (VecLength (), [VectorValue values]) -> integer (fromIntegral (V.length values))
   (ByteFromInt (), [LiteralValue (Integer value)]) -> pure (ByteValue (fromIntegral value))
   (ByteToInt (), [ByteValue value]) -> integer (fromIntegral value)
+  (Throw (), [TokenValue token, value]) -> throwError (Thrown token value origin)
+  (Catch (), [TokenValue expected, action, handler]) ->
+    catchError (applyValueWithEffects effects action (LiteralValue Unit)) $ \case
+      Thrown actual value _ | expected == actual -> applyValueWithEffects effects handler value
+      failure' -> throwError failure'
   (RefNew (), [value]) -> RefValue <$> liftIO (newIORef value)
   (RefRead (), [RefValue cell]) -> liftIO (readIORef cell)
   (RefModify (), [RefValue cell, update]) -> do
@@ -99,7 +103,7 @@ evaluatePrimitive origin effects operation arguments = case (operation, argument
     boolean = pure . LiteralValue . Boolean
     string = pure . LiteralValue . String
     failure :: T.Text -> EvalM a
-    failure = throwError . E.RuntimeError . (origin <>)
+    failure = raiseRuntime . (origin <>)
     divide operation' a b
       | b == 0 = failure "integer division by zero"
       | otherwise = integer (fromInteger (operation' (toInteger a) (toInteger b)))

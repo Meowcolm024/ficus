@@ -1,0 +1,2 @@
+type Problem (f : Type -> Type) = Problem Int
+impl Exception (Problem f) = {}

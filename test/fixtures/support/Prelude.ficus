@@ -155,3 +155,22 @@ stdout : Handle
 write : Handle -> String -> Unit
 print : String -> Unit
 print text = write stdout text
+
+{-# BUILTIN EXCEPTION Exception #-}
+trait Exception e = {}
+
+impl Exception Int = {}
+impl Exception Float = {}
+impl Exception Bool = {}
+impl Exception Char = {}
+impl Exception String = {}
+impl Exception Unit = {}
+impl Exception a => Exception [a] = {}
+impl (Exception a, Exception b) => Exception (a * b) = {}
+
+
+{-# BUILTIN THROW throw #-}
+throw : Exception e => e -> a
+
+{-# BUILTIN CATCH catch #-}
+catch : Exception e => (Unit -> a) -> (e -> a) -> a

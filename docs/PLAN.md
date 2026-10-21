@@ -100,7 +100,7 @@ These are dependency groups, not committed minor-version releases. Empty types/m
 | V1-T | Artifacts and tooling | Design Lisp-like interface/object schemas and compatibility rules before artifact consumers. Initial objects contain textual Runtime AST; specify integration with v2+ JavaScript artifacts. Implement the settled `compile`, `run`, `repl [FILE]`, `format [-f FILE]`, and `lsp` command surface; resolve output paths, loading, and formatter I/O first. LSP initially provides semantic highlighting, definitions, and inferred types using retained metadata |
 | V1-P | Types and patterns | Empty type bodies and empty `with`; no synthetic record constructor for `type T = {}`. Empty elimination accepts any result type and is exhaustive for uninhabited scrutinees. Add positive declaration/elimination fixtures and negative `Void with {}` coverage. Replace builtin-backed Prelude `Void`/`absurd`. Add explicit-brace record patterns with type-directed refutability and optional field omission in the specified positions, including both `do` binding forms; test nested refutable fields, upper-label type RHS arrows, and witness slots without @; reject recursive pattern bindings |
 | V1-S | Evaluation and state | Implement the settled `Ref`, `newRef`, `readRef`, and `modifyRef` API under the existing v0 value restriction. Lazy arrows move to V2; retain explicit thunk APIs until then |
-| V1-E | Exceptions | Follow the [exception implementation sequence](#exception-implementation-sequence): trait-targeted `BUILTIN`, runtime identity evidence, constrained primitive contracts, lowering, and typed runtime propagation. Settle operational questions before implementation |
+| V1-E | Exceptions | Implemented: marker association, nominal tokens, constrained primitives, typed propagation, library/driver integration, and differential fixtures. Cleanup combinators remain deferred |
 | V1-G | Pragmas and deriving | `PRIVATE member` hides record constructors and fields while retaining the type. Add `DEPRECATED`, module-level `OPTIONS`, and `STANDALONE` (allow acyclic expansive top-level initialization; forbid imports of the module; preserve explicit entry selection), and argument-free `DERIVE` on an empty following `impl` for structural `Show`/`Eq` deriving; reject all handwritten members, including partial implementations. Settle targeting, warning policy, compiler-option interpretation/precedence, and derivation rules; preserve required metadata in interfaces. Admit definition pragmas in impl/where/local declaration contexts and definition-local ETA expansion before non-expansiveness checks; never inherit ETA into sibling or nested definitions; arbitrary expression pragmas and arbitrary trait derivation remain outside the initial scope |
 | V1-L | Interpolation and libraries | Settle expression-interpolation delimiters/escapes before extending the scanner. Expand Prelude and define JSON/regex APIs, module organization, and re-exports, retaining the fine-grained control traits |
 | Research | Existential type abstraction | Existential record members remain a v1+ proposal: implement named with-only explicit type-member supply/opening, uppercase labels selecting types without @, value-only positional slots and anonymous unpacking; review witness inference/non-escape and possible exception API changes. Higher-rank checking remains future work |
@@ -108,46 +108,28 @@ These are dependency groups, not committed minor-version releases. Empty types/m
 | V2-C | Concurrency primitives | Preserve the proposed `Fiber e a`/`join` and typed channel interfaces. Settle scheduler, buffering, cancellation, and reference interactions; retain nominal exception evidence and evaluate any existential-error revision explicitly |
 | V3 | Native/WebAssembly backend | Choose WebAssembly GC or LLVM; specify closure/runtime representation, memory management, and integration. Validate equivalence against the reference evaluator |
 
-References are not blocked on existential errors: their API is settled. V1 exceptions and V2 fibers retain their proposed status. LSP can use stage metadata independently of whether artifact serialization is finished; any cross-module artifact dependency must be specified when its interface is designed.
+References are not blocked on existential errors: their API is settled. V1 exceptions are implemented; V2 fibers retain their proposed status. LSP can use stage metadata independently of whether artifact serialization is finished; any cross-module artifact dependency must be specified when its interface is designed.
 
 ### Exception implementation sequence
 
-Planned work for [SPEC §24.3](SPEC.md#243-exceptions-proposed-interfaces):
+Implemented for [SPEC §24.3](SPEC.md#243-exceptions):
 
-1. **Trait builtin association first.** Extend semantic `BUILTIN` handling with
-   `{-# BUILTIN EXCEPTION Exception #-}` on an ordinary top-level empty trait
-   with one `Type` parameter and no superclasses. Add a trait contract to the
-   shared registry; preserve canonical identity through imports and renaming.
-   Reject wrong targets, shapes, and conflicting associations. Keep the generic
-   pragma parser and ordinary trait ownership/visibility rules.
-2. **Identity evidence.** Design a compiler-generated type token carried by
-   `Exception e` dictionaries, selected by the builtin association rather than
-   the spelling `Exception`. Preserve it through polymorphic calls and wrapper
-   erasure. Settle supported instance heads and token construction for
-   parameterized types before implementing evidence generation; do not infer
-   identity from payload representation or the trait's shared dictionary tag.
-3. **Primitive contracts and Core.** Extend primitive schemes beyond the current
-   single variable and unconstrained contracts to support independent `e`/`a`
-   variables and `Exception e`. Elaborate and lower evidence operands into
-   `THROW`/`CATCH`; extend boundary validators for type tokens and their use.
-   Ordinary HM unification, function types, and the value restriction stay intact.
-4. **Runtime propagation.** Carry token and payload in an exception outcome
-   distinct from normal values and runtime failures. `throw` never returns;
-   `catch` invokes its thunk and handles only the selected type. Resolve nesting,
-   handler failures, cleanup, and runtime-failure catchability in SPEC first.
-   Preserve strict evaluation order and completed effects; `modifyRef` performs
-   its final store only after a successful updater return.
-5. **Library, drivers, and acceptance.** Add builtin bindings and the explicit
-   exception API, plus uncaught-exception reporting for run/REPL. Use the test
-   Prelude for fixtures. Cover renamed trait bindings, invalid contracts,
-   polymorphic evidence, distinct types with identical erased representations,
-   nested/mismatched catches, handler failures, and reference effects. Run all
-   boundary validators and compiled/direct evaluator differential tests.
+1. Trait-targeted `BUILTIN EXCEPTION` validates ordinary ownership, empty shape,
+   Type kind, canonical identity, and conflicting associations.
+2. Exception dictionaries retain a nominal token with component tokens. Each
+   Type parameter requires explicit Exception evidence; phantom arguments count.
+   Higher-kinded instance parameters remain unsupported.
+3. THROW/CATCH source schemes carry independent exception/result variables and
+   a predicate. Core receives explicit evidence and validates token constructors.
+4. Runtime preserves a typed exception outcome separate from generic failures.
+   Catches are dynamically scoped; handlers propagate outward. Completed effects
+   remain and throwing reference updaters skip their final stores. No implicit
+   cleanup runs; cleanup combinators remain future work.
+5. Builtin and public exception modules, Prelude marker export, uncaught-error
+   reporting, REPL identity retention, and compiled/direct fixtures are present.
 
-This introduces nonlocal control flow, not a union in source return types:
-`throw : Exception e => e -> a` has no normal result. Existential error packages
-and fibers remain separate follow-ups. Update SPEC/IMPL and the checklist as each
-step lands; this sequence does not mark exception support implemented.
+This introduces nonlocal control flow, not a union in source return types.
+Existential error packages and fibers remain separate follow-ups.
 
 ## 4. Decision register
 
@@ -167,14 +149,14 @@ Existing IDs are retained for traceability. “Before” is the last implementat
 | A8 | `DEPRECATED` targeting, placement, and warning policy | SPEC §24.4; IMPL §9 | V1-G metadata and diagnostics; preserve identifier targets and message |
 | A9 | `OPTIONS` argument interpretation, accepted options, CLI precedence | SPEC §24.4; IMPL §9 | V1-G semantic option handling; use the uniform pragma parser and preserve source metadata from M1 |
 | A10 | Private-pragma targeting details and inline pragmas | SPEC §24.4 | V1-G; retain the selected `PRIVATE`/`PRIVATE member` distinction, including hiding record constructors and fields, with v1+ definition-context pragmas admitted and per-directive targeting still open |
-| A11 | Exception nominal identity and potential existential-error API | SPEC §24.3/24.6; IMPL §10.4/10.5 | V1-E exception implementation; select surviving evidence/type tokens before runtime matching |
+| A11 | Exception nominal identity and potential existential-error API | SPEC §24.3/24.6; IMPL §10.4/10.5 | Nominal token evidence implemented; existential-error revisions remain open |
 | A12 | Reference atomicity, fiber scheduling, channel buffering/cancellation | SPEC §24.2/25.4; IMPL §10.2/10.4 | V2-C concurrency; ordinary V1-S references need not wait for a scheduler choice |
 | A13 | Call-by-name thunk/Core representation | SPEC §25.1; IMPL §10.3 | V2 lazy-arrow implementation; no memoization or implicit strict/lazy coercion. Do not reserve `~>` in v0; type punctuation is introduced with the later feature |
 | A14 | v0 library inventory and frozen Prelude exports; expanded JSON/regex APIs | SPEC §24.5; IMPL §9 | V1-L library interfaces; review v0 exports, Debug/Default and remaining instance contracts, Result/Either naming, numeric/Void scope, module availability, bootstrap dependencies, and trait/type ownership |
 | A15 | Build configuration, packages, dependencies, and proposed `FOREIGN` annotations | SPEC §25; IMPL §6/9 | V2 design |
 | A16 | Structural deriving rules | SPEC §24.4 | V1-G; preserve `{-# DERIVE #-}` attachment to the following empty `impl`, explicit contexts, rejection of nonempty bodies, and generic highlighting; initial scope is structural `Show`/`Eq` |
 | A17 | Expression interpolation delimiters and escaping | SPEC §24.5 | V1-L scanner extension |
-| A18 | Exception cleanup, nesting, effects, and standard instances | SPEC §24.3 | V1-E operational semantics; runtime identity alone does not settle these |
+| A18 | Exception cleanup, nesting, effects, and standard instances | SPEC §24.3 | Nesting, effects, instances, and no implicit cleanup settled in §24.3; cleanup combinators deferred |
 | A19 | Settled: shared module qualifiers | SPEC §2/6; IMPL §1 | Repeated qualifiers warn; requested exports filter candidates and canonical identities deduplicate at use sites |
 
 ### B. v0 conformance work and remaining gaps

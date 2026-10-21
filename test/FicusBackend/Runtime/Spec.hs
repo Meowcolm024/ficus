@@ -1,7 +1,6 @@
 module FicusBackend.Runtime.Spec (tests) where
 
 import Control.Monad (foldM, forM_)
-import Control.Monad.Except (runExceptT)
 import Data.IORef (atomicModifyIORef', modifyIORef', newIORef, readIORef)
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -243,6 +242,8 @@ tests =
       testGroup
         "validation"
         [ invalid "negative global count" ((program (literal R.Unit)) {R.programGlobalCount = -1}),
+          invalid "exception token identity" (program (node (R.TypeToken (R.ConstructorIndex 999) []))),
+          invalid "exception token arity" (program (node (R.TypeToken R.nilConstructor [literal R.Unit]))),
           invalid "global ID" (program (node (R.Global (R.GlobalIndex 9)))),
           invalid "local frame" (program (node (R.Load (R.Local (R.FrameDepth 0) (R.SlotIndex 0))))),
           invalid "capture index" (program (node (R.Load (R.Capture (R.CaptureIndex 0))))),
@@ -306,10 +307,10 @@ tests =
           primitiveCase "string equality" R.StringEqual [R.String "a", R.String "b"] (R.Boolean False),
           primitiveCase "string comparison uses code points" R.StringLess [R.String "\xE000", R.String "\x10000"] (R.Boolean True),
           testCase "byte conversion reduces modulo 256" $ do
-            result <- runExceptT (evaluatePrimitive "fixture: " quiet (R.ByteFromInt ()) [LiteralValue (R.Integer (-1))] >>= \byte -> evaluatePrimitive "fixture: " quiet (R.ByteToInt ()) [byte])
+            result <- runEvaluation (evaluatePrimitive "fixture: " quiet (R.ByteFromInt ()) [LiteralValue (R.Integer (-1))] >>= \byte -> evaluatePrimitive "fixture: " quiet (R.ByteToInt ()) [byte])
             fmap observe result @?= Right (int 255),
           testCase "string and immutable vector conversions preserve Unicode order" $ do
-            result <- runExceptT $ do
+            result <- runEvaluation $ do
               chars <- evaluatePrimitive "fixture: " quiet R.StringToChars [LiteralValue (R.String "a😀é")]
               vector <- evaluatePrimitive "fixture: " quiet (R.VecFromList ()) [chars]
               count <- evaluatePrimitive "fixture: " quiet (R.VecLength ()) [vector]
@@ -317,25 +318,25 @@ tests =
               pure (observe count, observe restored)
             result @?= Right (int 3, LiteralObservation (R.String "a😀é")),
           testCase "primitive failures retain their embedded context" $ forM_ [(R.IntDivide, [R.Integer 1, R.Integer 0]), (R.IntRemainder, [R.Integer 1, R.Integer 0]), (R.FloatToInt, [R.Floating (0 / 0)]), (R.FloatToInt, [R.Floating (1 / 0)]), (R.FloatToInt, [R.Floating 9223372036854775808])] $ \(operation, operands) -> do
-            result <- runExceptT (evaluatePrimitive "fixture: " quiet operation (map LiteralValue operands))
+            result <- runEvaluation (evaluatePrimitive "fixture: " quiet operation (map LiteralValue operands))
             case result of Left problem -> assertBool "failure message retains its context" ("fixture: " `T.isPrefixOf` E.errorMessage problem); Right value -> assertFailure (show (observe value)),
           testCase "IO exceptions become primitive failures" $ do
-            result <- runExceptT (evaluatePrimitive "fixture: " (Effects (\_ _ -> ioError (userError "fixture")) (\_ _ -> pure "")) (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "x")])
+            result <- runEvaluation (evaluatePrimitive "fixture: " (Effects (\_ _ -> ioError (userError "fixture")) (\_ _ -> pure "")) (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "x")])
             case result of Left problem -> assertBool "failure message retains its context" ("fixture: " `T.isPrefixOf` E.errorMessage problem); Right _ -> assertFailure "IO exception disappeared",
           testCase "standard handles retain distinct identities" $
             forM_ [(R.HandleStdin (), StandardInput), (R.HandleStdout (), StandardOutput), (R.HandleStderr (), StandardError)] $ \(operation, handle) -> do
-              result <- runExceptT (evaluatePrimitive "fixture: " quiet operation [])
+              result <- runEvaluation (evaluatePrimitive "fixture: " quiet operation [])
               fmap observe result @?= Right (HandleObservation handle),
           testCase "handle writes route stdout and stderr separately" $ do
             output <- newIORef []
             let effects = Effects (\handle text -> modifyIORef' output (<> [(handle, text)])) (\_ _ -> pure "")
-            result <- runExceptT $ do
+            result <- runEvaluation $ do
               _ <- evaluatePrimitive "fixture: " effects (R.HandleWrite ()) [HandleValue StandardOutput, LiteralValue (R.String "out")]
               evaluatePrimitive "fixture: " effects (R.HandleWrite ()) [HandleValue StandardError, LiteralValue (R.String "err")]
             fmap observe result @?= Right (LiteralObservation R.Unit)
             readIORef output >>= (@?= [(StandardOutput, "out"), (StandardError, "err")]),
           testCase "handle reads consume bounded Unicode chunks" $ do
-            result <- captureInput "a😀é" $ \effects -> runExceptT $ do
+            result <- captureInput "a😀é" $ \effects -> runEvaluation $ do
               first <- evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
               second <- evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
               lastChunk <- evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer 2)]
@@ -343,11 +344,11 @@ tests =
             result @?= (Right (AggregateObservation R.pairConstructor [LiteralObservation (R.String "a😀"), AggregateObservation R.pairConstructor [LiteralObservation (R.String "é"), LiteralObservation (R.String "")]]), []),
           testCase "nonpositive handle reads skip effects" $ forM_ [0, -1] $ \count -> do
             let effects = Effects (\_ _ -> pure ()) (\_ _ -> assertFailure "read effect ran" >> pure "")
-            result <- runExceptT (evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer count)])
+            result <- runEvaluation (evaluatePrimitive "fixture: " effects (R.HandleRead ()) [HandleValue StandardInput, LiteralValue (R.Integer count)])
             fmap observe result @?= Right (LiteralObservation (R.String "")),
           testCase "unsupported handle directions fail at the primitive span" $
             forM_ [(R.HandleRead (), [HandleValue StandardOutput, LiteralValue (R.Integer 1)]), (R.HandleRead (), [HandleValue StandardError, LiteralValue (R.Integer 1)]), (R.HandleWrite (), [HandleValue StandardInput, LiteralValue (R.String "x")])] $ \(operation, values) -> do
-              result <- runExceptT (evaluatePrimitive "fixture: " quiet operation values)
+              result <- runEvaluation (evaluatePrimitive "fixture: " quiet operation values)
               case result of
                 Left problem -> assertBool "failure message retains its context" ("fixture: " `T.isPrefixOf` E.errorMessage problem)
                 Right _ -> assertFailure "invalid handle direction succeeded"
@@ -369,7 +370,7 @@ tests =
       Right _ -> assertFailure "malformed Runtime accepted"
       Left errors -> do assertBool "error returned" (not (null errors)); mapM_ (\problem -> (B.errorKind problem, B.errorSpan problem) @?= (B.InvalidProgram, B.runtimeSpan)) errors
     primitiveCase name operation operands expected = testCase name $ do
-      result <- runExceptT (evaluatePrimitive "fixture: " quiet operation (map LiteralValue operands))
+      result <- runEvaluation (evaluatePrimitive "fixture: " quiet operation (map LiteralValue operands))
       fmap observe result @?= Right (LiteralObservation expected)
 
 matchError :: Span -> E.RuntimeError

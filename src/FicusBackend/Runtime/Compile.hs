@@ -15,7 +15,6 @@ module FicusBackend.Runtime.Compile
 where
 
 import Control.Monad (foldM, forM_)
-import Control.Monad.Except (runExceptT, throwError)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -52,7 +51,7 @@ initialize effects executable = initializeWith effects executable Map.empty
 -- | Reuse already evaluated globals when linking an interactive submission.
 -- Values and closures keep their original lexical environments.
 initializeWith :: Effects -> Executable -> Map GlobalIndex Value -> IO (Either E.RuntimeError Instance)
-initializeWith effects (Executable program functions initializers) cached = runExceptT $ do
+initializeWith effects (Executable program functions initializers) cached = runEvaluation $ do
   globals <- emptyFrame (programGlobalCount program)
   let env = Env [] V.empty globals functions effects
   forM_ initializers $ \(GlobalIndex slot, evaluator) -> do
@@ -62,7 +61,7 @@ initializeWith effects (Executable program functions initializers) cached = runE
   pure (Instance env)
 
 evaluateEntry :: Instance -> Entry -> [Value] -> IO (Either E.RuntimeError Value)
-evaluateEntry (Instance env) (Entry (GlobalIndex slot)) arguments = runExceptT $ do
+evaluateEntry (Instance env) (Entry (GlobalIndex slot)) arguments = runEvaluation $ do
   cell <- index (envGlobals env) slot
   value <- readCell cell
   foldM (applyValueWithEffects (envEffects env)) value arguments
@@ -99,6 +98,7 @@ compileExpr program source = case nodeValue source of
             cell <- index frame slot
             writeCell cell value
           rest recursive
+  TypeToken constructor fields -> let !operands = strictMap compile fields in \env -> mapM ($ env) operands >>= makeTypeToken constructor
   Construct constructor fields -> let !operands = strictMap compile fields in \env -> Aggregate constructor . V.fromList <$> mapM ($ env) operands
   Case receiver alternatives fallback ->
     let !scrutinee = compile receiver
@@ -126,7 +126,7 @@ compileExpr program source = case nodeValue source of
      in \env -> do
           values <- mapM ($ env) operands
           maybe (invalidValue "unknown runtime primitive") (\primitive -> evaluatePrimitive context (envEffects env) primitive values) operation
-  Raise message -> \_ -> throwError (E.RuntimeError message)
+  Raise message -> \_ -> raiseRuntime message
   where
     compile = compileExpr program
 

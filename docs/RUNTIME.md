@@ -6,7 +6,8 @@ The library implementation below is available in `FicusBackend.Runtime` and
 [IMPL.md sections 4–5](IMPL.md#4-runtime-ast), including strict evaluation,
 runtime erasure, lexical addressing, and compositional evaluator compilation.
 
-The interpreter supports the v0 primitive registry and the bundled Prelude.
+The interpreter supports the v0 primitive registry, mutable references, typed
+exceptions, and the bundled Prelude.
 Tests include source-to-execution fixtures, a direct Runtime interpreter, and
 generated programs checked against an independent arithmetic/effect oracle.
 Evidence is retained conservatively; static types and single-field nominal
@@ -80,6 +81,7 @@ data ExprF
   | Let Expr Expr
   | LetRec (NonEmpty Expr) Expr
   | Construct ConstructorIndex [Expr]
+  | TypeToken ConstructorIndex [Expr]
   | Case Expr [Alternative] Expr
   | If [(Expr, Expr)] Expr
   | Select Expr FieldIndex
@@ -290,7 +292,7 @@ Lowering, linking, entry selection, and Runtime validation return separate
 
 The backend REPL retains closed schemes, evaluated values/closures, source and
 name-scope snapshots, and Runtime layout metadata, without retaining Core.
-`lowerProgramWithLayouts` extends an existing constructor/dictionary tag table;
+`lowerProgramWithLayouts` extends an existing constructor/dictionary/exception-identity tag table;
 old tags never shift when new nominal types are added. `loweredBindings` maps
 module-owned references to current global addresses, including discarded
 bindings and generated dictionary builders. `initializeWith` installs retained
@@ -309,3 +311,25 @@ the ordinary closure application path with the current invocation's effects;
 its result is stored only after successful completion. Runtime observation is
 opaque, so it neither reads mutable contents nor follows cycles. Source `Debug`
 uses the library instance to read and display contents explicitly.
+
+
+## 9. Typed exceptions
+
+`ExceptionDictionary` in Core retains nominal identity independently of the
+payload representation. Lowering produces Runtime `TypeToken` nodes with numeric
+layout tags and component evidence; no Core types or source metadata survive.
+Tokens include phantom arguments and persist across REPL linking. Both boundary
+validators check token construction, and Core checks exception primitive evidence.
+
+`THROW` takes a token and payload and produces an internal typed exception.
+`CATCH` takes a token, action thunk, and handler; it invokes the action with Unit
+and handles exactly matching tokens. Its handler runs outside that catch.
+Generic runtime errors remain separate and cannot be caught. Effects completed
+before a throw remain visible, and `modifyRef` writes its final result only on
+normal return. Public execution APIs still return `Either RuntimeError a`;
+`runEvaluation` reports uncaught throws with their explicit primitive context.
+
+`test/Ficus/ExceptionSpec.hs` covers source contracts, renaming/imports, erased
+wrappers, nested and polymorphic catches, phantom arguments, strict effects,
+reference updates, malformed Core, and REPL identity/recovery. Execution fixtures
+compare the compiled evaluator with the direct Runtime interpreter.

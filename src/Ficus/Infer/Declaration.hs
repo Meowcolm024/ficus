@@ -24,7 +24,8 @@ import Ficus.Type.Substitution qualified as S
 data TraitDeclaration = TraitDeclaration
   { traitParameter :: Quantifier,
     traitSuperclasses :: [Predicate InferType],
-    traitMethods :: Map GlobalId (Scheme InferType)
+    traitMethods :: Map GlobalId (Scheme InferType),
+    traitException :: Bool
   }
   deriving (Eq, Show)
 
@@ -64,7 +65,17 @@ prepareDeclarationsWithMode mode imported tree = do
       orderedAliases = stronglyConnComp [(d, ident, Set.toList (typeDependencies (declarationDependencies d) `Set.intersection` aliasIds)) | (ident, d) <- localAliases]
   mapM_ emit (K.kindDiagnostics summary)
   preparedTypes <- foldM prepareAlias environment orderedAliases
-  prepared <- foldM prepare (imported {declarationTypes = preparedTypes}) declarations
+  let localException = Map.lookup "EXCEPTION" (A.builtinAssociations tree)
+      associations = maybe (builtinTypeAssociations imported) (\ident -> Map.insert "EXCEPTION" ident (builtinTypeAssociations imported)) localException
+  prepared <- foldM prepare (imported {declarationTypes = preparedTypes, builtinTypeAssociations = associations}) declarations
+  forM_ localException $ \ident -> do
+    let location = maybe (A.abstractSpan tree) A.entitySpan (Map.lookup ident (A.abstractEntities tree))
+    unless
+      (maybe False (traitException . C.nodeValue) (Map.lookup ident (traitDeclarations prepared)))
+      (emit (E.diagnostic E.BuiltinContractMismatch location "EXCEPTION must target an empty trait with one Type parameter and no superclasses"))
+  when
+    (length (filter (traitException . C.nodeValue) (Map.elems (traitDeclarations prepared))) > 1)
+    (emit (E.diagnostic E.BuiltinContractMismatch (A.abstractSpan tree) "conflicting visible EXCEPTION trait associations"))
   mapM_ emit (regularityDiagnostics prepared declarations)
   mapM_ emit (superclassDiagnostics prepared)
   implementations <- foldM prepareImplementation prepared declarations
@@ -123,12 +134,17 @@ prepareDeclarationsWithMode mode imported tree = do
             pure (Just (method, signature {signatureScheme = complete}))
           _ -> pure Nothing
         let methods = [(method, signature) | Just (method, signature) <- checked]
+        let exception = Map.lookup "EXCEPTION" (A.builtinAssociations tree) == Just ident
+        when exception $
+          unless
+            (null superclasses && null members && map quantifierKind parameters == [TypeKind])
+            (emit (E.diagnostic E.BuiltinContractMismatch (A.nodeSpan source) "EXCEPTION requires an empty trait with one Type parameter and no superclasses"))
         case parameters of
           [quantifier] ->
             pure
               environment
                 { valueSignatures = Map.fromList [(GlobalRef method, signature) | (method, signature) <- methods] `Map.union` valueSignatures environment,
-                  traitDeclarations = Map.insert ident (coreNode source (TraitDeclaration quantifier superclasses (Map.fromList [(method, signatureScheme signature) | (method, signature) <- methods]))) (traitDeclarations environment)
+                  traitDeclarations = Map.insert ident (coreNode source (TraitDeclaration quantifier superclasses (Map.fromList [(method, signatureScheme signature) | (method, signature) <- methods]) exception)) (traitDeclarations environment)
                 }
           _ -> pure environment
       A.ImplementationDefinition _ _ _ _ _ -> pure environment
@@ -147,6 +163,10 @@ prepareDeclarationsWithMode mode imported tree = do
             ImplementationId (owner, _) = ident
             owns (GlobalId module' _ _) = module' == owner
             owns (IntrinsicId _) = False
+        when (maybe False (traitException . C.nodeValue) (Map.lookup (predicateTrait predicate') (traitDeclarations environment))) $
+          unless
+            (all (\argument -> kindOf argument == Right TypeKind && Predicate (predicateTrait predicate') argument `elem` predicates) arguments)
+            (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan head') "exception head parameters require their own Exception evidence and kind Type"))
         unless validHead (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan head') "implementation head must apply a nominal constructor to distinct bare variables"))
         forM_ (zip context predicates) $ \(predicateSource, p) ->
           unless (validContext p) (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan predicateSource) "implementation context must constrain a head variable"))

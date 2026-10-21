@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+trait Base e = {}
+{-# BUILTIN EXCEPTION Failure #-}
+trait Base e => Failure e = {}

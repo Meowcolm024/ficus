@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN EXCEPTION Failure #-}
+trait Failure e = {}
+{-# BUILTIN THROW bad #-}
+bad : e -> a

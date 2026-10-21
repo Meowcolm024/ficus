@@ -497,12 +497,14 @@ valueBody context source expected explicit = case A.nodeValue source of
         let converted = fmap convert contract
         forM_ (Map.lookup reference (valueSignatures (contextDeclarations context))) $ \signature -> do
           let declared = signatureScheme signature
-              expectedQuantifiers = quantifiers converted
-              actualQuantifiers = quantifiers declared
+              ordered scheme = [q | variable <- nub (foldr (:) [] (schemeType scheme)), q <- quantifiers scheme, variable == Bound (quantifierId q)]
+              expectedQuantifiers = ordered converted
+              actualQuantifiers = ordered declared
               mapping = S.fromBindings [(Bound (quantifierId a), Variable (Bound (quantifierId b)) (quantifierKind b)) | (a, b) <- zip expectedQuantifiers actualQuantifiers]
               compatible =
-                map quantifierKind expectedQuantifiers == map quantifierKind actualQuantifiers
-                  && null (schemePredicates declared)
+                length (quantifiers converted) == length (quantifiers declared)
+                  && map quantifierKind expectedQuantifiers == map quantifierKind actualQuantifiers
+                  && map (fmap (S.apply mapping)) (schemePredicates converted) == schemePredicates declared
                   && S.apply mapping (schemeType converted) == schemeType declared
           unless compatible (emit (E.diagnostic E.BuiltinContractMismatch (A.nodeSpan source) "builtin signature must match the complete polymorphic contract"))
         (contractType, _, _) <- instantiate (A.nodeSpan source) converted

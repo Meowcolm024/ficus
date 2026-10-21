@@ -48,7 +48,7 @@ dictionaryDescriptors environment = Map.traverseWithKey descriptor (traitDeclara
             pure (C.Node (NodeId (-fresh - 1)) (C.nodeSpan node) (GeneratedOrigin "dictionary layout" (C.nodeSpan node)) value)
       supers <- mapM (field . dictionaryType environment) (traitSuperclasses trait)
       methods <- mapM (\(name, scheme) -> field (name, method scheme)) (Map.toAscList (traitMethods trait))
-      pure (fmap (const (C.DictionaryDescriptor parameter supers methods)) node)
+      pure (fmap (const (C.DictionaryDescriptor parameter supers methods (traitException trait))) node)
 
 implementationReference :: ImplementationId -> Reference
 implementationReference (ImplementationId (owner, ident)) = GlobalRef (GlobalId owner ValueNS ("$implementation:" <> T.pack (show ident)))

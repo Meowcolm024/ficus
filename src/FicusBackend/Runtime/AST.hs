@@ -57,6 +57,7 @@ data ExprF
   | Let Binding Expr
   | LetRec (NonEmpty Binding) Expr
   | Construct ConstructorIndex [Expr]
+  | TypeToken ConstructorIndex [Expr]
   | Case Expr [Alternative] Expr
   | If [Node (Expr, Expr)] Expr
   | Select Expr ConstructorIndex FieldIndex

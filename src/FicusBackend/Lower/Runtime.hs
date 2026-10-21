@@ -30,7 +30,7 @@ data LoweredProgram = LoweredProgram {loweredProgram :: ValidatedProgram, lowere
 
 -- | Stable layout identities let retained REPL closures exchange aggregates
 -- with newly compiled code. The table contains Runtime metadata, never Core.
-data RuntimeLayouts = RuntimeLayouts (Map N.GlobalId R.ConstructorIndex) (V.Vector (R.Node R.ConstructorLayout)) deriving (Eq, Show)
+data RuntimeLayouts = RuntimeLayouts (Map N.GlobalId R.ConstructorIndex) (V.Vector (R.Node R.ConstructorLayout)) (Map N.GlobalId R.ConstructorIndex) deriving (Eq, Show)
 
 data Representation = Erased | Immediate R.RuntimeLiteral | Boxed R.ConstructorIndex
 
@@ -40,7 +40,8 @@ data Context = Context
     globals :: Map (N.ModuleId, N.Reference) R.GlobalIndex,
     constructors :: Map C.ConstructorId Representation,
     records :: Map N.GlobalId C.ConstructorId,
-    dictionaries :: Map N.GlobalId (R.ConstructorIndex, Int)
+    dictionaries :: Map N.GlobalId (R.ConstructorIndex, Int),
+    typeTokens :: Map N.GlobalId R.ConstructorIndex
   }
 
 data LowerState = LowerState {nextFunction :: Int, functions :: IntMap.IntMap R.Function}
@@ -63,7 +64,8 @@ lowerProgramWithLayouts previousLayouts modules = do
   let (representations, layouts, dictionaryLayouts, layoutState) = representationTables previousLayouts modules
       recordTable = Map.unions [Map.map (C.recordConstructor . C.nodeValue) (C.coreRecords tree) | tree <- modules]
       action = fmap concat $ forM modules $ \tree -> do
-        let context = Context (C.coreId tree) Map.empty globalTable representations recordTable dictionaryLayouts
+        let RuntimeLayouts _ _ tokens = layoutState
+            context = Context (C.coreId tree) Map.empty globalTable representations recordTable dictionaryLayouts tokens
         mapM (lowerGroup context) (C.coreBindings tree)
   (initializers, state) <- runStateT action (LowerState 0 IntMap.empty)
   let program = R.Program (V.fromList (IntMap.elems (functions state))) (length indexed) layouts (V.fromList P.allPrimitives) initializers
@@ -98,6 +100,7 @@ errorContext source =
 -- on other primitives indicate a broken Runtime invariant.
 primitiveContext :: C.Node a -> P.Primitive nominal -> T.Text
 primitiveContext source primitive = case primitive of
+  P.Throw _ -> errorContext source
   P.IntDivide -> errorContext source
   P.IntRemainder -> errorContext source
   P.FloatToInt -> errorContext source
@@ -109,7 +112,7 @@ failure :: E.ErrorKind -> C.Node a -> T.Text -> Lower b
 failure kind source message = throwError [E.BackendError kind (C.nodeSpan source) message]
 
 representationTables :: Maybe RuntimeLayouts -> [C.CoreModule C.CoreType] -> (Map C.ConstructorId Representation, V.Vector (R.Node R.ConstructorLayout), Map N.GlobalId (R.ConstructorIndex, Int), RuntimeLayouts)
-representationTables previous modules = (allRepresentations, layouts, dictionaryIndices, RuntimeLayouts indices layouts)
+representationTables previous modules = (allRepresentations, layouts, dictionaryIndices, RuntimeLayouts indices layouts tokenIndices)
   where
     descriptors = Map.unions (map C.coreConstructors modules)
     families = Map.fromListWith (+) [(C.constructorOwner (C.nodeValue node), 1 :: Int) | node <- Map.elems descriptors]
@@ -117,14 +120,29 @@ representationTables previous modules = (allRepresentations, layouts, dictionary
     boxed = [(ident, node) | (ident, node) <- Map.toAscList descriptors, not (isWrapper node)]
     traits = Map.toAscList (Map.unions (map C.coreDictionaries modules))
     intrinsicLayouts = V.fromList [R.Node (R.ConstructorLayout (R.FrameSize size)) | size <- [0, 2, 2]]
-    initial = case previous of Nothing -> (Map.empty, intrinsicLayouts); Just (RuntimeLayouts known table) -> (known, table)
+    initial = case previous of Nothing -> (Map.empty, intrinsicLayouts); Just (RuntimeLayouts known table _) -> (known, table)
     candidates =
       [(ident, R.Node (R.ConstructorLayout (R.FrameSize (C.constructorArity (C.nodeValue node))))) | (C.DataConstructor ident, node) <- boxed]
         ++ [(ident, R.Node (R.ConstructorLayout (R.FrameSize (length (C.dictionarySuperclasses (C.nodeValue node)) + length (C.dictionaryMethods (C.nodeValue node)))))) | (ident, node) <- traits]
     allocate (known, table) (ident, descriptor) = case Map.lookup ident known of
       Just _ -> (known, table)
       Nothing -> (Map.insert ident (R.ConstructorIndex (V.length table)) known, V.snoc table descriptor)
-    (indices, layouts) = foldl allocate initial candidates
+    (indices, aggregateLayouts) = foldl allocate initial candidates
+    previousTokens = case previous of Nothing -> Map.empty; Just (RuntimeLayouts _ _ tokens) -> tokens
+    tokenCandidates =
+      Map.toAscList
+        ( Map.fromList
+            [ (ident, R.Node (R.ConstructorLayout (R.FrameSize (length arguments))))
+            | tree <- modules,
+              group <- C.coreBindings tree,
+              binding <- C.groupBindings group,
+              node <- descendants (C.bindingBody (C.nodeValue binding)),
+              C.ExceptionDictionary _ ty _ <- [C.formOf node],
+              Just (ident, arguments) <- [nominalHead ty]
+            ]
+        )
+    (tokenIndices, layouts) = foldl allocate (previousTokens, aggregateLayouts) tokenCandidates
+    descendants node = node : concatMap descendants (C.children node)
     nominalRepresentations =
       Map.fromList [(ident, Erased) | (ident, node) <- Map.toList descriptors, isWrapper node]
         `Map.union` Map.fromList [(constructor, Boxed tag) | (constructor@(C.DataConstructor ident), _) <- boxed, Just tag <- [Map.lookup ident indices]]
@@ -211,6 +229,11 @@ expression context source = case C.formOf source of
       Erased -> expression context receiver
       Boxed tag -> R.Node . (\value -> R.Select value tag (R.FieldIndex index')) <$> expression context receiver
       Immediate _ -> failure E.InvalidCore source "record has an immediate representation"
+  C.ExceptionDictionary _ ty arguments -> do
+    ident <- maybe (failure E.InvalidCore source "exception token has no nominal head") (pure . fst) (nominalHead ty)
+    tag <- maybe (failure E.InvalidCore source "missing exception identity") pure (Map.lookup ident (typeTokens context))
+    values <- mapM (expression context) arguments
+    pure (R.Node (R.TypeToken tag values))
   C.Dictionary owner _ supers methods -> do
     (tag, _) <- dictionary context source owner
     fields <- mapM (expression context) (supers ++ map (snd . C.nodeValue) methods)
@@ -302,3 +325,10 @@ decodeLiteral source literal = case literal of
   L.StringLiteral string -> pure (R.String string)
   where
     bad = failure E.InvalidLiteral source "invalid numeric literal in Core"
+
+nominalHead :: Type v -> Maybe (N.GlobalId, [Type v])
+nominalHead = go []
+  where
+    go arguments (Application f x) = go (x : arguments) f
+    go arguments (Constructor ident _) = Just (ident, arguments)
+    go _ _ = Nothing

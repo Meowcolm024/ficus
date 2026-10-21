@@ -1,6 +1,6 @@
 module FicusBackend.Runtime.Value where
 
-import Control.Monad.Except (ExceptT, throwError)
+import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
@@ -11,7 +11,27 @@ import Data.Word (Word8)
 import FicusBackend.Runtime.AST
 import FicusBackend.Runtime.Error qualified as E
 
-type EvalM = ExceptT E.RuntimeError IO
+-- Typed throws remain distinct until the public execution boundary.
+data EvaluationError = RuntimeFailure E.RuntimeError | Thrown ExceptionToken Value Text
+
+data ExceptionToken = ExceptionToken ConstructorIndex [ExceptionToken] deriving (Eq, Show)
+
+type EvalM = ExceptT EvaluationError IO
+
+runEvaluation :: EvalM a -> IO (Either E.RuntimeError a)
+runEvaluation action = fmap (either (Left . report) Right) (runExceptT action)
+  where
+    report (RuntimeFailure failure) = failure
+    report (Thrown _ _ context) = E.RuntimeError (context <> "uncaught exception")
+
+raiseRuntime :: Text -> EvalM a
+raiseRuntime = throwError . RuntimeFailure . E.RuntimeError
+
+makeTypeToken :: ConstructorIndex -> [Value] -> EvalM Value
+makeTypeToken ident arguments = TokenValue . ExceptionToken ident <$> mapM token arguments
+  where
+    token (TokenValue value) = pure value
+    token _ = invalidValue "exception identity requires token evidence"
 
 type Eval = Env -> EvalM Value
 
@@ -43,15 +63,16 @@ data ClosureValue = ClosureValue
     closureArguments :: Vector Value
   }
 
-data Value = LiteralValue RuntimeLiteral | Aggregate ConstructorIndex (Vector Value) | VectorValue (Vector Value) | ByteValue Word8 | HandleValue StandardHandle | RefValue (IORef Value) | FunctionValue ClosureValue
+data Value = TokenValue ExceptionToken | LiteralValue RuntimeLiteral | Aggregate ConstructorIndex (Vector Value) | VectorValue (Vector Value) | ByteValue Word8 | HandleValue StandardHandle | RefValue (IORef Value) | FunctionValue ClosureValue
 
 -- Closures and mutable references are observed opaquely; inspecting a value
 -- neither reads a cell nor recursively follows potentially cyclic references.
-data Observation = LiteralObservation RuntimeLiteral | AggregateObservation ConstructorIndex [Observation] | VectorObservation [Observation] | ByteObservation Word8 | HandleObservation StandardHandle | RefObservation | FunctionObservation Arity Int
+data Observation = TokenObservation ExceptionToken | LiteralObservation RuntimeLiteral | AggregateObservation ConstructorIndex [Observation] | VectorObservation [Observation] | ByteObservation Word8 | HandleObservation StandardHandle | RefObservation | FunctionObservation Arity Int
   deriving (Eq, Show)
 
 observe :: Value -> Observation
 observe value = case value of
+  TokenValue token -> TokenObservation token
   LiteralValue literal -> LiteralObservation literal
   Aggregate tag fields -> AggregateObservation tag (map observe (V.toList fields))
   VectorValue fields -> VectorObservation (map observe (V.toList fields))
@@ -61,7 +82,7 @@ observe value = case value of
   FunctionValue closure -> FunctionObservation (codeArity (closureCode closure)) (V.length (closureArguments closure))
 
 invalidValue :: Text -> EvalM a
-invalidValue = throwError . E.RuntimeError
+invalidValue = raiseRuntime
 
 index :: Vector a -> Int -> EvalM a
 index entries slot = maybe (invalidValue "runtime index is out of bounds") pure (entries V.!? slot)
@@ -74,7 +95,7 @@ addressCell env address = case address of
     _ -> invalidValue "lexical frame is out of bounds"
 
 readCell :: Cell -> EvalM Value
-readCell cell = liftIO (readIORef cell) >>= maybe (throwError (E.RuntimeError "recursive value read before initialization")) pure
+readCell cell = liftIO (readIORef cell) >>= maybe (raiseRuntime "recursive value read before initialization") pure
 
 valueFrame :: [Value] -> EvalM Frame
 valueFrame = liftIO . V.mapM (newIORef . Just) . V.fromList

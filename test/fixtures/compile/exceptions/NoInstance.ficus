@@ -1,0 +1,2 @@
+type Problem = Problem
+check () = throw Problem : Int

@@ -3,7 +3,6 @@
 module FicusBackend.Runtime.Direct (runDirect) where
 
 import Control.Monad (foldM, forM_)
-import Control.Monad.Except (runExceptT, throwError)
 import Data.List.NonEmpty qualified as NE
 import Data.Vector qualified as V
 import FicusBackend.Runtime.AST
@@ -13,7 +12,7 @@ import FicusBackend.Runtime.Validate
 import FicusBackend.Runtime.Value
 
 runDirect :: Effects -> ValidatedProgram -> GlobalIndex -> [Value] -> IO (Either E.RuntimeError Value)
-runDirect effects checked (GlobalIndex entry) arguments = runExceptT $ do
+runDirect effects checked (GlobalIndex entry) arguments = runEvaluation $ do
   globals <- emptyFrame (programGlobalCount program)
   let functions = V.map (\node -> let function = nodeValue node in FunctionCode (functionArity function) (interpret program (functionBody function))) (programFunctions program)
       env = Env [] V.empty globals functions effects
@@ -47,6 +46,7 @@ interpret program source env = case nodeValue source of
       cell <- index frame slot
       writeCell cell value
     interpret program body recursive
+  TypeToken constructor fields -> mapM (\field -> interpret program field env) fields >>= makeTypeToken constructor
   Construct constructor fields -> Aggregate constructor . V.fromList <$> mapM (\field -> interpret program field env) fields
   Case receiver alternatives fallback -> do
     value <- interpret program receiver env
@@ -70,4 +70,4 @@ interpret program source env = case nodeValue source of
     values <- mapM (\argument -> interpret program argument env) arguments
     operation <- index (programPrimitives program) ident
     evaluatePrimitive context (envEffects env) operation values
-  Raise message -> throwError (E.RuntimeError message)
+  Raise message -> raiseRuntime message

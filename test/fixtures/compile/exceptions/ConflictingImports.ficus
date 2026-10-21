@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Basic (Failure)
+use OtherMarker (Other)
+check () = 1

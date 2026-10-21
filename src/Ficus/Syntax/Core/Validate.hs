@@ -9,6 +9,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Ficus.Error.Type qualified as E
 import Ficus.Initialization
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Core
 import Ficus.Syntax.Core.Intrinsic
 import Ficus.Syntax.Name hiding (TypeKind)
@@ -49,6 +50,7 @@ validateCore tree =
           names = map (fst . nodeValue) methods
        in checkNode descriptor
             ++ require (nodeSpan descriptor) (Map.lookup ident (coreKinds tree) == Just (KindArrow (quantifierKind parameter) TypeKind)) "dictionary has the wrong constructor kind"
+            ++ require (nodeSpan descriptor) (not (dictionaryException value) || (quantifierKind parameter == TypeKind && null methods && null (dictionarySuperclasses value))) "invalid exception dictionary layout"
             ++ require (nodeSpan descriptor) (length names == length (nub names)) "duplicate dictionary method"
             ++ concatMap (\super -> checkNode super ++ checkType tree scope (nodeSpan super) (nodeValue super) ++ require (nodeSpan super) (maybe False (`Map.member` coreDictionaries tree) (typeHead (nodeValue super))) "superclass is not a dictionary type") (dictionarySuperclasses value)
             ++ concatMap (\method -> checkNode method ++ checkScheme tree scope (nodeSpan method) (snd (nodeValue method))) methods
@@ -137,13 +139,23 @@ checkExpression tree environment scope expression =
                         Right fieldType -> same fieldType (function (typeOf receiver) ty)
             _ -> invalid location "field slot is out of range"
       Dictionary owner argument supers methods ->
-        checkType tree scope location argument ++ concatMap check supers ++ case specializeDictionary tree owner argument of
+        require location (not (isException tree owner)) "exception evidence must carry nominal identity" ++ checkType tree scope location argument ++ concatMap check supers ++ case specializeDictionary tree owner argument of
           Left message -> invalid location message
           Right (result, expectedSupers, expectedMethods) ->
             same ty result
               ++ checkOperands location expectedSupers supers
               ++ require location (length methods == length expectedMethods) "dictionary method count differs from its layout"
               ++ concat (zipWith checkMethod expectedMethods methods)
+      ExceptionDictionary owner argument tokens ->
+        let (base, arguments) = applicationSpine argument
+            dict ty' = Application (Constructor owner (KindArrow TypeKind TypeKind)) ty'
+         in checkType tree scope location argument
+              ++ concatMap check tokens
+              ++ require location (isException tree owner) "exception token requires a marker trait"
+              ++ require location (case base of Constructor _ _ -> True; _ -> False) "exception identity requires a nominal head"
+              ++ require location (all ((== Right TypeKind) . kindOf) arguments) "exception token parameters must have kind Type"
+              ++ same ty (dict argument)
+              ++ checkOperands location (map dict arguments) tokens
       SelectMethod receiver owner index arguments ->
         check receiver ++ concatMap (checkType tree scope location) arguments ++ case dictionaryReceiver tree owner (typeOf receiver) of
           Left message -> invalid location message
@@ -167,7 +179,7 @@ checkExpression tree environment scope expression =
               ++ same ty (typeOf body)
               ++ checkExpression tree environment extended body
       Primitive primitiveId arguments ->
-        concatMap check arguments ++ require location (matchesPrimitive primitiveId (map typeOf arguments) ty) "primitive arguments or result differ from its contract"
+        maybe [] (\owner -> require location (isException tree owner) "exception primitive requires a marker trait") (P.exceptionTrait primitiveId) ++ concatMap check arguments ++ require location (matchesPrimitive primitiveId (map typeOf arguments) ty) "primitive arguments or result differ from its contract"
       Fail -> []
     checkMethod expected actual =
       let (scheme, body) = nodeValue actual
@@ -329,3 +341,6 @@ require origin False message = invalid origin message
 
 invalid :: Span -> Text -> [E.Diagnostic]
 invalid origin message = [E.diagnostic E.InvalidCoreTree origin message]
+
+isException :: CoreModule ty -> GlobalId -> Bool
+isException tree owner = maybe False (dictionaryException . nodeValue) (Map.lookup owner (coreDictionaries tree))

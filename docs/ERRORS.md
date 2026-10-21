@@ -217,7 +217,8 @@ message. Its diagnostic adapter uses the single code R0001; the CLI prints
 `error[R0001]: MESSAGE` without a synthetic source header. Generated match and
 conditional messages and fallible primitive contexts embed their originating
 file, line, and column. Dynamic primitive and IO failure details are appended at
-execution. R0002, R0003, and R0004 are no longer emitted.
+execution. Uncaught typed throws are converted to R0001 at the public execution
+boundary; active typed catches never intercept generic runtime failures. R0002, R0003, and R0004 are no longer emitted.
 
 ## CLI display
 

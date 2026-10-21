@@ -24,3 +24,11 @@ helpers are source-derived from `Ficus.Builtin.Handle`.
 The v1 `Data.Ref` module exposes `Ref`, `newRef`, `readRef`, and `modifyRef` from
 `Ficus.Builtin.Ref`. Cells remain monomorphic under the existing value restriction.
 `Debug a => Debug (Ref a)` displays their current contents as `Ref (...)`.
+
+The v1 `Control.Exception` module exports `Exception`, `throw`, and `catch`.
+Prelude exports only the marker trait. `catch (_ -> action) handler` catches the
+handler's exact exception type; annotate the handler when inference cannot
+select it. Define `impl Exception MyError = {}` alongside a user error type.
+Parameterized error types require explicit component constraints, for example
+`impl Exception a => Exception (Box a) = {}`. Runtime failures are not catchable;
+completed effects survive a throw. See SPEC §24.3 for the complete contract.

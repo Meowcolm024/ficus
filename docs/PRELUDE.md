@@ -32,7 +32,7 @@ Control
     ...
 ```
 
-Indented entries denote modules such as `Ficus.Builtin.Int` and `Class.Show`. Ellipses and the Map, Environment, and Exception examples indicate future extensions, not shipped modules. `System.IO` names an operations module; it does not introduce an `IO` type.
+Indented entries denote modules such as `Ficus.Builtin.Int` and `Class.Show`. Ellipses and the Map and Environment examples indicate future extensions, not shipped modules. `System.IO` names an operations module; it does not introduce an `IO` type.
 
 `Ficus.Builtin.*` holds declarations backed by `BUILTIN` and their minimal support definitions. It never imports `Data.*` or the higher-level trait/system layers. The six reserved primitive types are already in scope and are not redeclared there. Ordinary library types such as `Handle`, `Byte`, and `Vec` retain their defining module identity. Public operations and wrappers may be exposed through `Data.*`, `System.*`, or `Control.*` without changing that identity.
 
@@ -72,14 +72,15 @@ Modules marked `NO_IMPLICIT_PRELUDE` receive none of these declarations. The res
 | Basic classes | `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Debug`, `Show`, `Eq`, `Ord`, `Pure`, `Seq`, `Bind`, `Functor`, `Applicative`, `Monad`, `Alternative`, `Semigroup`, `Monoid`, `Default`, `Bifunctor`, `Foldable`, `Traversable`, each under `Class` |
 | System | `System.IO` |
 | Data | `Data.List`, `.Function`, `.Product`, `.Ordering`, `.Maybe`, `.Result`, `.Const`, `.Int`, `.Float`, `.Bool`, `.Char`, `.String`, `.Unit`, `.Vec`, `.Byte`, `.Void`; `.Ref` is an implemented v1 extension |
-| Control | No v0 modules; exceptions and concurrency remain later work |
+| Control | No v0 modules; v1 adds Control.Exception, concurrency remains later work |
 
 `Handle` stays out of the `Data` layer; its public IO operations belong in `System.IO`. Primitive data modules expose operations on the already-reserved types rather than defining replacement types. `Data.Const` denotes the constant type constructor, distinct from the ordinary `const` function in `Data.Function`.
 
 The composites are `Applicative = Functor + Pure + Seq` and `Monad = Applicative + Bind`. `Functor` remains independently usable and is also an `Applicative` supertrait. Following Lean, `Seq` takes a thunked second operand and `Alternative` extends `Applicative` with `failure` and thunked `orElse`; the earlier eager `Apply` sketch is superseded. `Debug.debug : a -> String` renders diagnostic output (quoting and escaping characters/strings); `Show String` stays the identity. `Default.default : a` provides a conventional initial value. Scalar defaults are zero, false, space, the empty string, and unit; lists and Maybe default to empty/Nothing, and Result defaults to `Ok default`. The earlier `Fail`/`OrElse` sketches are not additional v0 commitments.
 
 The inventory defines v0 scope, while the selective table defines the implicit
-API. `Data.Map`, `System.Environment`, exceptions, and concurrency are later work.
+API. `Data.Map`, `System.Environment`, and concurrency are later work; typed
+exceptions are an implemented v1 extension.
 `Data.Ordering` supports `Ord.compare`. `Result` is retained for compatibility
 with the entry-point contract. The numeric traits and source-defined `Void` remain
 part of the library. `Data.Const` defines a separate `Const a b` type constructor.
@@ -494,7 +495,7 @@ and are not automatically re-exported by Prelude. There is no longer a separate
 
 The same applies to the proposed initial v2+ fibers and channels: `Fiber`, `Chan`, `fork`, `join`, `newChan`, `send`, and `recv` belong in an explicit builtin-backed concurrency module, not Prelude.
 
-The initial v1+ Prelude provides the marker:
+The implemented v1 extension re-exports the marker through `Class.Exception`:
 
 ```text
 trait Exception e = {}
@@ -507,7 +508,14 @@ throw : Exception e => e -> a
 catch : Exception e => (Unit -> a) -> (e -> a) -> a
 ```
 
-`Exception` has no source-level methods, but typed `catch` requires a runtime nominal type identity. Whether that identity lives in exception evidence or another runtime representation remains open; it cannot simply be erased to unit. The trait does not make exception effects implicit in unrelated Prelude functions.
+`Ficus.Builtin.Exception` defines the marker, standard primitive/list/product
+instances, and operations without importing other library modules.
+`Class.Exception` re-exports the marker; `Control.Exception` re-exports the marker
+and operations. Dictionaries retain nominal tokens even when payload wrappers
+are erased. Parameterized user instances explicitly require component exception
+evidence, including phantom arguments. Catches are dynamically scoped, match only
+exact types, and leave generic runtime errors untouched. No cleanup combinators
+are provided yet; see SPEC §24.3 for effects and uncaught-exception behavior.
 
 The implemented v1 mutable-reference API lives in `Ficus.Builtin.Ref` and is
 selectively re-exported by `Data.Ref`:
@@ -545,4 +553,4 @@ Unicode input, EOF, and LF/CRLF handling. No primitive is replaced by a source
 stub or hole.
 
 Future work includes broader instances, specialized collections, JSON, regex,
-exceptions, and concurrency. These do not silently expand the implicit API.
+exception cleanup APIs, and concurrency. These do not silently expand the implicit API.

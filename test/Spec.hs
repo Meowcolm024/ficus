@@ -5,6 +5,7 @@ import Ficus.CompileSpec qualified as Compile
 import Ficus.Core.Spec qualified as Core
 import Ficus.Error.ParserSpec qualified as ErrorParser
 import Ficus.Error.PrettySpec qualified as ErrorPretty
+import Ficus.ExceptionSpec qualified as Exception
 import Ficus.Infer.CheckSpec qualified as Check
 import Ficus.Infer.CorpusSpec qualified as Corpus
 import Ficus.Infer.DeclarationSpec qualified as Declaration
@@ -29,4 +30,4 @@ main = do
   parser <- Parser.tests
   resolution <- Resolve.tests
   corpus <- Corpus.tests
-  defaultMain (testGroup "Ficus" [RecordPattern.tests, Ref.tests, V1.tests, Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests, Runtime.tests, Driver.tests, Lsp.tests])
+  defaultMain (testGroup "Ficus" [Exception.tests, RecordPattern.tests, Ref.tests, V1.tests, Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests, Runtime.tests, Driver.tests, Lsp.tests])

@@ -1,0 +1,47 @@
+type First = First Int
+type Second = Second Int
+Alias = First
+type Box a = Box a
+type Phantom a = Phantom Int
+impl Exception First = {}
+impl Exception Second = {}
+impl Exception a => Exception (Box a) = {}
+impl Exception a => Exception (Phantom a) = {}
+
+normal () = catch (_ -> 4) ((e : Int) -> 0)
+caught () = catch (_ -> throw 7) ((e : Int) -> e)
+nested () = catch (_ -> catch (_ -> throw 3) ((e : Int) -> e + 1)) ((e : Int) -> 0)
+handlerThrows () = catch (_ -> catch (_ -> throw 3) ((e : Int) -> throw (e + 1))) ((e : Int) -> e)
+mismatched () = catch (_ -> catch (_ -> throw (First 8)) ((Second n) -> 0)) ((First n) -> n)
+alias () = catch (_ -> throw (First 9)) ((e : Alias) -> with e { First n -> n })
+parameterized () = catch (_ -> catch (_ -> throw (Box 6)) ((e : Box Bool) -> 0)) ((Box n) -> n)
+phantom () = catch (_ -> catch (_ -> throw (Phantom 5 : Phantom Int)) ((e : Phantom Bool) -> 0)) ((e : Phantom Int) -> with e { Phantom n -> n })
+
+recover : Exception e => e -> e
+recover value = catch (_ -> throw value) (e -> e)
+polymorphic () = with recover (Box (First 10)) { Box (First n) -> n }
+trait Exception a => Mark a = {}
+impl Mark First = {}
+viaSuperclass : Mark a => a -> Int
+viaSuperclass value = throw value
+superclass () = catch (_ -> viaSuperclass (First 11)) ((First n) -> n)
+
+functionResult () = (catch (_ -> x -> x) ((e : Int) -> x -> e)) 12
+partial () = { recoverInt = catch (_ -> throw 13); recoverInt ((e : Int) -> e) }
+strictOrder () = catch ({ print "action"; _ -> { print "run"; throw 14 } }) ({ print "handler"; (e : Int) -> { print "caught"; e } })
+early : Exception e => e -> a
+early value = throw value
+skipArgument () = catch (_ -> early 15 ({ print "wrong"; 1 })) ((e : Int) -> e)
+outsideHandler () = catch (_ -> catch (_ -> 0) (throw 16 : Int -> Int)) ((e : Int) -> e)
+outsideAction () = catch (_ -> catch (throw 17 : Unit -> Int) ((e : Int) -> 0)) ((e : Int) -> e)
+noReplay () = catch (_ -> { print "before"; throw 18; print "wrong"; 0 }) ((e : Int) -> { print "after"; e })
+
+failedStore () = { cell = newRef 1; _ = catch (_ -> modifyRef cell (_ -> throw 7)) ((e : Int) -> ()); readRef cell }
+completedStore () = { cell = newRef 1; _ = catch (_ -> modifyRef cell (_ -> { modifyRef cell (_ -> 2); throw 7 })) ((e : Int) -> ()); readRef cell }
+uncaught () = throw (First 1) : Int
+runtimeFailure () = catch (_ -> 1 / 0) ((e : Int) -> 0)
+handlerFailure () = catch (_ -> throw 1) ((e : Int) -> 1 / 0)
+
+listPayload () = catch (_ -> throw [19]) ((values : [Int]) -> with values { n :: _ -> n; [] -> 0 })
+productPayload () = catch (_ -> throw (20, True)) ((value : Int * Bool) -> with value { (n, b) -> if { b -> n; _ -> 0 } })
+primitiveMismatch () = catch (_ -> catch (_ -> throw (First 21)) ((e : Int) -> 0)) ((First n) -> n)

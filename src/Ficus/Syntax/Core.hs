@@ -51,6 +51,7 @@ data ExprF ty
   | If [Node (Expr ty, Expr ty)] (Maybe (Expr ty))
   | SelectField (Expr ty) FieldId
   | Dictionary GlobalId ty [Expr ty] [PolyValue ty]
+  | ExceptionDictionary GlobalId ty [Expr ty]
   | SelectMethod (Expr ty) GlobalId Int [ty]
   | SelectSuperclass (Expr ty) GlobalId Int
   | ScopeTypes [Node Quantifier] (Expr ty)
@@ -65,7 +66,8 @@ type PolyValue ty = Node (Scheme ty, Expr ty)
 data DictionaryDescriptor ty = DictionaryDescriptor
   { dictionaryParameter :: Quantifier,
     dictionarySuperclasses :: [Node ty],
-    dictionaryMethods :: [Node (GlobalId, Scheme ty)]
+    dictionaryMethods :: [Node (GlobalId, Scheme ty)],
+    dictionaryException :: Bool
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
@@ -171,6 +173,7 @@ children expression = case formOf expression of
   If arms fallback -> concatMap (\arm -> let (condition, body) = nodeValue arm in [condition, body]) arms ++ maybe [] pure fallback
   SelectField receiver _ -> [receiver]
   Dictionary _ _ supers methods -> supers ++ map (snd . nodeValue) methods
+  ExceptionDictionary _ _ arguments -> arguments
   SelectMethod receiver _ _ _ -> [receiver]
   SelectSuperclass receiver _ _ -> [receiver]
   ScopeTypes _ body -> [body]

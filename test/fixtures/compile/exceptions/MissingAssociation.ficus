@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+trait Failure e = {}
+{-# BUILTIN THROW bad #-}
+bad : Failure e => e -> a

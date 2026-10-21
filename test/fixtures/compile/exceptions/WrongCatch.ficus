@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN EXCEPTION Failure #-}
+trait Failure e = {}
+{-# BUILTIN CATCH bad #-}
+bad : Failure e => (Unit -> a) -> (e -> Bool) -> a

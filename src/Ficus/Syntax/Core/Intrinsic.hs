@@ -2,6 +2,7 @@ module Ficus.Syntax.Core.Intrinsic (constructorSignature, primitiveSignature, pr
 
 import Control.Monad (foldM)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Ficus.Builtin.Registry (primitiveFromKey)
 import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Core (ConstructorId (..), CoreType, CoreVariable (..))
@@ -39,6 +40,7 @@ primitiveSignature operation =
         let kind = foldr KindArrow TypeKind (replicate (length arguments) TypeKind)
          in foldl Application (Constructor ident kind) (map convert arguments)
       P.TypeParameter -> Variable (BoundVariable (BoundId (-1))) TypeKind
+      P.SecondTypeParameter -> Variable (BoundVariable (BoundId (-2))) TypeKind
 
 literalType :: L.Literal -> Type v
 literalType literal = primitive $ case literal of
@@ -47,14 +49,17 @@ literalType literal = primitive $ case literal of
   L.CharacterLiteral _ -> CharType
   L.StringLiteral _ -> StringType
 
--- Primitive templates quantify only their element/result variable. Nominal
--- opaque constructors have already been specialized from builtin metadata.
+-- Core operands include evidence; source contracts express it as a predicate.
 primitiveScheme :: PrimitiveId -> Scheme CoreType
 primitiveScheme ident =
   let (inputs, output) = primitiveSignature ident
-      ty = foldr function output inputs
-      qs = [Quantifier (BoundId (-1)) "a" TypeKind | not (null (freeVariables ty))]
-   in Scheme [] qs [] ty
+      (predicates, values) = case (P.exceptionTrait ident, inputs) of
+        (Just owner, Application _ argument : rest) -> ([Predicate owner argument], rest)
+        _ -> ([], inputs)
+      ty = foldr function output values
+      ids = Set.toDescList (freeVariables ty)
+      qs = [Quantifier q (if q == BoundId (-1) && not (null predicates) then "e" else "a") TypeKind | BoundVariable q <- ids]
+   in Scheme [] qs predicates ty
 
 matchesPrimitive :: PrimitiveId -> [CoreType] -> CoreType -> Bool
 matchesPrimitive ident inputs output =

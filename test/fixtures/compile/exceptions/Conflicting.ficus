@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN EXCEPTION First #-}
+trait First e = {}
+{-# BUILTIN EXCEPTION Second #-}
+trait Second e = {}

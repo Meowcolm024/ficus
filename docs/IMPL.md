@@ -450,7 +450,7 @@ An `impl` becomes a dictionary constructor or a top-level dictionary value. A co
 
 Dictionary construction is explicit and strict. Reusing a dictionary value is preferable to reconstructing it at each call. Resolution is complete before Core AST generation: the Core AST contains no implicit trait lookup.
 
-A trait with no members and only proof meaning has a unit dictionary. When no runtime operation consumes that evidence, lowering may erase both its dictionary value and its lambda/application pair. `Exception e` cannot currently be assumed to qualify: typed `catch` needs nominal runtime identity, and its evidence or another type token must survive erasure. The choice of representation remains open.
+A trait with no members and only proof meaning has a unit dictionary. When no runtime operation consumes that evidence, lowering may erase both its dictionary value and its lambda/application pair. `Exception e` carries an operational nominal token and must survive erasure; typed `catch` compares this token, including its type arguments.
 
 ### 3.3 Other translations
 
@@ -502,7 +502,7 @@ expr    = local lexical_address
 
 Runtime lowering erases constructor wrapping for every nominal ADT with exactly one constructor and one field, including single-field records. Construction evaluates the field with ordinary strict semantics and returns its representation directly, without allocating a tag or box. Matching unwraps that representation without tag dispatch, and a field projection returns the underlying representation. Keep the nominal type and constructor identities in typed Core AST and source metadata; only their runtime wrapper is erased.
 
-Explicit dictionary arguments normally occupy leading runtime slots, followed by value arguments. Memberless proof dictionaries may be erased only when no runtime operation consumes their evidence; the unresolved `Exception e` representation is excluded from this erasure assumption. Other dictionaries lower to constructor-like records, method selection to indexed field selection, and dictionary methods to ordinary closures.
+Explicit dictionary arguments normally occupy leading runtime slots, followed by value arguments. Memberless proof dictionaries may be erased only when no runtime operation consumes their evidence; `Exception e` token evidence is excluded from this erasure assumption. Other dictionaries lower to constructor-like records, method selection to indexed field selection, and dictionary methods to ordinary closures.
 
 ### 4.1 Arity raising
 
@@ -592,7 +592,7 @@ source facts remain Core acceptance responsibilities.
 Runtime AST compiles to host-language evaluator functions:
 
 ```haskell
-type EvalM = ExceptT RuntimeError IO
+type EvalM = ExceptT EvaluationError IO
 type Eval = Env -> EvalM Value
 compileExpr :: Program -> Expr -> Eval
 ```
@@ -635,7 +635,7 @@ Optimized or generated code must remain observationally equivalent to the refere
 
 ## 7. Entry points and compiler artifacts
 
-Execution takes an explicitly selected entry-module identity; do not discover an entry by searching for `main`. Resolve and validate a `main` defined by that module, reject missing or invalid entry functions, and retain its resolved identity/address for invocation rather than doing runtime string lookup. Do not require library modules to define `main` or invoke unselected entry candidates. Entry-point validation accepts exactly `main : [String] -> Unit` and `main : [String] -> Result String Unit` in v0. The backend driver passes command-line arguments and handles Unit/Result returns and exit reporting according to SPEC §22. Entry-point exception handling belongs to v1+.
+Execution takes an explicitly selected entry-module identity; do not discover an entry by searching for `main`. Resolve and validate a `main` defined by that module, reject missing or invalid entry functions, and retain its resolved identity/address for invocation rather than doing runtime string lookup. Do not require library modules to define `main` or invoke unselected entry candidates. Entry-point validation accepts exactly `main : [String] -> Unit` and `main : [String] -> Result String Unit` in v0. The backend driver passes command-line arguments and handles Unit/Result returns and exit reporting according to SPEC §22. Uncaught typed exceptions use the runtime error reporting boundary described in SPEC §24.3.
 
 v1+ compilation produces both module interface files and object files, each using Lisp-like syntax. The initial object files serialize Runtime AST as text; integration with v2+ generated JavaScript and later backend artifacts remains to be specified. The concrete schemas, file extensions, compatibility/versioning rules, output paths, and linking details remain to be specified.
 
@@ -745,7 +745,28 @@ Retain the arrow's strict/call-by-name mode in type checking and typed Core unti
 
 ### 10.4 Exceptions (v1+) and fibers (v2+)
 
-`Exception e` has no source-level methods, but typed `catch` needs nominal runtime identity for `e`. Nominal types such as `UserId` and `Int` can have identical erased value representations, and a polymorphic `Exception e => ...` cannot reconstruct `e` from a value after erasure. Preserve a nominal type token, either in non-erased exception evidence or in another runtime type representation carried through `throw`, `catch`, and fibers. Erasing `Exception e` to unit without such a token is invalid. The exact representation and matching mechanism remain open and block implementation of these operations. The proposed source APIs and their operational open questions remain in SPEC.md.
+`BUILTIN EXCEPTION` marks an ordinary empty trait with a Type parameter. Checked
+interfaces and Core dictionary descriptors retain this marker by canonical
+identity. Source primitive contracts for THROW/CATCH quantify two independent
+variables and carry a trait predicate; Core uses a leading evidence operand.
+`ExceptionDictionary` constructs evidence from the nominal head and component
+dictionaries, with independent validation of the marker, kinds, and operands.
+Parameterized instances require an explicit exception constraint for every
+Type parameter, including phantom parameters; higher-kinded heads are rejected.
+
+Lowering assigns stable numeric identity tags separately from data constructor
+tags, in the existing Runtime layout table. `TypeToken` builds token values from
+these tags and child tokens. REPL layout snapshots retain the allocation map, so
+old closures and new code agree on existing types while rebinding creates a new
+identity. Wrapper erasure never erases these tokens.
+
+`EvalM` carries either a generic runtime failure or a typed throw containing token,
+payload, and explicit primitive context. CATCH handles only matching typed
+throws around invocation of its action thunk; the handler runs outside that
+catch. Runtime failures pass through, completed effects remain, and a throwing
+reference updater skips its final write. `runEvaluation` converts uncaught throws
+to generic runtime messages at the embedding/driver boundary. Cleanup APIs,
+existentials, and fibers remain deferred.
 
 ### 10.5 Existential packages (v1+ proposal)
 

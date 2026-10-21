@@ -1,0 +1,9 @@
+use Control.Exception (throw, catch)
+
+type Problem = Problem String
+impl Exception Problem = {}
+
+recover () = catch (_ -> throw (Problem "recovered from Problem")) ((Problem message) -> message)
+
+main : [String] -> Unit
+main _ = println (recover ())

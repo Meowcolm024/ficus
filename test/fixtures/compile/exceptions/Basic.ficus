@@ -1,0 +1,10 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN EXCEPTION Failure #-}
+trait Failure e = {}
+{-# BUILTIN THROW raise #-}
+raise : Failure e => e -> a
+{-# BUILTIN CATCH handle #-}
+handle : Failure e => (Unit -> a) -> (e -> a) -> a
+impl Failure Int = {}
+
+check () = handle (_ -> raise 7) ((value : Int) -> value)

@@ -533,7 +533,13 @@ valueBody :: Context -> A.Declaration -> InferType -> Lower (C.Expr InferType)
 valueBody context source ty = case A.nodeValue source of
   A.ValueDefinition _ _ (A.BuiltinBody key) -> case primitiveFromKey key >>= specializePrimitive (builtinTypeAssociations (declarations context)) of
     Nothing -> failure source "builtin has no lowering contract"
-    Just builtin -> etaExpand source (P.primitiveArity builtin) ty (\arguments result -> makeExpression source result (C.Primitive builtin arguments))
+    Just builtin -> do
+      dictionaries <- case P.exceptionTrait builtin of
+        Nothing -> pure []
+        Just owner -> case [binder | (predicate, binder) <- givens context, predicateTrait predicate == owner] of
+          binder : _ -> pure <$> binderUse source binder
+          [] -> failure source "exception primitive requires its dictionary parameter"
+      etaExpand source (P.primitiveArity builtin - length dictionaries) ty (\arguments result -> makeExpression source result (C.Primitive builtin (dictionaries ++ arguments)))
   A.ValueDefinition _ _ (A.ClausesBody _ clauses) -> do
     fallback <- makeExpression source ty C.Fail
     foldM clause fallback (reverse (NE.toList clauses))
@@ -669,9 +675,21 @@ lowerImplementation context source ident = do
   ordered <- either throwError pure (scheduleBindings (map fst lowered))
   lift (mapM_ emit (initializationDiagnostics ordered))
   let withSupers [] values = do
-        packed <- makeExpression source target (C.Dictionary (predicateTrait head') (predicateArgument head') values (map snd lowered))
+        packed <-
+          if traitException trait
+            then do
+              let arguments = typeArguments (predicateArgument head')
+              tokens <- mapM (evidence scoped source . Predicate (predicateTrait head')) arguments
+              makeExpression source target (C.ExceptionDictionary (predicateTrait head') (predicateArgument head') tokens)
+            else makeExpression source target (C.Dictionary (predicateTrait head') (predicateArgument head') values (map snd lowered))
         foldM (\rest group -> makeExpression source target (case group of C.NonRecursive binding -> C.Let binding rest; C.Recursive bindings -> C.LetRec bindings rest)) packed (reverse ordered)
       withSupers (value : rest) values = letValue source value (\reference -> withSupers rest (values ++ [reference]))
   dictionary <- withSupers supers []
   body <- abstractEvidence source binders dictionary >>= closeInternal source
   generated source "implementation dictionary" (C.Binding (implementationReference ident) scheme body (C.BindingFacts 0 Nothing))
+
+typeArguments :: Type v -> [Type v]
+typeArguments = go []
+  where
+    go arguments (Application f x) = go (x : arguments) f
+    go arguments _ = arguments

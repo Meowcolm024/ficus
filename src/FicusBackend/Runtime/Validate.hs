@@ -53,6 +53,7 @@ validateProgram program = case errors of [] -> Right (ValidatedProgram program);
                 ++ concatMap cyclicBinding bindings
                 ++ concatMap (unsafeReads Set.empty danger (V.replicate captures False) Set.empty . bindingBody . nodeValue) bindings
                 ++ expression extended captures body
+        TypeToken (ConstructorIndex ident) fields -> layoutArity E.runtimeSpan ident (length fields) ++ concatMap (expression frames captures) fields
         Construct (ConstructorIndex ident) fields -> layoutArity (E.runtimeSpan) ident (length fields) ++ concatMap (expression frames captures) fields
         Case receiver alternatives fallback -> expression frames captures receiver ++ concatMap alternative alternatives ++ expression frames captures fallback
           where
@@ -127,6 +128,7 @@ children node = case nodeValue node of
   Let binding body -> [bindingBody (nodeValue binding), body]
   LetRec bindings body -> map (bindingBody . nodeValue) (NE.toList bindings) ++ [body]
   Construct _ fields -> fields
+  TypeToken _ fields -> fields
   Case receiver alternatives fallback -> receiver : fallback : map (snd . nodeValue) alternatives
   If arms fallback -> concatMap (\arm -> let (a, b) = nodeValue arm in [a, b]) arms ++ [fallback]
   Select receiver _ _ -> [receiver]

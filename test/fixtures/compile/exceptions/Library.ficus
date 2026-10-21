@@ -1,0 +1,9 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Control.Exception as Errors
+use Class.Exception (Exception)
+use Ficus.Builtin.Int (intAdd)
+
+type Problem = Problem Int
+impl Exception Problem = {}
+
+check () = Errors.catch (_ -> Errors.throw (Problem 20)) ((Problem n) -> intAdd n 1)

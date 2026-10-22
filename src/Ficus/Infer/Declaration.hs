@@ -1,4 +1,4 @@
-module Ficus.Infer.Declaration (Declarations (..), TraitDeclaration (..), ImplementationDeclaration (..), emptyDeclarations, prepareDeclarations, prepareDeclarationsWithMode, sameImplementationHead) where
+module Ficus.Infer.Declaration (Declarations (..), TraitDeclaration (..), ImplementationDeclaration (..), emptyDeclarations, prepareDeclarations, prepareDeclarationsWithConfig, sameImplementationHead) where
 
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.Graph (SCC (..), stronglyConnComp)
@@ -7,13 +7,13 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Ficus.CompilationConfig
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Kind qualified as K
 import Ficus.Infer.Monad
 import Ficus.Infer.Syntax
 import Ficus.Infer.Type
 import Ficus.Infer.Unify qualified as U
-import Ficus.Initialization
 import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Abstract.Dependencies
@@ -54,10 +54,10 @@ emptyDeclarations :: Declarations
 emptyDeclarations = Declarations Map.empty emptyTypes Map.empty Set.empty Map.empty Map.empty Map.empty Map.empty
 
 prepareDeclarations :: Declarations -> A.AbstractModule -> Infer Declarations
-prepareDeclarations = prepareDeclarationsWithMode OrdinaryInitialization
+prepareDeclarations = prepareDeclarationsWithConfig defaultCompilationConfig
 
-prepareDeclarationsWithMode :: InitializationMode -> Declarations -> A.AbstractModule -> Infer Declarations
-prepareDeclarationsWithMode mode imported tree = do
+prepareDeclarationsWithConfig :: CompilationConfig -> Declarations -> A.AbstractModule -> Infer Declarations
+prepareDeclarationsWithConfig config imported tree = do
   let declarations = A.declarations (A.abstractDeclarations tree)
       summary = K.inferKinds (typeKinds (declarationTypes imported)) tree
       localAliases = [(ident, d) | d <- declarations, A.AliasDefinition ident _ _ _ <- [A.nodeValue d]]
@@ -182,11 +182,11 @@ prepareDeclarationsWithMode mode imported tree = do
         unless validHead (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan head') "implementation head must apply a nominal constructor to distinct bare variables"))
         forM_ (zip context predicates) $ \(predicateSource, p) ->
           unless (validContext p) (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan predicateSource) "implementation context must constrain a head variable"))
-        unless (mode == InteractiveInitialization || owns (predicateTrait predicate') || case base of Constructor constructor _ -> owns constructor; _ -> False) (emit (E.diagnostic E.OrphanImplementation (A.nodeSpan head') "an implementation must be declared by the trait or type constructor's module"))
+        unless (not (checkOrphanImplementations config) || owns (predicateTrait predicate') || case base of Constructor constructor _ -> owns constructor; _ -> False) (emit (E.diagnostic E.OrphanImplementation (A.nodeSpan head') "an implementation must be declared by the trait or type constructor's module"))
         unless (Map.keysSet required == Map.keysSet methods) (emit (E.diagnostic E.InvalidImplementation (A.nodeSpan source) "an implementation must supply every declared method exactly once"))
         let implementation = ImplementationDeclaration quantified predicates predicate' methods
             keep previousId previous = case previousId of
-              ImplementationId (previousOwner, _) -> mode /= InteractiveInitialization || previousOwner == owner || not (sameImplementationHead implementation (C.nodeValue previous))
+              ImplementationId (previousOwner, _) -> not (allowImportedImplementationOverrides config) || previousOwner == owner || not (sameImplementationHead implementation (C.nodeValue previous))
             retained = Map.filterWithKey keep (implementationDeclarations environment)
         pure environment {implementationDeclarations = Map.insert ident (coreNode source implementation) retained}
       _ -> pure environment

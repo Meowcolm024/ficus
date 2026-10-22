@@ -5,7 +5,7 @@ module Ficus.Syntax.Core (module Ficus.Syntax.Core, PrimitiveId, Primitive (..))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
-import Ficus.Initialization
+import Ficus.CompilationConfig
 import Ficus.Syntax.Literal (Literal)
 import Ficus.Syntax.Name
 import Ficus.Type (BoundId, Kind, Quantifier, Scheme, Type)
@@ -123,7 +123,7 @@ data HoleGoal ty = HoleGoal
 
 data CoreModule ty = CoreModule
   { coreId :: ModuleId,
-    coreInitialization :: InitializationMode,
+    coreCompilationConfig :: CompilationConfig,
     coreSpan :: Span,
     coreOrigin :: Provenance,
     coreBuiltins :: Map Text GlobalId,

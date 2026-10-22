@@ -250,6 +250,23 @@ tests =
             (next, _) <- Repl.submit quiet current "x = 2 : Int" >>= requireRight
             Repl.inspectType next "x" >>= (@?= Right "x : Int")
             result next "x" "2",
+          testCase "failed hole submissions retain the exact source excerpt" $ do
+            current <- session
+            (sources, outcome) <- Repl.submitWithSources quiet current "x -> x + _"
+            case outcome of
+              Right _ -> assertFailure "expression hole was accepted"
+              Left errors -> case filter ((== "T0101") . D.diagnosticCode) errors of
+                [problem] -> do
+                  let origin = D.diagnosticSpan problem
+                  case Map.lookup (sourceFile origin) sources of
+                    Nothing -> assertFailure "missing failed submission source"
+                    Just source -> case drop (line (start origin) - 1) (T.lines source) of
+                      text : _ -> do
+                        assertBool "expression appears in the diagnostic source" ("x -> x + _" `T.isInfixOf` text)
+                        T.take 1 (T.drop (column (start origin) - 1) text) @?= "_"
+                      [] -> assertFailure "hole span is outside its source"
+                _ -> assertFailure "missing hole diagnostic"
+            result current "6 * 7" "42",
           testCase "division by zero leaves the session usable" $ do
             current <- session
             Repl.submit quiet current "1 / 0" >>= \case

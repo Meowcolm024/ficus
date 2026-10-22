@@ -3,6 +3,7 @@ module Ficus.Infer.DeclarationSpec (tests) where
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Ficus.CompilationConfig
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Declaration
@@ -42,7 +43,38 @@ tests :: TestTree
 tests =
   testGroup
     "semantic declarations"
-    [ testCase "aliases expand across forward dependencies" $
+    [ testCase "orphan checks and imported implementation overrides are independent" $ do
+        let base = ModuleId ("ImplementationBase" :| [])
+            client = ModuleId ("ImplementationClient" :| [])
+            provider owner =
+              pure
+                ( Right
+                    ( if owner == base
+                        then Source "ImplementationBase.ficus" "{-# NO_IMPLICIT_PRELUDE #-}\ntrait Marker a = {}\nimpl Marker Int = {}\n"
+                        else Source "ImplementationClient.ficus" "{-# NO_IMPLICIT_PRELUDE #-}\nuse ImplementationBase (..)\nimpl Marker Int = {}\n"
+                    )
+                )
+        resolved <- resolveSources fixtureConfig fixtureSugar provider [client]
+        frontendDiagnostics resolved @?= []
+        case (Map.lookup base (frontendModules resolved), Map.lookup client (frontendModules resolved)) of
+          (Just baseTree, Just clientTree) -> do
+            validateAbstract baseTree @?= Right ()
+            validateAbstract clientTree @?= Right ()
+            let (imported, state) = runInfer (prepareDeclarations emptyDeclarations baseTree)
+            noErrors (diagnostics state)
+            mapM_
+              ( \(orphans, overrides) -> do
+                  let config = defaultCompilationConfig {checkOrphanImplementations = orphans, allowImportedImplementationOverrides = overrides}
+                      (prepared, checked) = runInfer (prepareDeclarationsWithConfig config imported clientTree)
+                      errors = diagnostics checked
+                  map E.diagnosticCode errors @?= [E.OrphanImplementation | orphans] ++ [E.OverlappingImplementations | not overrides]
+                  map (\d -> let origin = E.diagnosticSpan d in (sourceFile origin, line (start origin), column (start origin), column (end origin))) errors
+                    @?= [("ImplementationClient.ficus", 3, 6, 15) | orphans] ++ [("ImplementationClient.ficus", 3, 1, 20) | not overrides]
+                  Map.size (implementationDeclarations prepared) @?= if overrides then 1 else 2
+              )
+              [(orphans, overrides) | orphans <- [False, True], overrides <- [False, True]]
+          _ -> assertFailure "implementation fixtures did not resolve",
+      testCase "aliases expand across forward dependencies" $
         check "First a = Second a\nSecond a = [a]\nvalue : First Int\nvalue = []\n" $ \prepared errors -> do
           noErrors errors
           fmap (renderInferType . schemeType . signatureScheme) (Map.lookup (GlobalRef (named ValueNS "value")) (valueSignatures prepared)) @?= Just "[Int]",

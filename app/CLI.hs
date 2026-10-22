@@ -10,7 +10,7 @@ import Data.Text.IO qualified as T
 import Data.Version (showVersion)
 import Ficus.Compile qualified as Compile
 import Ficus.Error.Diagnostic qualified as Diagnostic
-import Ficus.Error.Pretty (DiagnosticStyle (..), prettyDiagnosticWithStyleRelativeTo)
+import Ficus.Error.Pretty (DiagnosticStyle (..), prettyDiagnosticSummaryWithStyle, prettyDiagnosticWithStyleRelativeTo)
 import Ficus.Library.Contracts
 import Ficus.ModuleOptions (ModuleOptions (..))
 import Ficus.Resolve (frontendModules)
@@ -145,7 +145,7 @@ report diagnosticStyle sources errors = do
   directory <- getCurrentDirectory
   forM_ errors $ \problem ->
     if Diagnostic.diagnosticCode problem == "R0001" && sourceFile (Diagnostic.diagnosticSpan problem) == "<runtime>"
-      then T.hPutStrLn stderr ("error[R0001]: " <> Diagnostic.diagnosticMessage problem)
+      then T.hPutStrLn stderr (prettyDiagnosticSummaryWithStyle diagnosticStyle problem)
       else printDiagnostic diagnosticStyle directory sources problem
 
 selectedModule :: FilePath -> Compile.CompileResult -> IO (Either [Diagnostic.Diagnostic] ModuleId)
@@ -181,9 +181,9 @@ replLoop diagnosticStyle session = handleInterrupt (outputStrLn "Interrupted." >
         either (liftIO . report diagnosticStyle Map.empty) (outputStrLn . T.unpack) result
         replLoop diagnosticStyle session
       Repl.Submit source -> do
-        result <- liftIO (Repl.submit Runtime.ioEffects session source)
+        (sources, result) <- liftIO (Repl.submitWithSources Runtime.ioEffects session source)
         case result of
-          Left errors -> liftIO (report diagnosticStyle Map.empty errors) >> replLoop diagnosticStyle session
+          Left errors -> liftIO (report diagnosticStyle sources errors) >> replLoop diagnosticStyle session
           Right (next, output) -> do
             liftIO (report diagnosticStyle (Repl.sessionDiagnosticSources next) (Repl.sessionDiagnostics next))
             maybe (pure ()) (outputStrLn . T.unpack) output

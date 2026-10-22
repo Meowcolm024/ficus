@@ -4,11 +4,11 @@ import Control.Monad (void)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
+import Ficus.CompilationConfig
 import Ficus.Elaborate.Finalize
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Monad
 import Ficus.Infer.Type
-import Ficus.Initialization
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Literal qualified as L
@@ -28,7 +28,7 @@ tree :: InferType -> C.ExprF InferType -> C.CoreModule InferType
 tree ty form =
   C.CoreModule
     owner
-    OrdinaryInitialization
+    defaultCompilationConfig
     origin
     (SourceOrigin origin)
     Map.empty

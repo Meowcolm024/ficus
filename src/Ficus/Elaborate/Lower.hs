@@ -67,7 +67,7 @@ lowerModule inferred source = runInferFrom (inferenceState inferred) (runExceptT
       pure
         C.CoreModule
           { C.coreId = A.abstractId source,
-            C.coreInitialization = inferenceInitialization inferred,
+            C.coreCompilationConfig = inferenceCompilationConfig inferred,
             C.coreSpan = A.abstractSpan source,
             C.coreOrigin = A.abstractOrigin source,
             C.coreBuiltins = Map.restrictKeys (builtinTypeAssociations prepared) (Set.fromList (P.builtinDataKeys)),

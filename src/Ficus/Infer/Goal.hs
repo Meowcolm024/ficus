@@ -53,8 +53,8 @@ reportGoals goals = forM_ (sortOn C.nodeSpan (Map.elems goals)) $ \node -> do
   let goal = C.nodeValue resolved
       context = [name <> " : " <> renderInferType (schemeType scheme) | entry <- C.goalContext goal, let (name, scheme) = C.nodeValue entry]
       blockers = [message <> " : " <> renderInferType ty | entry <- C.goalBlockers goal, let (message, ty) = C.nodeValue entry]
-      details = (if null context then "" else "; in scope: " <> T.intercalate ", " context) <> (if null blockers then "" else "; blocked by: " <> T.intercalate ", " blockers)
+      details = ["in scope: " <> T.intercalate ", " context | not (null context)] ++ ["blocked by: " <> T.intercalate ", " blockers | not (null blockers)]
       related = [(C.nodeSpan entry, fst (C.nodeValue entry)) | entry <- C.goalBlockers goal]
-      diagnostic = (E.diagnostic E.ExpressionHole (C.nodeSpan node) ("expression hole has type " <> renderInferType (C.goalType goal) <> details)) {E.diagnosticRelated = related}
+      diagnostic = (E.diagnostic E.ExpressionHole (C.nodeSpan node) (T.intercalate "\n" (("expression hole has type " <> renderInferType (C.goalType goal)) : details))) {E.diagnosticRelated = related}
   reported <- Infer (gets (any (\d -> E.diagnosticCode d == E.ExpressionHole && E.diagnosticSpan d == C.nodeSpan node) . diagnostics))
   unless reported (emit diagnostic)

@@ -8,6 +8,7 @@ module Ficus.Elaborate
     checkedInterface,
     checkedTypes,
     elaborateModule,
+    elaborateModuleWithConfig,
     elaborateInteractiveModule,
   )
 where
@@ -15,6 +16,7 @@ where
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Ficus.CompilationConfig
 import Ficus.Elaborate.Finalize qualified as F
 import Ficus.Elaborate.Lower
 import Ficus.Error.Diagnostic qualified as D
@@ -24,7 +26,6 @@ import Ficus.Infer.Declaration
 import Ficus.Infer.Monad qualified as I
 import Ficus.Infer.Syntax
 import Ficus.Infer.Type
-import Ficus.Initialization
 import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Abstract.Validate
@@ -50,13 +51,13 @@ data CheckedModule = CheckedModule
 data CheckedInterface = CheckedInterface Declarations (Set.Set ImplementationId) deriving (Eq, Show)
 
 elaborateModule :: [CheckedInterface] -> A.AbstractModule -> Elaboration
-elaborateModule imports source = elaborateWithMode (if standaloneEnabled (A.abstractOptions source) then StandaloneInitialization else OrdinaryInitialization) imports source
+elaborateModule imports source = elaborateModuleWithConfig (if standaloneEnabled (A.abstractOptions source) then standaloneCompilationConfig else defaultCompilationConfig) imports source
 
 elaborateInteractiveModule :: [CheckedInterface] -> A.AbstractModule -> Elaboration
-elaborateInteractiveModule = elaborateWithMode InteractiveInitialization
+elaborateInteractiveModule = elaborateModuleWithConfig interactiveCompilationConfig
 
-elaborateWithMode :: InitializationMode -> [CheckedInterface] -> A.AbstractModule -> Elaboration
-elaborateWithMode mode imports source = case validateAbstract source of
+elaborateModuleWithConfig :: CompilationConfig -> [CheckedInterface] -> A.AbstractModule -> Elaboration
+elaborateModuleWithConfig config imports source = case validateAbstract source of
   Left message -> Incomplete Nothing [E.diagnostic E.InvalidCoreTree (A.abstractSpan source) message]
   Right () | not (null conflicts) -> Incomplete Nothing conflicts
   Right () ->
@@ -64,8 +65,8 @@ elaborateWithMode mode imports source = case validateAbstract source of
         merged = mergeInterfaces imports
         visibleDeclarations = merged {implementationDeclarations = Map.restrictKeys (implementationDeclarations merged) visible}
         overrides = Set.unions [ids | CheckedInterface _ ids <- imports]
-        imported = if mode == InteractiveInitialization then selectInteractiveImplementations overrides visibleDeclarations else visibleDeclarations
-        inferred = inferModuleWithMode mode imported source
+        imported = if allowImportedImplementationOverrides config then selectInteractiveImplementations overrides visibleDeclarations else visibleDeclarations
+        inferred = inferModuleWithConfig config imported source
         diagnostics = I.diagnostics (inferenceState inferred)
      in case lowerModule inferred source of
           (Left problem, _) -> Incomplete Nothing (diagnostics ++ [problem | not (any isError diagnostics)])
@@ -82,7 +83,7 @@ elaborateWithMode mode imports source = case validateAbstract source of
                         { valueSignatures = Map.map (\scheme -> Signature scheme False (A.abstractSpan source)) publicValues,
                           implementationDeclarations = fmap (fmap (\implementation -> implementation {implementationMembers = Map.empty})) (implementationDeclarations declarations)
                         }
-                    localOverrides = if mode == InteractiveInitialization then Map.keysSet (implementationDeclarations declarations) `Set.difference` Map.keysSet (implementationDeclarations imported) else Set.empty
+                    localOverrides = if allowImportedImplementationOverrides config then Map.keysSet (implementationDeclarations declarations) `Set.difference` Map.keysSet (implementationDeclarations imported) else Set.empty
                     retainedOverrides = (overrides `Set.union` localOverrides) `Set.intersection` Map.keysSet (implementationDeclarations interface)
                  in Complete (CheckedModule accepted (CheckedInterface interface retainedOverrides) (Map.restrictKeys types exports)) warnings
   where

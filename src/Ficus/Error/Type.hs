@@ -82,6 +82,7 @@ renderTypeCode = \case
 
 data Diagnostic = Diagnostic
   { diagnosticCode :: TypeCode,
+    diagnosticSeverity :: D.Severity,
     diagnosticSpan :: Span,
     diagnosticMessage :: Text,
     diagnosticRelated :: [(Span, Text)]
@@ -89,13 +90,20 @@ data Diagnostic = Diagnostic
   deriving (Eq, Show)
 
 diagnostic :: TypeCode -> Span -> Text -> Diagnostic
-diagnostic code span' message = Diagnostic code span' message []
+diagnostic code span' message =
+  Diagnostic
+    { diagnosticCode = code,
+      diagnosticSeverity = case code of NonExhaustiveMatch -> D.Warning; RedundantClause -> D.Warning; KindDefaulting -> D.Warning; _ -> D.Error,
+      diagnosticSpan = span',
+      diagnosticMessage = message,
+      diagnosticRelated = []
+    }
 
 instance D.ToDiagnostic Diagnostic where
   toDiagnostic d =
     D.Diagnostic
       (renderTypeCode (diagnosticCode d))
-      (case diagnosticCode d of NonExhaustiveMatch -> D.Warning; RedundantClause -> D.Warning; KindDefaulting -> D.Warning; _ -> D.Error)
+      (diagnosticSeverity d)
       (diagnosticSpan d)
       (diagnosticMessage d)
       Nothing

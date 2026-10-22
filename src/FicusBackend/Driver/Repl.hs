@@ -11,6 +11,7 @@ module FicusBackend.Driver.Repl
     newSession,
     loadSession,
     submit,
+    submitWithSources,
     inspectType,
     inspectKind,
   )
@@ -328,18 +329,23 @@ withDiagnostics previous result next =
 -- A successful declaration/import replaces the session transactionally.
 -- Expression errors return diagnostics and leave the caller's session intact.
 submit :: R.Effects -> Session -> Text -> IO (Either [D.Diagnostic] (Session, Maybe Text))
-submit effects session input
-  | T.null (T.strip input) = pure (Right (session {sessionDiagnostics = [], sessionDiagnosticSources = Map.empty}, Nothing))
+submit effects session input = snd <$> submitWithSources effects session input
+
+-- | Retain the exact compilation sources for diagnostics, including failures.
+-- Returning them does not install a failed submission in the session.
+submitWithSources :: R.Effects -> Session -> Text -> IO (Map FilePath Text, Either [D.Diagnostic] (Session, Maybe Text))
+submitWithSources effects session input
+  | T.null (T.strip input) = pure (Map.empty, Right (session {sessionDiagnostics = [], sessionDiagnosticSources = Map.empty}, Nothing))
   | otherwise = case parseModule "<repl>" input of
       Right tree | not (null (Concrete.moduleImports tree)) && null (Concrete.moduleDeclarations tree) && null (Concrete.modulePragmas tree) -> do
         let candidate = session {sessionImports = sessionImports session ++ [input]}
         result <- compileSession candidate ""
         installed <- install effects candidate result
-        pure ((\next -> (next, Nothing)) <$> installed)
+        pure (C.compileSources result, (\next -> (next, Nothing)) <$> installed)
       Right tree | null (Concrete.moduleImports tree) && not (null (Concrete.moduleDeclarations tree)) && null (Concrete.modulePragmas tree) -> do
         result <- compileSession session input
         installed <- install effects session result
-        pure ((\next -> (next, Nothing)) <$> installed)
+        pure (C.compileSources result, (\next -> (next, Nothing)) <$> installed)
       _ -> evaluateExpression
   where
     valueName = freshName session "ficusReplValue"
@@ -347,7 +353,7 @@ submit effects session input
     evaluateExpression = do
       -- The thunk preserves ordinary v0 restrictions on top-level initialization.
       result <- compileSession (session {sessionImports = sessionImports session ++ ["use Class.Debug as " <> debugName]}) (valueName <> " () = " <> debugName <> ".debug (" <> input <> ")")
-      case lowerSession session result of
+      evaluated <- case lowerSession session result of
         Left diagnostics -> pure (Left diagnostics)
         Right lowered -> case Map.lookup (GlobalId (replOwner session) ValueNS valueName) (loweredGlobals lowered) of
           Nothing -> pure (Left [message "interactive expression has no runtime address"])
@@ -362,6 +368,7 @@ submit effects session input
                 Left diagnostics -> Left diagnostics
                 Right (R.LiteralValue (Runtime.String output)) -> Right (withDiagnostics session result session, Just output)
                 Right _ -> Left [message "interactive Debug result is not a string"]
+      pure (C.compileSources result, evaluated)
 
 inspectType :: Session -> Text -> IO (Either [D.Diagnostic] Text)
 inspectType session name = do

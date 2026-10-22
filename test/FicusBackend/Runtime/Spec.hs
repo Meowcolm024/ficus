@@ -8,9 +8,9 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
+import Ficus.CompilationConfig
 import Ficus.Elaborate qualified as Elab
 import Ficus.Error.Diagnostic qualified as D
-import Ficus.Initialization
 import Ficus.Library.Contracts
 import Ficus.Primitive.Registry qualified as P
 import Ficus.Resolve
@@ -444,7 +444,7 @@ holeCase :: String -> C.Expr C.CoreType -> TestTree
 holeCase name body = testCase name $ do
   let owner = N.ModuleId ("Hole" :| [])
       binding = coreNode (C.Binding (N.GlobalRef (N.GlobalId owner N.ValueNS "entry")) (Type.monomorphic coreInt) body (C.BindingFacts 0 Nothing))
-      tree = C.CoreModule owner OrdinaryInitialization origin (SourceOrigin origin) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty [C.NonRecursive binding] Map.empty
+      tree = C.CoreModule owner defaultCompilationConfig origin (SourceOrigin origin) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty [C.NonRecursive binding] Map.empty
   case lowerProgram [tree] of
     Right _ -> assertFailure "hole reached Runtime"
     Left errors -> map (\problem -> (B.errorKind problem, B.errorSpan problem)) errors @?= [(B.ExpressionHole, origin)]

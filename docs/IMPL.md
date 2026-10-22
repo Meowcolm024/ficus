@@ -688,11 +688,19 @@ original global cells and code. Calls use the current invocation's effect
 interface. Stable numeric constructor and dictionary tags allow old closures
 and new code to exchange data even after additional types are defined.
 
-The compiler's explicit `InteractiveInitialization` mode permits only acyclic
-expansive top-level initializers. Ordinary compilation retains
-`OrdinaryInitialization`; the mode is carried into Core so its validator checks
-the correct boundary contract. Recursive groups and implementation members
-retain their normal restrictions. No source pragma activates this mode.
+The compiler carries `CompilationConfig` through inference and into Core so
+its validator independently enforces the configured top-level initializer check.
+The default configuration checks top-level non-expansiveness and orphan
+implementations and disallows imported implementation overrides. The standalone
+preset disables only the top-level initializer check. The interactive preset
+also disables the orphan check and enables imported implementation overrides;
+these policies are independent flags, not mode comparisons. Recursive groups
+and implementation members retain their normal restrictions, and warnings
+remain enabled in every preset. The independent `rejectNonExhaustivePatterns`
+flag promotes `NonExhaustiveMatch` diagnostics to errors at emission, preserving
+their code and source span; it defaults to false and is exposed only through
+the compiler API. Redundant clauses remain warnings. No source pragma activates
+the interactive preset.
 Rebindings receive fresh module-owned identities. Constructor reuse is checked
 against the owner of the type being replaced; omitted constructors are hidden
 from both the retained name scope and ordinary imports such as implicit Prelude.

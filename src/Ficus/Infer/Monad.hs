@@ -8,6 +8,8 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Ficus.CompilationConfig
+import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Type
 import Ficus.Infer.Unify qualified as U
@@ -39,7 +41,8 @@ data FieldWanted = FieldWanted
   deriving (Eq, Show)
 
 data InferState = InferState
-  { nextVariable :: Int,
+  { compilationConfig :: CompilationConfig,
+    nextVariable :: Int,
     substitution :: Substitution InferVariable,
     metavariables :: Map MetaId MetaInfo,
     weakVariables :: [WeakVariable],
@@ -65,7 +68,8 @@ newtype Infer a = Infer {unInfer :: State InferState a}
 initialState :: InferState
 initialState =
   InferState
-    { nextVariable = 0,
+    { compilationConfig = defaultCompilationConfig,
+      nextVariable = 0,
       substitution = S.empty,
       metavariables = Map.empty,
       weakVariables = [],
@@ -114,7 +118,13 @@ zonkScheme :: Scheme InferType -> Infer (Scheme InferType)
 zonkScheme = traverse zonk
 
 emit :: E.Diagnostic -> Infer ()
-emit d = Infer (modify' (\s -> s {diagnostics = diagnostics s ++ [d]}))
+emit d = Infer $ do
+  config <- gets compilationConfig
+  let configured =
+        if rejectNonExhaustivePatterns config && E.diagnosticCode d == E.NonExhaustiveMatch
+          then d {E.diagnosticSeverity = D.Error}
+          else d
+  modify' (\s -> s {diagnostics = diagnostics s ++ [configured]})
 
 equate :: Span -> InferType -> InferType -> Infer Bool
 equate = equateWith E.TypeMismatch

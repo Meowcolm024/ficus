@@ -4,9 +4,10 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Parser
-import Ficus.Error.Pretty (DiagnosticStyle (..), prettyDiagnostic, prettyDiagnosticRelativeTo, prettyDiagnosticWithOptionalSourceRelativeTo, prettyDiagnosticWithStyleRelativeTo)
+import Ficus.Error.Pretty (DiagnosticStyle (..), prettyDiagnostic, prettyDiagnosticRelativeTo, prettyDiagnosticSummaryWithStyle, prettyDiagnosticWithOptionalSourceRelativeTo, prettyDiagnosticWithStyleRelativeTo)
 import Ficus.Syntax.Parser (parseModule)
 import Ficus.Util.Source
+import FicusBackend.Runtime.Error (RuntimeError (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -14,7 +15,31 @@ tests :: TestTree
 tests =
   testGroup
     "source-referenced diagnostics"
-    [ testCase "ANSI errors color severity and carets without changing source alignment" $ do
+    [ testCase "hole context follows the referenced source and caret" $ do
+        let plain = prettyDiagnostic "x -> x + _" holeDiagnostic
+            ansi = prettyDiagnosticWithStyleRelativeTo Ansi "." (Just "x -> x + _") holeDiagnostic
+        plain
+          @?= T.intercalate
+            "\n"
+            [ "Demo.ficus:1:10: error[T0101]: expression hole has type Int",
+              "  |",
+              "1 | x -> x + _",
+              "  |          ^",
+              "  = in scope: x : Int",
+              "  = blocked by: trait Add : Int"
+            ]
+        stripAnsi ansi @?= plain,
+      testCase "hole context remains visible when source is unavailable" $
+        prettyDiagnosticWithOptionalSourceRelativeTo "." Nothing holeDiagnostic
+          @?= "Demo.ficus:1:10: error[T0101]: expression hole has type Int\n  = in scope: x : Int\n  = blocked by: trait Add : Int",
+      testCase "ANSI runtime errors color the compact header without styling the message" $ do
+        let failure = RuntimeError "Main.ficus:2:8: division by zero"
+            output = prettyDiagnosticSummaryWithStyle Ansi failure
+        output @?= "\ESC[1;31merror[R0001]\ESC[0m: Main.ficus:2:8: division by zero"
+        stripAnsi output @?= prettyDiagnosticSummaryWithStyle Plain failure,
+      testCase "plain runtime errors retain the compact format without a synthetic location" $
+        prettyDiagnosticSummaryWithStyle Plain (RuntimeError "division by zero") @?= "error[R0001]: division by zero",
+      testCase "ANSI errors color severity and carets without changing source alignment" $ do
         let d = diagnostic UnexpectedToken 1 5 1 7
             output = prettyDiagnosticWithStyleRelativeTo Ansi "." (Just "\tbad\n") d
         contains "\ESC[1;31merror[P0001]\ESC[0m: problem" output
@@ -101,6 +126,7 @@ tests =
           Right _ -> assertFailure "invalid escape accepted"
     ]
   where
+    holeDiagnostic = D.Diagnostic "T0101" D.Error (Span "Demo.ficus" (Position 1 10 9) (Position 1 10 9)) "expression hole has type Int\nin scope: x : Int\nblocked by: trait Add : Int" Nothing []
     diagnostic code firstLine firstColumn lastLine lastColumn =
       Diagnostic code (Span "Demo.ficus" (Position firstLine firstColumn 0) (Position lastLine lastColumn 0)) "problem"
     contains :: Text -> Text -> Assertion

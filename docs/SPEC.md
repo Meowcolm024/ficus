@@ -666,7 +666,9 @@ People.Person name age -> ...
 
 After a pattern matches, its optional guard runs. A false guard continues with the next clause. If none succeeds, evaluation raises a match error.
 
-Implementations should warn about detectable non-exhaustive or redundant matches, but neither is a static error. Empty matches use the same policy: `with e {}` may have any result type, evaluates `e` once, and raises a match error if evaluation produces a value. It is exhaustive when the scrutinee is a nominal type declared with an empty body, including through type aliases and imports; otherwise it produces a non-exhaustiveness warning. Empty matching requires explicit braces.
+By default, implementations should warn about detectable non-exhaustive or redundant matches, but neither is a static error. The compiler API may enable `rejectNonExhaustivePatterns` to treat detectable non-exhaustiveness as a static error instead, retaining the diagnostic code and primary span. This configuration applies to every pattern-coverage check, including function clauses, lambdas, pattern declarations, and explicit matches. Redundant clauses remain warnings. Ordinary, standalone, and interactive compilation leave this flag disabled by default; it has no command-line option.
+
+Empty matches use the same policy: `with e {}` may have any result type, evaluates `e` once, and raises a match error if evaluation produces a value. It is exhaustive when the scrutinee is a nominal type declared with an empty body, including through type aliases and imports; otherwise it produces the configured non-exhaustiveness diagnostic. Empty matching requires explicit braces.
 
 ## 11. Conditionals and guards
 
@@ -1310,7 +1312,7 @@ An optional warning may suggest `type Token = { Token }` for a unit-like type; i
 
 An empty `with` eliminates an impossible scrutinee and may have any result type. These source definitions replace the v0 builtin-backed `Void` and `absurd` while preserving their Prelude API.
 
-An empty match is exhaustive for a nominal type declared with an empty body, including aliases and imports. Other scrutinee types receive the ordinary non-exhaustiveness warning, not a static error. Propagating uninhabitedness through other types and subpatterns remains future work. The grammar admits explicit `{}` for empty type bodies and match blocks; layout blocks remain nonempty.
+An empty match is exhaustive for a nominal type declared with an empty body, including aliases and imports. Other scrutinee types receive the ordinary non-exhaustiveness warning by default, or a static error when the compiler API enables `rejectNonExhaustivePatterns` (Section 10). Propagating uninhabitedness through other types and subpatterns remains future work. The grammar admits explicit `{}` for empty type bodies and match blocks; layout blocks remain nonempty.
 
 #### Record patterns (implemented)
 

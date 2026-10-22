@@ -5,6 +5,7 @@ module Ficus.Error.Pretty
     prettyDiagnosticRelativeTo,
     prettyDiagnosticWithOptionalSourceRelativeTo,
     prettyDiagnosticWithStyleRelativeTo,
+    prettyDiagnosticSummaryWithStyle,
   )
 where
 
@@ -39,10 +40,18 @@ prettyDiagnosticWithStyleRelativeTo style directory = prettyDiagnosticWithPath s
 prettyDiagnostic :: (ToDiagnostic d) => Text -> d -> Text
 prettyDiagnostic source = prettyDiagnosticWithPath Plain id (Just source)
 
+-- | Render a compact diagnostic when no separate source location is available.
+prettyDiagnosticSummaryWithStyle :: (ToDiagnostic d) => DiagnosticStyle -> d -> Text
+prettyDiagnosticSummaryWithStyle style input =
+  let diagnostic = toDiagnostic input
+      label = (case diagnosticSeverity diagnostic of Error -> "error"; Warning -> "warning") <> "[" <> diagnosticCode diagnostic <> "]"
+   in severityColorWithStyle style (diagnosticSeverity diagnostic) label <> ": " <> diagnosticMessage diagnostic
+
 prettyDiagnosticWithPath :: (ToDiagnostic d) => DiagnosticStyle -> (FilePath -> FilePath) -> Maybe Text -> d -> Text
 prettyDiagnosticWithPath style displayPath source input = T.pack (P.render (P.vcat (map (P.text . T.unpack) output)))
   where
     diagnostic = toDiagnostic input
+    (headline, details) = T.breakOn "\n" (diagnosticMessage diagnostic)
     s = diagnosticSpan diagnostic
     firstLine = line (start s)
     lastLine = line (end s)
@@ -53,9 +62,7 @@ prettyDiagnosticWithPath style displayPath source input = T.pack (P.render (P.vc
         <> ":"
         <> number (column (start s))
         <> ": "
-        <> severityColor ((case diagnosticSeverity diagnostic of Error -> "error"; Warning -> "warning") <> "[" <> diagnosticCode diagnostic <> "]")
-        <> ": "
-        <> diagnosticMessage diagnostic
+        <> prettyDiagnosticSummaryWithStyle style (diagnostic {diagnosticMessage = headline})
     referenced =
       [ (n, expandTabs (T.dropWhileEnd (== '\r') t))
       | text <- maybe [] pure source,
@@ -72,6 +79,7 @@ prettyDiagnosticWithPath style displayPath source input = T.pack (P.render (P.vc
           [] -> []
           _ -> gutter : excerpt referenced
       )
+        ++ [color [SetColor Foreground Dull Cyan] (T.replicate gutterWidth " " <> " =") <> " " <> detail | detail <- T.lines (T.drop 1 details)]
         ++ [color [SetConsoleIntensity BoldIntensity, SetColor Foreground Dull Cyan] "note" <> ": " <> T.pack (displayPath (sourceFile span')) <> ":" <> number (line (start span')) <> ":" <> number (column (start span')) <> ": " <> label | (span', label) <- diagnosticRelated diagnostic]
     excerpt rows
       | length rows <= 4 = concatMap renderLine rows
@@ -91,9 +99,15 @@ prettyDiagnosticWithPath style displayPath source input = T.pack (P.render (P.vc
        in [ color [SetColor Foreground Dull Cyan] (label <> " |") <> " " <> text,
             gutter <> " " <> T.replicate (from - 1) " " <> severityColor (T.replicate (to - from + 1) "^")
           ]
-    severityColor = color [SetConsoleIntensity BoldIntensity, SetColor Foreground Dull (case diagnosticSeverity diagnostic of Error -> Red; Warning -> Yellow)]
-    color rendition text = case style of Plain -> text; Ansi -> T.pack (setSGRCode rendition) <> text <> T.pack (setSGRCode [Reset])
+    severityColor = severityColorWithStyle style (diagnosticSeverity diagnostic)
+    color = colorWithStyle style
     number = T.pack . show
+
+severityColorWithStyle :: DiagnosticStyle -> Severity -> Text -> Text
+severityColorWithStyle style severity = colorWithStyle style [SetConsoleIntensity BoldIntensity, SetColor Foreground Dull (case severity of Error -> Red; Warning -> Yellow)]
+
+colorWithStyle :: DiagnosticStyle -> [SGR] -> Text -> Text
+colorWithStyle style rendition text = case style of Plain -> text; Ansi -> T.pack (setSGRCode rendition) <> text <> T.pack (setSGRCode [Reset])
 
 relativeSourcePath :: FilePath -> FilePath -> FilePath
 relativeSourcePath directory file

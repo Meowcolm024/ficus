@@ -1,7 +1,7 @@
 -- | Source type inference. Its work tables retain source identities for the
 -- elaborator; they are not a second checked expression AST. Residual evidence
 -- obligations must be discharged before a module can cross the Core boundary.
-module Ficus.Infer.Check (Inference (..), inferModule, inferModuleWithMode) where
+module Ficus.Infer.Check (Inference (..), inferModule, inferModuleWithConfig) where
 
 import Control.Monad (foldM, forM, forM_, unless, void, when)
 import Control.Monad.State.Strict (gets, modify')
@@ -13,6 +13,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Ficus.Builtin.Registry (primitiveFromKey, specializePrimitive)
+import Ficus.CompilationConfig
 import Ficus.Error.Type qualified as E
 import Ficus.Infer.Coverage
 import Ficus.Infer.Declaration
@@ -23,7 +24,6 @@ import Ficus.Infer.Monad
 import Ficus.Infer.Restriction
 import Ficus.Infer.Syntax
 import Ficus.Infer.Type
-import Ficus.Initialization
 import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Intrinsic (constructorSignature, literalType, primitiveScheme)
@@ -34,7 +34,7 @@ import Ficus.Type.Substitution qualified as S
 import Ficus.Util.Source
 
 data Inference = Inference
-  { inferenceInitialization :: InitializationMode,
+  { inferenceCompilationConfig :: CompilationConfig,
     inferredDeclarations :: Declarations,
     inferredValues :: Map Reference (Scheme InferType),
     remainingWanteds :: [Wanted],
@@ -54,17 +54,17 @@ data Context = Context
 data Judgement = Judgement {judgementType :: InferType, judgementWanteds :: [Wanted]}
 
 inferModule :: Declarations -> A.AbstractModule -> Inference
-inferModule environment tree = inferModuleWithMode (if standaloneEnabled (A.abstractOptions tree) then StandaloneInitialization else OrdinaryInitialization) environment tree
+inferModule environment tree = inferModuleWithConfig (if standaloneEnabled (A.abstractOptions tree) then standaloneCompilationConfig else defaultCompilationConfig) environment tree
 
-inferModuleWithMode :: InitializationMode -> Declarations -> A.AbstractModule -> Inference
-inferModuleWithMode mode imported tree =
+inferModuleWithConfig :: CompilationConfig -> Declarations -> A.AbstractModule -> Inference
+inferModuleWithConfig config imported tree =
   let action = do
-        prepared <- prepareDeclarationsWithMode mode imported tree
+        prepared <- prepareDeclarationsWithConfig config imported tree
         let names = Map.fromList [(A.occurrenceReference occurrence, (A.occurrenceSpelling occurrence, A.occurrenceSpan occurrence)) | occurrence <- A.abstractOccurrences tree]
             importedValues = Map.map signatureScheme (valueSignatures imported)
             methods = Map.fromList [(GlobalRef method, scheme) | trait <- Map.elems (traitDeclarations prepared), (method, scheme) <- Map.toList (traitMethods (C.nodeValue trait))]
             context = Context prepared (methods `Map.union` importedValues) Map.empty names Map.empty []
-        (checked, wanteds) <- bindingGroup (mode == OrdinaryInitialization) context (A.abstractDeclarations tree)
+        (checked, wanteds) <- bindingGroup (checkTopLevelInitializers config) context (A.abstractDeclarations tree)
         solveFields checked
         checkImplementations checked tree
         constraints <- resolveWanteds checked wanteds
@@ -83,8 +83,8 @@ inferModuleWithMode mode imported tree =
         reportGoals goals
         values <- mapM zonkScheme (contextValues checked)
         pure (prepared, values, constraints)
-      ((finalDeclarations, finalValues, finalWanteds), state) = runInferFrom (initialState {nextVariable = importedFreshStart imported}) action
-   in Inference mode finalDeclarations finalValues finalWanteds state
+      ((finalDeclarations, finalValues, finalWanteds), state) = runInferFrom (initialState {compilationConfig = config, nextVariable = importedFreshStart imported}) action
+   in Inference config finalDeclarations finalValues finalWanteds state
 
 -- Imported schemes have independent scopes, but specialization can place an
 -- imported method underneath new local binders. Keep new identities disjoint

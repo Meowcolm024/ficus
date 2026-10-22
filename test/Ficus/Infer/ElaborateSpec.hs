@@ -3,12 +3,14 @@ module Ficus.Infer.ElaborateSpec (tests) where
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Ficus.CompilationConfig
 import Ficus.Elaborate
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Error.Type qualified as E
 import Ficus.Resolve
 import Ficus.Resolve.Provider
 import Ficus.Resolve.Support
+import Ficus.Syntax.Abstract qualified as A
 import Ficus.Syntax.Core qualified as C
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Name
@@ -17,11 +19,14 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 check :: Text -> (Elaboration -> Assertion) -> Assertion
-check source assertion = do
+check = checkUsing elaborateModule
+
+checkUsing :: ([CheckedInterface] -> A.AbstractModule -> Elaboration) -> Text -> (Elaboration -> Assertion) -> Assertion
+checkUsing elaborate source assertion = do
   let owner = ModuleId ("Elaboration" :| [])
   resolved <- resolveSources fixtureConfig fixtureSugar (\_ -> pure (Right (Source "Elaboration.ficus" ("{-# NO_IMPLICIT_PRELUDE #-}\n" <> source)))) [owner]
   assertBool (show (frontendDiagnostics resolved)) (all ((/= D.Error) . D.diagnosticSeverity . D.toDiagnostic) (frontendDiagnostics resolved))
-  maybe (assertFailure "fixture did not resolve") (assertion . elaborateModule []) (Map.lookup owner (frontendModules resolved))
+  maybe (assertFailure "fixture did not resolve") (assertion . elaborate []) (Map.lookup owner (frontendModules resolved))
 
 accepted :: Text -> Assertion
 accepted source = check source $ \case
@@ -32,7 +37,69 @@ tests :: TestTree
 tests =
   testGroup
     "source elaboration"
-    [ testCase "builtin Handle elaborates through checked Core" $
+    [ testCase "non-exhaustive patterns can be rejected through compilation configuration" $
+        mapM_
+          ( \config ->
+              checkUsing (elaborateModuleWithConfig (config {rejectNonExhaustivePatterns = True})) "choose True = 1\n" $ \case
+                Complete _ _ -> assertFailure "non-exhaustive function was accepted"
+                Incomplete _ errors -> do
+                  map E.diagnosticCode errors @?= [E.NonExhaustiveMatch]
+                  map (D.diagnosticSeverity . D.toDiagnostic) errors @?= [D.Error]
+                  map (line . start . E.diagnosticSpan) errors @?= [2]
+          )
+          [defaultCompilationConfig, standaloneCompilationConfig, interactiveCompilationConfig],
+      testCase "exhaustiveness rejection preserves diagnostics for every coverage form" $
+        mapM_
+          ( \source -> check source $ \case
+              Incomplete _ errors -> assertFailure (show errors)
+              Complete result warnings -> do
+                validateCore (validatedModule (checkedCore result)) @?= []
+                map E.diagnosticCode warnings @?= [E.NonExhaustiveMatch]
+                checkUsing (elaborateModuleWithConfig (defaultCompilationConfig {rejectNonExhaustivePatterns = True})) source $ \case
+                  Complete _ _ -> assertFailure "non-exhaustive patterns were accepted"
+                  Incomplete _ errors ->
+                    map D.toDiagnostic errors @?= map (\warning -> (D.toDiagnostic warning) {D.diagnosticSeverity = D.Error}) warnings
+          )
+          [ "choose True = 1\n",
+            "choose x = with x { True -> 1 }\n",
+            "choose x = with x { _ if False -> 1 }\n",
+            "choose = (True -> 1)\n",
+            "choose () = { True = False; 1 }\n",
+            "choose x = with x {}\n"
+          ],
+      testCase "strict exhaustiveness accepts complete matches and retains redundancy warnings" $
+        checkUsing (elaborateModuleWithConfig (defaultCompilationConfig {rejectNonExhaustivePatterns = True})) "choose _ = 1\nchoose True = 2\n" $ \case
+          Incomplete _ errors -> assertFailure (show errors)
+          Complete result warnings -> do
+            validateCore (validatedModule (checkedCore result)) @?= []
+            map E.diagnosticCode warnings @?= [E.RedundantClause]
+            map (D.diagnosticSeverity . D.toDiagnostic) warnings @?= [D.Warning],
+      testCase "strict exhaustiveness accepts empty matches on uninhabited types" $
+        checkUsing (elaborateModuleWithConfig (defaultCompilationConfig {rejectNonExhaustivePatterns = True})) "type Void = {}\nabsurd : Void -> Int\nabsurd x = with x {}\n" $ \case
+          Incomplete _ errors -> assertFailure (show errors)
+          Complete result warnings -> do
+            validateCore (validatedModule (checkedCore result)) @?= []
+            warnings @?= [],
+      testCase "initializer checks are independent of implementation policies" $
+        mapM_
+          ( \config -> checkUsing (elaborateModuleWithConfig config) "identity x = x\nvalue = identity 1\n" $ \case
+              Complete result warnings -> do
+                assertBool "initializer checks should be disabled" (not (checkTopLevelInitializers config))
+                let core = validatedModule (checkedCore result)
+                C.coreCompilationConfig core @?= config
+                validateCore core @?= []
+                warnings @?= []
+              Incomplete _ errors -> do
+                assertBool "initializer checks should be enabled" (checkTopLevelInitializers config)
+                map E.diagnosticCode errors @?= [E.ExpansiveInitializer]
+                map (line . start . E.diagnosticSpan) errors @?= [3]
+          )
+          [ defaultCompilationConfig {checkTopLevelInitializers = initializers, checkOrphanImplementations = orphans, allowImportedImplementationOverrides = overrides}
+          | initializers <- [False, True],
+            orphans <- [False, True],
+            overrides <- [False, True]
+          ],
+      testCase "builtin Handle elaborates through checked Core" $
         accepted "{-# BUILTIN HANDLE Handle #-}\nHandle : Type\nidentity : Handle -> Handle\nidentity handle = handle\n",
       testCase "polymorphic constructor values lower to unary closures" $
         accepted "type Box a = Box a\nbox = Box\ncheck () = (box 1, box True)\n",

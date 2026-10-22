@@ -152,6 +152,7 @@ tests =
               goals = Map.elems (checkedGoals state)
               zonked = S.apply (substitution state)
           map (renderInferType . zonked . C.goalType . C.nodeValue) goals @?= ["Int"]
+          map E.diagnosticMessage (errors result) @?= ["expression hole has type Int\nin scope: x : Int"]
           map (map (\entry -> let (name, scheme) = C.nodeValue entry in (name, renderInferType (zonked (schemeType scheme)))) . C.goalContext . C.nodeValue) goals @?= [[("x", "Int")]],
       testCase "nested Boolean product patterns establish exhaustiveness" $
         check "choose (True, _) = 1\nchoose (False, True) = 2\nchoose (False, False) = 3\n" $

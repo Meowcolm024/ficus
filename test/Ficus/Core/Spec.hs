@@ -2,8 +2,8 @@ module Ficus.Core.Spec (tests) where
 
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
+import Ficus.CompilationConfig
 import Ficus.Error.Type qualified as E
-import Ficus.Initialization
 import Ficus.Syntax.Core
 import Ficus.Syntax.Core.Validate
 import Ficus.Syntax.Literal qualified as L
@@ -36,7 +36,7 @@ moduleWith :: Scheme CoreType -> Expr CoreType -> CoreModule CoreType
 moduleWith scheme body =
   CoreModule
     owner
-    OrdinaryInitialization
+    defaultCompilationConfig
     origin
     (SourceOrigin origin)
     Map.empty
@@ -121,12 +121,18 @@ tests =
             ordinary = (moduleWith (monomorphic int) body) {coreBindings = [NonRecursive binding]}
         assertInvalid ordinary
         mapM_
-          ( \mode -> do
-              let relaxed = ordinary {coreInitialization = mode}
+          ( \config -> do
+              let relaxed = ordinary {coreCompilationConfig = config}
               validateCore relaxed @?= []
               assertInvalid (relaxed {coreBindings = [Recursive (binding :| [])]})
           )
-          [StandaloneInitialization, InteractiveInitialization],
+          [standaloneCompilationConfig, interactiveCompilationConfig],
+      testCase "other compilation flags do not relax Core initialization checks" $ do
+        let body = expr 1 int (Primitive IntNegate [expr 2 int (Literal (L.IntegerLiteral "1"))])
+            binding = node 0 (Binding global (monomorphic int) body (BindingFacts 0 (Just origin)))
+            config = defaultCompilationConfig {checkOrphanImplementations = False, allowImportedImplementationOverrides = True, rejectNonExhaustivePatterns = True}
+            tree = (moduleWith (monomorphic int) body) {coreCompilationConfig = config, coreBindings = [NonRecursive binding]}
+        assertInvalid tree,
       testCase "unbound values fail" $
         assertInvalid (moduleWith (monomorphic int) (expr 1 int (Var (LocalRef (LocalId 4)) []))),
       testCase "application types are checked independently" $ do

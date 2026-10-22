@@ -49,7 +49,12 @@ excerpts for stdin as well as files. Tabs are expanded using the same setting as
 Megaparsec; source columns count Unicode characters. Inclusive spans are
 underlined, EOF gets a visible caret, and long multiline spans elide middle lines.
 If the referenced line is unavailable, the header still includes the filename,
-position, code, and message.
+position, code, and message. Multiline diagnostics keep the first message line in
+the header and render subsequent lines below the source excerpt as details. For
+expression holes, the header reports the inferred type; `in scope` bindings and
+`blocked by` constraints follow the caret. These details also appear when no
+source excerpt is available. The REPL supplies the exact compilation source for
+failed submissions so their diagnostics can include an excerpt.
 The CLI omits source excerpts when no source was loaded, including invalid
 input filenames and missing files. An available empty file still gets an EOF caret.
 Terminal diagnostics color errors red, warnings yellow, and source gutters and
@@ -163,7 +168,7 @@ ownership and Core checks are in [TYPECHECKING.md](TYPECHECKING.md).
 | T0501 | BuiltinContractMismatch | Declared signature/kind; BUILTIN key contract and association |
 | T0502 | MissingBuiltinSignature | BUILTIN target; absent/incomplete ordinary signature |
 | T0503 | UnexpectedBuiltinDefinition | Extra source body; signature-backed builtin association |
-| T0901 | NonExhaustiveMatch (warning) | Match/function origin; uncovered case |
+| T0901 | NonExhaustiveMatch (warning; error with `rejectNonExhaustivePatterns`) | Match/function origin; uncovered case |
 | T0902 | RedundantClause (warning) | Redundant clause; covering earlier clauses |
 | T0903 | KindDefaulting (warning) | Parameter/kind-hole origin; selected default |
 
@@ -214,8 +219,9 @@ lowering, linking, entry-selection, and Runtime-validation diagnostics, retainin
 spans and specific codes. Metadata-free Runtime validation uses the synthetic
 `<runtime>` anchor. `FicusBackend.Runtime.Error.RuntimeError` contains only a
 message. Its diagnostic adapter uses the single code R0001; the CLI prints
-`error[R0001]: MESSAGE` without a synthetic source header. Generated match and
-conditional messages and fallible primitive contexts embed their originating
+`error[R0001]: MESSAGE` without a synthetic source header, styling its severity
+and code with the same terminal-color and `--no-color` policy as other errors.
+Generated match and conditional messages and fallible primitive contexts embed their originating
 file, line, and column. Dynamic primitive and IO failure details are appended at
 execution. Uncaught typed throws are converted to R0001 at the public execution
 boundary; active typed catches never intercept generic runtime failures. R0002, R0003, and R0004 are no longer emitted.

@@ -1,0 +1,3 @@
+value = 1
+check () = "value={value}"
+shadow render = "value={value}"

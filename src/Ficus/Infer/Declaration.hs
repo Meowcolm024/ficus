@@ -40,6 +40,7 @@ data ImplementationDeclaration = ImplementationDeclaration
 
 data Declarations = Declarations
   { builtinTypeAssociations :: Map Text GlobalId,
+    builtinMethodAssociations :: Map Text GlobalId,
     builtinRecordMembers :: Map Text A.FieldDescriptor,
     declarationTypes :: TypeEnvironment,
     valueSignatures :: Map Reference Signature,
@@ -52,7 +53,7 @@ data Declarations = Declarations
   deriving (Eq, Show)
 
 emptyDeclarations :: Declarations
-emptyDeclarations = Declarations Map.empty Map.empty emptyTypes Map.empty Set.empty Map.empty Map.empty Map.empty Map.empty
+emptyDeclarations = Declarations Map.empty Map.empty Map.empty emptyTypes Map.empty Set.empty Map.empty Map.empty Map.empty Map.empty
 
 prepareDeclarations :: Declarations -> A.AbstractModule -> Infer Declarations
 prepareDeclarations = prepareDeclarationsWithConfig defaultCompilationConfig
@@ -70,8 +71,22 @@ prepareDeclarationsWithConfig config imported tree = do
   let localException = Map.lookup "EXCEPTION" (A.builtinAssociations tree)
       dataKeys = P.builtinDataKeys
       localData = Map.restrictKeys (A.builtinAssociations tree) (Set.fromList dataKeys)
+      localMethods = Map.restrictKeys (A.builtinAssociations tree) (Set.fromList P.builtinMethodKeys)
       associations = localData `Map.union` maybe (builtinTypeAssociations imported) (\ident -> Map.insert "EXCEPTION" ident (builtinTypeAssociations imported)) localException
-  prepared <- foldM prepare (imported {declarationTypes = preparedTypes, builtinTypeAssociations = associations, builtinRecordMembers = A.builtinMemberAssociations tree `Map.union` builtinRecordMembers imported}) declarations
+  prepared <- foldM prepare (imported {declarationTypes = preparedTypes, builtinTypeAssociations = associations, builtinMethodAssociations = localMethods `Map.union` builtinMethodAssociations imported, builtinRecordMembers = A.builtinMemberAssociations tree `Map.union` builtinRecordMembers imported}) declarations
+  forM_ (Map.toList localMethods) $ \(key, ident) -> do
+    let location = maybe (A.abstractSpan tree) A.entitySpan (Map.lookup ident (A.abstractEntities tree))
+        candidates = [(owner, C.nodeValue node, scheme) | (owner, node) <- Map.toList (traitDeclarations prepared), Just scheme <- [Map.lookup ident (traitMethods (C.nodeValue node))]]
+        valid = case candidates of
+          [(owner, trait, scheme)] ->
+            let parameter = traitParameter trait
+                input = Variable (Bound (quantifierId parameter)) TypeKind
+             in quantifierKind parameter == TypeKind && null (explicitQuantifiers scheme) && implicitQuantifiers scheme == [parameter] && schemePredicates scheme == [Predicate owner input] && schemeType scheme == function input (primitive StringType)
+          _ -> False
+    unless valid (emit (E.diagnostic E.BuiltinContractMismatch location "builtin rendering method must have type a -> String for its trait's Type parameter, without additional quantifiers or constraints"))
+    when
+      (maybe False (/= ident) (Map.lookup key (builtinMethodAssociations imported)))
+      (emit (E.diagnostic E.BuiltinContractMismatch location "conflicting builtin trait member registrations"))
   forM_ localException $ \ident -> do
     let location = maybe (maybe (A.abstractSpan tree) A.entitySpan (Map.lookup ident (A.abstractEntities tree))) C.nodeSpan (Map.lookup ident (traitDeclarations prepared))
     unless

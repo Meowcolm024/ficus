@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+trait Extra a = {}
+trait Display a = { display : Extra a => a -> String }
+{-# BUILTIN SHOW display #-}

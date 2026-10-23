@@ -13,6 +13,6 @@ libraryResolveConfig :: ResolveConfig
 libraryResolveConfig = ResolveConfig Builtin.builtinKeys
 
 librarySugarRegistry :: SugarRegistry
-librarySugarRegistry = SugarRegistry (Map.fromList [(SugarKey "do.bind", global ("Class" :| ["Bind"]) "bind"), (SugarKey "string.show", global ("Class" :| ["Show"]) "show"), (SugarKey "string.append", global ("Ficus" :| ["Builtin", "String"]) "stringAppend")])
+librarySugarRegistry = SugarRegistry (Map.fromList [(SugarKey "do.bind", global ("Class" :| ["Bind"]) "bind"), (SugarKey "string.append", global ("Ficus" :| ["Builtin", "String"]) "stringAppend")])
   where
     global owner = GlobalId (ModuleId owner) ValueNS

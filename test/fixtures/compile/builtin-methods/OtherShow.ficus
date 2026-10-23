@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+trait Other a = { other : a -> String }
+{-# BUILTIN SHOW other #-}

@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Render
+trait Local a = { local : a -> String }
+{-# BUILTIN SHOW local #-}

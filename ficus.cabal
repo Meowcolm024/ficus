@@ -33,6 +33,28 @@ extra-source-files:
     test/fixtures/backend/driver/ReexportMain.ficus
     test/fixtures/backend/driver/UnitMain.ficus
     test/fixtures/backend/driver/Values.ficus
+    test/fixtures/compile/builtin-methods/Constrained.ficus
+    test/fixtures/compile/builtin-methods/Diamond.ficus
+    test/fixtures/compile/builtin-methods/Duplicate.ficus
+    test/fixtures/compile/builtin-methods/EmptyPrelude.ficus
+    test/fixtures/compile/builtin-methods/ImportClash.ficus
+    test/fixtures/compile/builtin-methods/ImportDebugClash.ficus
+    test/fixtures/compile/builtin-methods/Interpolation.ficus
+    test/fixtures/compile/builtin-methods/Lazy.ficus
+    test/fixtures/compile/builtin-methods/Left.ficus
+    test/fixtures/compile/builtin-methods/LocalClash.ficus
+    test/fixtures/compile/builtin-methods/Missing.ficus
+    test/fixtures/compile/builtin-methods/OtherDebug.ficus
+    test/fixtures/compile/builtin-methods/OtherShow.ficus
+    test/fixtures/compile/builtin-methods/Prelude.ficus
+    test/fixtures/compile/builtin-methods/Quantified.ficus
+    test/fixtures/compile/builtin-methods/Render.ficus
+    test/fixtures/compile/builtin-methods/Repeated.ficus
+    test/fixtures/compile/builtin-methods/Right.ficus
+    test/fixtures/compile/builtin-methods/Symbolic.ficus
+    test/fixtures/compile/builtin-methods/WrongArgument.ficus
+    test/fixtures/compile/builtin-methods/WrongResult.ficus
+    test/fixtures/compile/builtin-methods/WrongTarget.ficus
     test/fixtures/compile/exceptions/BadErrorFields.ficus
     test/fixtures/compile/exceptions/BadErrorOwner.ficus
     test/fixtures/compile/exceptions/BadErrorType.ficus
@@ -549,6 +571,7 @@ extra-source-files:
     test/fixtures/semantics/type-checking/reference/WeakAliasPolymorphism.ml.txt
     test/fixtures/semantics/type-checking/reference/WeakAliasSolved.ml.txt
     test/fixtures/semantics/type-checking/verify-references.py
+    test/fixtures/compile/builtin-methods/README.md
     test/fixtures/desugaring/pattern-lambdas/README.md
     test/fixtures/eta/README.md
     test/fixtures/lazy-arrows/README.md
@@ -773,6 +796,7 @@ test-suite ficus-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Ficus.Builtin.MethodSpec
       Ficus.Builtin.RegistrySpec
       Ficus.CompileSpec
       Ficus.Core.Spec

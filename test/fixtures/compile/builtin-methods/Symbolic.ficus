@@ -1,0 +1,16 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+trait Present a = { render : a -> String }
+{-# BUILTIN SHOW render #-}
+impl Present Int = { render _ = "shown" }
+impl Present String = { render value = value }
+trait Inspect a = { (%%) : a -> String }
+{-# BUILTIN DEBUG (%%) #-}
+impl Inspect Int = { (%%) _ = "debugged" }
+check () = render 1
+{-# BUILTIN EXCEPTION Exception #-}
+trait Present e => Exception e = {}
+{-# BUILTIN MATCH_ERROR MatchError #-}
+type MatchError = MatchError String
+{-# BUILTIN MATCH_FAILURE MatchError #-}
+impl Present MatchError = { render (MatchError message) = message }
+impl Exception MatchError = {}

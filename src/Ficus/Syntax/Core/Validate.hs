@@ -40,8 +40,15 @@ validateCore tree =
           validConstructor owner fields = case (Map.lookup owner (coreBuiltins tree), Map.lookup (DataConstructor ident) (coreConstructors tree)) of
             (Just ty, Just node) -> let scheme = constructorScheme (nodeValue node) in null (quantifiers scheme) && null (schemePredicates scheme) && schemeType scheme == foldr function (Constructor ty TypeKind) (map primitive fields)
             _ -> False
-          valid = if key `elem` P.builtinDataTypes then validType else or [validConstructor owner fields | (constructor, owner, fields) <- P.builtinConstructors, constructor == key]
-       in require (coreSpan tree) valid "invalid builtin data or constructor association"
+          methods = [(dictionaryParameter descriptor, scheme) | node <- Map.elems (coreDictionaries tree), let descriptor = nodeValue node, method <- dictionaryMethods descriptor, let (methodId, scheme) = nodeValue method, methodId == ident]
+          validMethod = case methods of
+            [(parameter, scheme)] -> quantifierKind parameter == TypeKind && null (quantifiers scheme) && null (schemePredicates scheme) && schemeType scheme == function (Variable (BoundVariable (quantifierId parameter)) TypeKind) (primitive StringType)
+            _ -> False
+          valid
+            | key `elem` P.builtinMethodKeys = validMethod
+            | key `elem` P.builtinDataTypes = validType
+            | otherwise = or [validConstructor owner fields | (constructor, owner, fields) <- P.builtinConstructors, constructor == key]
+       in require (coreSpan tree) valid "invalid builtin declaration association"
     checkConstructor descriptor =
       let value = nodeValue descriptor
           scheme = constructorScheme value

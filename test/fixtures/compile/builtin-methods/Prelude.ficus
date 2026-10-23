@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Render (Present, render, Inspect, inspect) pub
+use Ficus.Builtin.String (stringAppend) pub

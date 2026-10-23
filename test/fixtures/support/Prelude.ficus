@@ -216,3 +216,6 @@ impl Show ArithmeticError =
     show error = with error { DivisionByZero -> "DivisionByZero"; InvalidConversion message -> message }
 impl Show IOError = { show (IOError operation message) = operation ++ ": " ++ message }
 impl Show MatchError = { show (MatchError message) = message }
+
+{-# BUILTIN SHOW show #-}
+{-# BUILTIN DEBUG debug #-}

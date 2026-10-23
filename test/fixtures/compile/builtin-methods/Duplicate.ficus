@@ -1,0 +1,5 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+trait First a = { first : a -> String }
+trait Second a = { second : a -> String }
+{-# BUILTIN SHOW first #-}
+{-# BUILTIN SHOW second #-}

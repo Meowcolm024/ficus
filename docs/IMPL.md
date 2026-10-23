@@ -151,7 +151,7 @@ Resolve names before generating sugar references, then refer directly to selecte
 | `@T`, `{a}`, type/kind annotations | Separate type application, signature quantifiers, and scoped annotation syntax; kind/type checking remains later |
 | List/product/unit and literals | Dedicated semantic aggregate/literal nodes with intrinsic identities where needed; literal decoding/range validation has its own diagnostics |
 
-Check the module mode before expanding do/interpolation: under NO_IMPLICIT_PRELUDE they fail even if the user explicitly imports Bind or Show. When enabled, sugar uses compiler-known library identities through the registry, unaffected by a local `bind`/`show` spelling or ambiguous ordinary imports. Interpolation uses the canonical Prelude.stringAppend binding associated with STRING_APPEND. Inject sugar contracts through a separate extensible SugarRegistry, independent of ResolveConfig; fixture-only configurations live in tests. Negation likewise uses the existing primitive/numeric contract rather than an invented name lookup.
+Check the module mode before expanding do/interpolation: under NO_IMPLICIT_PRELUDE they fail even if the user explicitly imports Bind or Show. When enabled, interpolation selects the unique `SHOW` builtin method association; other sugar uses configured library identities. Local `bind`/`show` spelling and ambiguous ordinary imports do not select those contracts. Interpolation uses the canonical Prelude.stringAppend binding associated with STRING_APPEND. Keep non-builtin sugar contracts in a separate extensible SugarRegistry, independent of ResolveConfig; fixture-only configurations live in tests. Negation likewise uses the existing primitive/numeric contract rather than an invented name lookup.
 
 Lower lambda parameter patterns to explicit matches here as described below. Do not lower named clause groups, field constraints, dictionaries, or ETA here. Lambda/where and source parameter metadata must survive so inference and Core lowering preserve initialization points. Build a resolved reference graph for recursive groups, including type references separately; checking expansiveness, signature conformance, recursion protection, and dictionary-induced initialization edges belongs to inference/elaboration.
 
@@ -714,7 +714,7 @@ initializing, or executing code, and without installing session bindings.
 Trait kind displays use the inferred dictionary parameter kind with a `Constraint` result, rather than Core's
 dictionary type result `Type`. This display metadata retains no
 Core AST. `:help` lists commands and aliases. Expressions are compiled inside a
-Unit thunk and formatted with qualified `Class.Debug.debug`. Successful
+Unit thunk and formatted with the canonical trait member registered as `DEBUG`. Successful
 loads/imports/declarations replace the session
 transactionally; failed operations preserve the previous snapshots and retained values.
 Runtime errors are reported without leaving the REPL loop. Source snapshots
@@ -841,3 +841,18 @@ parser branches. OPTIONS remains unavailable until its versioned
 semantics are implemented. `Ficus.Error.Diagnostic.ToDiagnostic` adapts typed
 phase diagnostics to a shared envelope; prettyDiagnostic handles any such value,
 including warning severity and related source labels, without file IO.
+
+### Builtin rendering methods
+
+`MethodBuiltin` contracts register `SHOW` and `DEBUG` without introducing runtime
+primitive operations. Resolution requires a local trait member and propagates its
+canonical identity through interfaces, independently of selected source exports.
+The module graph rejects distinct registrations, including independent roots;
+repeated import routes to one identity are harmless. Inference checks the exact
+owning-parameter `a -> String` scheme with no extra quantifiers or constraints.
+Checked interfaces retain a separate builtin-method map, and typed Core records
+the same associations. Core validates the referenced dictionary slot's signature;
+linking rejects conflicting identities across independently compiled modules.
+Interpolation resolves `SHOW` through this metadata. REPL sessions retain `DEBUG`
+and generate a qualified call to its declaring module and member, preserving
+ordinary instance selection and interactive implementation overrides.

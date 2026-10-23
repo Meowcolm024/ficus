@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Ficus.Builtin.MethodSpec qualified as BuiltinMethods
 import Ficus.Builtin.RegistrySpec qualified as Builtin
 import Ficus.CompileSpec qualified as Compile
 import Ficus.Core.Spec qualified as Core
@@ -35,7 +36,7 @@ main = do
   defaultMain
     ( testGroup
         "Ficus"
-        [ testGroup "frontend" [Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests],
+        [ testGroup "frontend" [Builtin.tests, BuiltinMethods.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests],
           testGroup "backend" [Runtime.tests, Driver.tests, FileIO.tests, Exception.tests, LazyArrow.tests, RecordPattern.tests, Ref.tests, V1.tests],
           Lsp.tests
         ]

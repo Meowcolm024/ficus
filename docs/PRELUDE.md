@@ -76,7 +76,7 @@ Modules marked `NO_IMPLICIT_PRELUDE` receive none of these declarations. The res
 
 `Handle` stays out of the `Data` layer; its public IO operations belong in `System.IO`. Primitive data modules expose operations on the already-reserved types rather than defining replacement types. `Data.Const` denotes the constant type constructor, distinct from the ordinary `const` function in `Data.Function`.
 
-The composites are `Applicative = Functor + Pure + Seq` and `Monad = Applicative + Bind`. `Functor` remains independently usable and is also an `Applicative` supertrait. Following Lean, `Seq` takes a thunked second operand and `Alternative` extends `Applicative` with `failure` and thunked `orElse`; the earlier eager `Apply` sketch is superseded. `Debug.debug : a -> String` renders diagnostic output (quoting and escaping characters/strings); `Show String` stays the identity. `Default.default : a` provides a conventional initial value. Scalar defaults are zero, false, space, the empty string, and unit; lists and Maybe default to empty/Nothing, and Result defaults to `Ok default`. The earlier `Fail`/`OrElse` sketches are not additional v0 commitments.
+The composites are `Applicative = Functor + Pure + Seq` and `Monad = Applicative + Bind`. `Functor` remains independently usable and is also an `Applicative` supertrait. Following Lean, `Seq` takes a thunked second operand and `Alternative` extends `Applicative` with `failure` and thunked `orElse`; the earlier eager `Apply` sketch is superseded. `Class.Show.show` and `Class.Debug.debug` are the unique `SHOW` and `DEBUG` builtin method registrations. `Debug.debug : a -> String` renders diagnostic output (quoting and escaping characters/strings); `Show String` stays the identity. `Default.default : a` provides a conventional initial value. Scalar defaults are zero, false, space, the empty string, and unit; lists and Maybe default to empty/Nothing, and Result defaults to `Ok default`. The earlier `Fail`/`OrElse` sketches are not additional v0 commitments.
 
 The inventory defines v0 scope, while the selective table defines the implicit
 API. `Data.Map`, `System.Environment`, and concurrency are later work; typed
@@ -163,6 +163,7 @@ trait Eq a =
 trait Eq a => Ord a =
     compare : a -> a -> Ordering
 
+{-# BUILTIN SHOW show #-}
 trait Show a =
     show : a -> String
 ```

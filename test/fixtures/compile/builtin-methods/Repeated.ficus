@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+trait First a = { first : a -> String }
+{-# BUILTIN DEBUG first #-}
+{-# BUILTIN DEBUG first #-}

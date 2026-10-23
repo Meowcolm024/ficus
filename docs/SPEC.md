@@ -969,9 +969,9 @@ In v0, `{name}` embeds one variable, and `{Module.name}` embeds one qualified va
 "sum {x + y}"  -- invalid in v0
 ```
 
-Interpolation denotes left-associated concatenation of literal segments and `show` calls. Segments and variable uses evaluate left-to-right. Each embedded variable adds its required `Show` constraint. `Show String` is the identity, so interpolating a `String` does not add quotation marks. A string without interpolation is a plain `String`.
+Interpolation denotes left-associated concatenation of literal segments and rendering calls. Segments and variable uses evaluate left-to-right. Each embedded variable adds the constraint required by the registered rendering method (`Show` in the bundled Prelude). `Show String` is the identity, so interpolating a `String` does not add quotation marks. A string without interpolation is a plain `String`.
 
-The `Show` method and concatenation operation come from the Prelude. Concatenation uses the canonical `Ficus.Builtin.String.stringAppend` value, selectively re-exported by `Prelude`, whose ordinary signature is `String -> String -> String` and whose compiler association is `STRING_APPEND`. Aliases, re-exports, local shadowing, and source spelling do not change the identity used by desugaring. In a `NO_IMPLICIT_PRELUDE` module, an interpolated string is a static error; ordinary string literals remain available.
+Interpolation calls the trait member registered with `BUILTIN SHOW`; the bundled Prelude supplies `Class.Show.show`. A missing registration is a static error. The concatenation operation comes from the Prelude. Concatenation uses the canonical `Ficus.Builtin.String.stringAppend` value, selectively re-exported by `Prelude`, whose ordinary signature is `String -> String -> String` and whose compiler association is `STRING_APPEND`. Aliases, re-exports, local shadowing, and source spelling do not change the identity used by desugaring. In a `NO_IMPLICIT_PRELUDE` module, an interpolated string is a static error; ordinary string literals remain available.
 
 ## 19. Builtin declarations
 
@@ -983,11 +983,38 @@ Handle : Type
 intAdd : Int -> Int -> Int
 ```
 
-`BUILTIN key name` (or `BUILTIN key Record.member` for a record-member key) associates compiler behavior with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source implementation for a primitive value are static errors. Source-defined data types and primitive constructors retain their ordinary definitions as described below. Placement and argument checks are semantic, not special parser productions.
+`BUILTIN key name` (or `BUILTIN key Record.member` for a record-member key) associates compiler behavior with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A primitive value target without a source body must have a complete ordinary signature; the builtin supplies its implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source implementation for a primitive value are static errors. Source-defined data types and primitive constructors retain their ordinary definitions as described below. Placement and argument checks are semantic, not special parser productions.
 
 `HANDLE` and `BYTE` supply opaque types of kind `Type`; `VEC` and `REF` supply opaque types of kind `Type -> Type`. Their conventional names are `Handle`, `Byte`, `Vec`, and `Ref`. `Void` and `absurd` are ordinary source definitions; there are no `VOID` or `ABSURD` compiler keys. For example, `HANDLE` supplies an opaque type conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
 
-A builtin-supplied type is an opaque nominal constructor with no source constructor; a value is a primitive of its declared type. Keys are metadata, not names in language scope. Targets obey ordinary namespaces, mutual top-level visibility, duplicate-declaration, import/export, and ownership rules. Their identity is their defining module and declared name, not their key. Symbolic targets use their ordinary parenthesized identifier syntax.
+An opaque builtin-supplied type has no source constructor; primitive value keys supply implementations of their targets' declared types. Keys are metadata, not names in language scope. Targets obey ordinary namespaces, mutual top-level visibility, duplicate-declaration, import/export, and ownership rules. Their identity is their defining module and declared name, not their key. Symbolic targets use their ordinary parenthesized identifier syntax.
+
+`SHOW` and `DEBUG` register ordinary trait members for compiler-generated
+rendering calls:
+
+```text
+{-# BUILTIN SHOW show #-}
+trait Show a = { show : a -> String }
+{-# BUILTIN DEBUG debug #-}
+trait Debug a = { debug : a -> String }
+```
+
+Each target must be a member of a trait declared in the same module, with the
+strict type `a -> String` for that trait's single `Type` parameter. Additional
+method quantifiers or constraints are invalid. The owning trait may have other
+members or supertraits. Trait and method names are ordinary names and may differ
+from those in the example. Registration identifies the method; implementations
+remain ordinary source-defined instances with dictionary dispatch.
+
+Each of these keys may designate exactly one canonical member in a compilation
+or linked interactive session. A repeated registration pragma is an error even
+when it repeats the same target. Registering a different member for the same key
+is an error across modules, including separate entry modules and unused imports.
+Re-exporting or importing the same registered member along multiple paths is
+valid and does not register it again. These are method registrations, not a
+restriction on the number of instances for different types. Resolver interfaces,
+checked interfaces, and Core retain the canonical registrations; linking checks
+conflicts independently.
 
 The compiler registry additionally includes these value contracts. `Vec`,
 `Byte`, and `Ref` below refer to the ordinarily declared types associated with
@@ -1125,8 +1152,9 @@ return, and tab. Structural instances retain constructor/container structure.
 characters, and the empty string/list, unit, or `Nothing`; a successful `Result`
 uses its value type's default. `Ord Float` places NaNs after all non-NaNs and
 compares NaNs as `Equal`; IEEE equality still makes NaNs unequal. Positive and
-negative zero compare as `Equal`. These library contracts do not add reserved
-names or alter the language's ownership and scope rules.
+negative zero compare as `Equal`. The `SHOW` and `DEBUG` builtin associations
+identify their rendering methods without reserving source names or altering
+ownership and scope rules.
 
 The Prelude is imported implicitly unless the module has `NO_IMPLICIT_PRELUDE`. The six reserved primitive types remain in scope either way.
 
@@ -1187,9 +1215,11 @@ to standard error. Uncaught typed exceptions in the implemented v1 extension fol
 
 `ficus repl [FILE]` starts an interactive session and optionally loads a module;
 it does not require or invoke `main`. Expressions execute strictly and their
-results are displayed through the library's `Debug` contract, so a result needs
-a visible `Debug` instance. Top-level declarations may be added using
-ordinary declaration syntax. Acyclic interactive bindings may have expansive
+results are displayed through the trait member registered with `BUILTIN DEBUG`,
+so a result needs an instance of its owning trait. The bundled Prelude registers
+`Class.Debug.debug`. Missing registration is an error; changing the registered
+trait or method spelling does not change interactive display. Top-level
+declarations may be added using ordinary declaration syntax. Acyclic interactive bindings may have expansive
 right-hand sides, which evaluate when the submission is accepted. This is an
 interactive initialization policy, independent of the `STANDALONE` pragma
 in source files. Value and monomorphism restrictions still apply; signatures

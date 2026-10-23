@@ -21,6 +21,7 @@ import Data.Text qualified as T
 import Ficus.Builtin.Registry qualified as Builtin
 import Ficus.Desugar.Registry
 import Ficus.Error.Resolve
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Resolve.Header
 import Ficus.Resolve.Pragma
 import Ficus.Resolve.Scope
@@ -89,7 +90,8 @@ resolveModuleWithNames interactive config registry header input interfaces =
       entities = Map.unions (Map.fromList [(A.entityId e, e) | e <- Map.elems own] : map allEntities (Map.elems interfaces))
       visible = nub (implementations final ++ concatMap interfaceImplementations (Map.elems interfaces))
       fields = Map.unions (collectFields (headerId header) input : map interfaceFields (Map.elems interfaces))
-      iface = Interface exports entities visible fields (associations final) (headerOptions header)
+      inheritedMethods = Map.unions [Map.restrictKeys (interfaceBuiltins interface) (Set.fromList P.builtinMethodKeys) | interface <- Map.elems interfaces]
+      iface = Interface exports entities visible fields (associations final `Map.union` inheritedMethods) (headerOptions header)
       candidate = case result of
         Right group | not (any ((== Error) . severity) ds) -> Just (A.AbstractModule (headerId header) (C.moduleLocation input) (C.moduleOrigin input) (headerOptions header) (headerPrelude header) group exports entities fields visible (reverse (occurrences final)) (associations final) (memberAssociations final))
         _ -> Nothing
@@ -508,9 +510,17 @@ requirePrelude s = do
 sugar :: Span -> SugarKey -> Resolve A.Expr
 sugar s key = do
   registry <- asks (sugarBindings . envSugar)
-  gid <- maybe (failAt MissingSugarBinding s "syntax expansion has no configured library contract") pure (Map.lookup key registry)
   env <- ask
-  let entities = Map.unions (map allEntities (Map.elems (scopeInterfaces (envScope env))))
+  ownBuiltins <- gets associations
+  let imported = Map.elems (scopeInterfaces (envScope env))
+      registrations = nub [ident | table <- ownBuiltins : map interfaceBuiltins imported, Just ident <- [Map.lookup "SHOW" table]]
+      entities = Map.fromList [(A.entityId entity, entity) | entity <- Map.elems (envOwn env)] `Map.union` Map.unions (map allEntities imported)
+  gid <- case key of
+    SugarKey "string.show" -> case registrations of
+      [ident] -> pure ident
+      [] -> failAt MissingSugarBinding s "interpolation requires a registered SHOW method"
+      _ -> failAt ConflictingBuiltinAssociation s "multiple SHOW methods are registered"
+    _ -> maybe (failAt MissingSugarBinding s "syntax expansion has no configured library contract") pure (Map.lookup key registry)
   case Map.lookup gid entities of
     Nothing -> failAt MissingSugarBinding s "configured sugar binding is unavailable"
     Just entity -> generated "library sugar" s (if A.entityRole entity == MethodRole then A.Method gid else A.Ref (GlobalRef gid))
@@ -882,6 +892,9 @@ collectBuiltins pragmas = forM_ [p | p@(C.Located _ _ (C.Pragma n _)) <- pragmas
                   Just Builtin.ConstrBuiltin {} -> ConstructorNS
                   _ -> if C.nameSpace target == C.LowerName then ValueNS else TypeNS
             entity <- maybe (failAt UnresolvedName (C.nameLocation target) "builtin target is not declared in this module") pure (Map.lookup (ns, C.nameText target) own)
+            when
+              (Map.lookup (C.nameText key) Builtin.builtinRegistry == Just Builtin.MethodBuiltin && A.entityRole entity /= MethodRole)
+              (failAt InvalidPragmaTarget (C.nameLocation target) "builtin method target must be a trait member")
             table <- gets associations
             when (Map.member (C.nameText key) table || A.entityId entity `elem` Map.elems table) (failAt ConflictingBuiltinAssociation (C.nameLocation key) "conflicting builtin association")
             modify' (\s -> s {associations = Map.insert (C.nameText key) (A.entityId entity) (associations s)})

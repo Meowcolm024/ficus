@@ -1,0 +1,4 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Left
+use Right
+check () = Left.render 1

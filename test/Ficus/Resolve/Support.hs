@@ -11,6 +11,6 @@ fixtureConfig :: ResolveConfig
 fixtureConfig = ResolveConfig Builtin.builtinKeys
 
 fixtureSugar :: SugarRegistry
-fixtureSugar = SugarRegistry (Map.fromList [(SugarKey "do.bind", global "bind"), (SugarKey "string.show", global "show"), (SugarKey "string.append", global "stringAppend")])
+fixtureSugar = SugarRegistry (Map.fromList [(SugarKey "do.bind", global "bind"), (SugarKey "string.append", global "stringAppend")])
   where
     global = GlobalId (ModuleId ("Prelude" :| [])) ValueNS

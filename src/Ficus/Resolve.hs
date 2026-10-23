@@ -6,12 +6,15 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Ficus.Desugar.Registry
 import Ficus.Error.Diagnostic qualified as D
+import Ficus.Error.Resolve qualified as R
+import Ficus.Primitive.Registry qualified as P
 import Ficus.Resolve.Desugar
 import Ficus.Resolve.Discovery
 import Ficus.Resolve.Header
 import Ficus.Resolve.Provider
 import Ficus.Resolve.Scope
 import Ficus.Syntax.Abstract
+import Ficus.Syntax.Concrete qualified as C
 import Ficus.Syntax.Name
 import Ficus.Syntax.Pragma (standaloneEnabled)
 import Ficus.Util.Source (sourceFile)
@@ -48,9 +51,31 @@ resolveGraphWithNames scopes config registry graph =
         let dependencies = Map.restrictKeys (frontendInterfaces result) (Map.keysSet (Map.fromList [(edgeTarget edge, ()) | edge <- headerEdges header]))
             resolution = resolveModuleWithNames (Map.findWithDefault Map.empty owner scopes) config registry header input dependencies
             dependencyFailed = any (\edge -> Map.notMember (edgeTarget edge) (frontendModules result) || maybe False (standaloneEnabled . headerOptions . discoveredHeader) (Map.lookup (edgeTarget edge) (graphModules graph))) (headerEdges header)
-            valid = if dependencyFailed then Nothing else resolvedModule resolution
+            known = Map.unions (map interfaceBuiltins (Map.elems (frontendInterfaces result)))
+            knownEntities = Map.unions (map allEntities (Map.elems (frontendInterfaces result)))
+            conflicts =
+              [ (R.diagnostic R.ConflictingBuiltinAssociation (registrationSpan key input) "builtin trait member is already registered to a different declaration")
+                  { R.relatedSpans = [(entitySpan entity, "previous registered member") | Just entity <- [Map.lookup earlier knownEntities]]
+                  }
+              | (key, ident) <- Map.toList (interfaceBuiltins (resolvedInterface resolution)),
+                key `elem` P.builtinMethodKeys,
+                GlobalId definingModule _ _ <- [ident],
+                definingModule == owner,
+                Just earlier <- [Map.lookup key known],
+                earlier /= ident
+              ]
+            valid = if dependencyFailed || not (null conflicts) then Nothing else resolvedModule resolution
          in result
               { frontendModules = maybe (frontendModules result) (\tree -> Map.insert owner tree (frontendModules result)) valid,
                 frontendInterfaces = Map.insert owner (resolvedInterface resolution) (frontendInterfaces result),
-                frontendDiagnostics = frontendDiagnostics result ++ map ResolutionDiagnostic (resolutionDiagnostics resolution)
+                frontendDiagnostics = frontendDiagnostics result ++ map ResolutionDiagnostic (resolutionDiagnostics resolution ++ conflicts)
               }
+    registrationSpan key input = case [ C.nameLocation name
+                                      | pragma <- C.modulePragmas input ++ [p | declaration <- C.moduleDeclarations input, C.PragmaDeclaration p <- [C.concrete declaration]],
+                                        C.Pragma directive (argument : _) <- [C.concrete pragma],
+                                        C.nameText directive == "BUILTIN",
+                                        C.IdentifierArgument name <- [C.concrete argument],
+                                        C.nameText name == key
+                                      ] of
+      location : _ -> location
+      [] -> C.moduleLocation input

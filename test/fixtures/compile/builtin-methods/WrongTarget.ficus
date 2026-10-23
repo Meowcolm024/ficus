@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+render x = "ordinary function"
+{-# BUILTIN SHOW render #-}

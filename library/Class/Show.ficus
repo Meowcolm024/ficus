@@ -3,6 +3,7 @@
 use Ficus.Builtin.Char (..)
 use Ficus.Builtin.String (..)
 use Data.Ordering (Ordering(..))
+{-# BUILTIN SHOW show #-}
 trait Show a =
     show : a -> String
 

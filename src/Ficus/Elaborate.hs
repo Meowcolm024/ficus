@@ -88,9 +88,9 @@ elaborateModuleWithConfig config imports source = case validateAbstract source o
                  in Complete (CheckedModule accepted (CheckedInterface interface retainedOverrides) (Map.restrictKeys types exports)) warnings
   where
     dataKeys = Set.fromList (P.builtinDataKeys)
-    associations = [(key, ident) | CheckedInterface declarations _ <- imports, (key, ident) <- Map.toList (Map.restrictKeys (builtinTypeAssociations declarations) dataKeys)]
+    associations = [(key, ident) | CheckedInterface declarations _ <- imports, (key, ident) <- Map.toList (Map.restrictKeys (builtinTypeAssociations declarations) dataKeys `Map.union` builtinMethodAssociations declarations)]
     mergedAssociations = Map.fromList associations
-    conflicts = [E.diagnostic E.BuiltinContractMismatch (A.abstractSpan source) "conflicting visible builtin data associations" | any (\(key, ident) -> Map.lookup key mergedAssociations /= Just ident) associations]
+    conflicts = [E.diagnostic E.BuiltinContractMismatch (A.abstractSpan source) "conflicting visible builtin associations" | any (\(key, ident) -> Map.lookup key mergedAssociations /= Just ident) associations]
     isError = (== D.Error) . D.diagnosticSeverity . D.toDiagnostic
     closeType = traverse (\case Bound ident -> Right (C.BoundVariable ident); _ -> Left ())
 
@@ -98,6 +98,7 @@ mergeInterfaces :: [CheckedInterface] -> Declarations
 mergeInterfaces interfaces =
   Declarations
     { builtinTypeAssociations = Map.unions (map builtinTypeAssociations entries),
+      builtinMethodAssociations = Map.unions (map builtinMethodAssociations entries),
       builtinRecordMembers = Map.unions (map builtinRecordMembers entries),
       declarationTypes =
         TypeEnvironment

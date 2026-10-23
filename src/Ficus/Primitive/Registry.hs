@@ -83,6 +83,10 @@ builtinTypes = [HandleBuiltin, ByteBuiltin, VecBuiltin, RefBuiltin]
 builtinTraits :: [BuiltinType]
 builtinTraits = [ExceptionBuiltin]
 
+-- These keys identify ordinary dictionary methods, not runtime primitives.
+builtinMethodKeys :: [Text]
+builtinMethodKeys = ["SHOW", "DEBUG"]
+
 builtinTypeName :: BuiltinType -> Text
 builtinTypeName builtin = case builtin of
   HandleBuiltin -> "Handle"

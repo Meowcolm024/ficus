@@ -18,6 +18,7 @@ module FicusBackend.Driver.Repl
 where
 
 import Control.Monad (forM)
+import Data.Char (isAlphaNum)
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
@@ -30,6 +31,7 @@ import Ficus.Elaborate (checkedCore, checkedTypes)
 import Ficus.Error.Diagnostic qualified as D
 import Ficus.Library.Contracts
 import Ficus.ModuleOptions (ModuleOptions (..))
+import Ficus.Primitive.Registry qualified as Primitive
 import Ficus.Resolve
 import Ficus.Resolve.Discovery (discoverModules)
 import Ficus.Resolve.Header (scanHeader)
@@ -58,6 +60,7 @@ data Session = Session
     sessionNext :: Int,
     sessionImports :: [Text],
     sessionTypes :: Map GlobalId (Scheme Core.CoreType),
+    sessionBuiltinMethods :: Map Text GlobalId,
     sessionTypeInfo :: Map GlobalId TypeInfo,
     sessionValues :: Map (ModuleId, Reference) R.Value,
     sessionLayouts :: Maybe RuntimeLayouts,
@@ -156,7 +159,7 @@ newSession options = do
   libraries <- mapM makeAbsolute (libraryRoots options)
   prelude <- traverse makeAbsolute (preludeFile options)
   let config = P.ProviderConfig (nub (roots ++ libraries)) (maybe P.PreludeFromRoots P.PreludeFile prelude)
-      session = Session options config Map.empty Map.empty Map.empty 0 [] Map.empty Map.empty Map.empty Nothing [] Map.empty
+      session = Session options config Map.empty Map.empty Map.empty 0 [] Map.empty Map.empty Map.empty Map.empty Nothing [] Map.empty
   compileSession session "" >>= install R.ioEffects session
 
 loadSession :: Session -> FilePath -> IO (Either [D.Diagnostic] Session)
@@ -182,6 +185,7 @@ loadSession session file = do
                     sessionNext = 0,
                     sessionImports = [],
                     sessionTypes = Map.empty,
+                    sessionBuiltinMethods = Map.empty,
                     sessionTypeInfo = Map.empty,
                     sessionValues = Map.empty,
                     sessionLayouts = Nothing
@@ -286,6 +290,7 @@ install effects session result = case prepare of
                 sessionVisible = visible,
                 sessionNext = sessionNext session + 1,
                 sessionTypes = types result `Map.union` sessionTypes session,
+                sessionBuiltinMethods = Map.restrictKeys (Map.unions [Core.coreBuiltins (validatedModule (checkedCore checked)) | checked <- Map.elems (C.compileModules result)]) (Set.fromList Primitive.builtinMethodKeys),
                 sessionTypeInfo = typeInfo result `Map.union` sessionTypeInfo session,
                 sessionValues = Map.fromList stored `Map.union` sessionValues session,
                 sessionLayouts = Just (loweredLayouts lowered)
@@ -350,9 +355,13 @@ submitWithSources effects session input
   where
     valueName = freshName session "ficusReplValue"
     debugName = freshName session "FicusReplDebug"
-    evaluateExpression = do
+    evaluateExpression = case Map.lookup "DEBUG" (sessionBuiltinMethods session) of
+      Just (GlobalId owner ValueNS name) -> evaluateWith owner name
+      _ -> pure (Map.empty, Left [message "interactive output requires a registered DEBUG trait member"])
+    evaluateWith owner name = do
       -- The thunk preserves ordinary v0 restrictions on top-level initialization.
-      result <- compileSession (session {sessionImports = sessionImports session ++ ["use Class.Debug as " <> debugName]}) (valueName <> " () = " <> debugName <> ".debug (" <> input <> ")")
+      let methodName = if T.all (\character -> isAlphaNum character || character == '_' || character == '\'') name then name else "(" <> name <> ")"
+      result <- compileSession (session {sessionImports = sessionImports session ++ ["use " <> moduleText owner <> " as " <> debugName]}) (valueName <> " () = " <> debugName <> "." <> methodName <> " (" <> input <> ")")
       evaluated <- case lowerSession session result of
         Left diagnostics -> pure (Left diagnostics)
         Right lowered -> case Map.lookup (GlobalId (replOwner session) ValueNS valueName) (loweredGlobals lowered) of

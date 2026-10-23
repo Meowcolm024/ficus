@@ -108,7 +108,7 @@ a well-scoped but incompatible annotation is a T error.
 | N0104 | InvalidPragmaPlacement | Misplaced directive; applicable declaration/header |
 | N0105 | InvalidPragmaTarget | Target occurrence; target declaration |
 | N0111 | UnknownBuiltin | BUILTIN key, not the target name |
-| N0112 | ConflictingBuiltinAssociation | Later association; earlier association and target declarations |
+| N0112 | ConflictingBuiltinAssociation | Later association, including duplicate SHOW/DEBUG registrations across modules; earlier association and target declarations |
 | N0120 | PreludeRequired | do keyword or interpolated literal; disabling pragma |
 | N0121 | MissingSugarBinding | Sugar origin; missing/inconsistent compiler-library registry entry (including Ficus.Builtin.String.stringAppend re-exported by Prelude) |
 | N0201 | ModuleNotFound | Explicit module path or implicit Prelude header anchor; provider search summary |

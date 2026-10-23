@@ -11,13 +11,14 @@ import Ficus.Primitive.Registry qualified as P
 import Ficus.Syntax.Name (GlobalId (..), ModuleId (..), Namespace (..), PrimitiveId)
 import Ficus.Type (Kind (..))
 
-data BuiltinContract = ValueBuiltin PrimitiveId | TypeBuiltin Kind | TraitBuiltin Kind | DataBuiltin | ConstrBuiltin Text [P.Intrinsic] deriving (Eq, Show)
+data BuiltinContract = ValueBuiltin PrimitiveId | TypeBuiltin Kind | TraitBuiltin Kind | DataBuiltin | ConstrBuiltin Text [P.Intrinsic] | MemberBuiltin Text Bool deriving (Eq, Show)
 
 builtinRegistry :: Map Text BuiltinContract
 builtinRegistry =
   Map.fromList
     ( [(P.builtinTypeKey builtin, TraitBuiltin (KindArrow TypeKind TypeKind)) | builtin <- P.builtinTraits]
         ++ [(P.builtinTypeKey builtin, TypeBuiltin (foldr KindArrow TypeKind (replicate (P.builtinTypeArity builtin) TypeKind))) | builtin <- P.builtinTypes]
+        ++ [(key, MemberBuiltin "SOMEEXCEPTION" hidden) | (key, hidden) <- P.builtinRecordMembers]
         ++ [(key, DataBuiltin) | key <- P.builtinDataTypes]
         ++ [(key, ConstrBuiltin owner fields) | (key, owner, fields) <- P.builtinConstructors]
         ++ [(key, ValueBuiltin (fmap (libraryType . P.builtinTypeName) operation)) | (Just key, operation) <- P.primitiveCatalog]

@@ -45,3 +45,8 @@ handlerFailure () = catch (_ -> throw 1) ((e : Int) -> with False { True -> 1 })
 listPayload () = catch (_ -> throw [19]) ((values : [Int]) -> with values { n :: _ -> n; [] -> 0 })
 productPayload () = catch (_ -> throw (20, True)) ((value : Int * Bool) -> with value { (n, b) -> if { b -> n; _ -> 0 } })
 primitiveMismatch () = catch (_ -> catch (_ -> throw (First 21)) ((e : Int) -> 0)) ((First n) -> n)
+
+impl Show First = { show (First n) = show n }
+impl Show Second = { show (Second n) = show n }
+impl Show a => Show (Box a) = { show (Box value) = show value }
+impl Show (Phantom a) = { show (Phantom n) = show n }

@@ -248,7 +248,7 @@ exceptionTrait operation = case operation of
 
 -- Source-defined data and constructor associations used by fallible primitives.
 builtinDataTypes :: [Text]
-builtinDataTypes = ["ARITHMETIC_ERROR", "IO_ERROR", "MATCH_ERROR", "IO_MODE"]
+builtinDataTypes = ["ARITHMETIC_ERROR", "IO_ERROR", "MATCH_ERROR", "IO_MODE", "SOMEEXCEPTION"]
 
 data PrimitiveError = DivisionByZeroError | InvalidConversionError | IOError | MatchError deriving (Eq, Ord, Show)
 
@@ -283,3 +283,7 @@ data FileMode = ReadMode | WriteMode | AppendMode | ReadWriteMode deriving (Eq, 
 
 fileModeConstructors :: [(Text, FileMode)]
 fileModeConstructors = [("IO_READ_MODE", ReadMode), ("IO_WRITE_MODE", WriteMode), ("IO_APPEND_MODE", AppendMode), ("IO_READ_WRITE_MODE", ReadWriteMode)]
+
+-- Keys identify nominal record members, independently of their source labels.
+builtinRecordMembers :: [(Text, Bool)]
+builtinRecordMembers = [("SOMEEXCEPTION_ERR", True), ("SOMEEXCEPTION_VALUE", False), ("SOMEEXCEPTION_SHOWERR", False)]

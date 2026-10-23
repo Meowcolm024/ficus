@@ -125,7 +125,7 @@ compileExpr program source = case nodeValue source of
         !operation = programPrimitives program V.!? ident
      in \env -> do
           values <- mapM ($ env) operands
-          maybe (invalidValue "unknown runtime primitive") (\primitive -> evaluatePrimitive (programErrors program) (programFileModes program) context (envEffects env) primitive values) operation
+          maybe (invalidValue "unknown runtime primitive") (\primitive -> evaluatePrimitive (programErrors program) (programFileModes program) (programSomeException program) (\(GlobalIndex slot) -> index (envGlobals env) slot >>= readCell) context (envEffects env) primitive values) operation
   where
     compile = compileExpr program
 

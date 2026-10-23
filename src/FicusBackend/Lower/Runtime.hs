@@ -6,6 +6,7 @@ import Control.Monad (forM, unless)
 import Control.Monad.Except (throwError)
 import Control.Monad.State.Strict (StateT, gets, modify', runStateT)
 import Data.IntMap.Strict qualified as IntMap
+import Data.List (findIndex)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -74,7 +75,7 @@ lowerProgramWithLayouts previousLayouts modules = do
   let RuntimeLayouts _ _ tokens = layoutState
       errorConstructors =
         Map.fromList
-          [ (kind, R.ErrorConstructor token payload)
+          [ (kind, R.ErrorConstructor token payload (exceptionEvidence owner))
           | (kind, typeKey, constructorKey, _) <- P.primitiveErrors,
             Just owner <- [Map.lookup typeKey builtinTable],
             Just constructor <- [Map.lookup constructorKey builtinTable],
@@ -82,8 +83,34 @@ lowerProgramWithLayouts previousLayouts modules = do
             Just representation' <- [Map.lookup (C.DataConstructor constructor) representations],
             payload <- case representation' of Boxed tag -> [Just tag]; Erased -> [Nothing]; Immediate _ -> []
           ]
+      exceptionEvidence expectedOwner = case [ global
+                                             | (owner, binding) <- allBindings,
+                                               node <- descendants (C.bindingBody (C.nodeValue binding)),
+                                               C.ExceptionDictionary _ ty _ _ <- [C.formOf node],
+                                               nominalHead ty == Just (expectedOwner, []),
+                                               schemeType (C.bindingScheme (C.nodeValue binding)) == C.typeOf node,
+                                               Just global <- [Map.lookup (key owner (C.bindingReference (C.nodeValue binding))) globalTable]
+                                             ] of
+        first : _ -> Just first
+        [] -> Nothing
+      descendants node = node : concatMap descendants (C.children node)
+      packageLayout = do
+        owner <- Map.lookup "SOMEEXCEPTION" builtinTable
+        identity <- Map.lookup owner tokens
+        descriptor <- Map.lookup owner (Map.unions (map C.coreRecords modules))
+        representation' <- Map.lookup (C.recordConstructor (C.nodeValue descriptor)) representations
+        tag <- case representation' of Boxed value -> Just value; _ -> Nothing
+        let members = Map.unions (map C.coreBuiltinMembers modules)
+            fields = map (fst . C.nodeValue) (C.recordFields (C.nodeValue descriptor))
+            memberSlot name = do
+              member <- Map.lookup name members
+              index' <- findIndex (== N.fieldLabel member) fields
+              pure (R.FieldIndex (index' + 1))
+        value <- memberSlot "SOMEEXCEPTION_VALUE"
+        renderer <- memberSlot "SOMEEXCEPTION_SHOWERR"
+        pure (R.SomeExceptionLayout identity tag value renderer)
       fileModes = Map.fromList [(tag, mode) | (key', mode) <- P.fileModeConstructors, Just ident <- [Map.lookup key' builtinTable], Just (Boxed tag) <- [Map.lookup (C.DataConstructor ident) representations]]
-      program = R.Program (V.fromList (IntMap.elems (functions state))) (length indexed) layouts fileModes errorConstructors (V.fromList P.allPrimitives) initializers
+      program = R.Program (V.fromList (IntMap.elems (functions state))) (length indexed) layouts fileModes errorConstructors packageLayout (V.fromList P.allPrimitives) initializers
   checked <- validateProgram program
   pure (LoweredProgram checked (Map.fromList [(ident, index') | ((_, N.GlobalRef ident), index') <- Map.toList globalTable]) (Map.mapMaybe (\case Boxed tag -> Just tag; _ -> Nothing) representations) globalTable layoutState)
   where
@@ -141,7 +168,7 @@ representationTables previous modules = (allRepresentations, layouts, dictionary
     initial = case previous of Nothing -> (Map.empty, intrinsicLayouts); Just (RuntimeLayouts known table _) -> (known, table)
     candidates =
       [(ident, R.Node (R.ConstructorLayout (R.FrameSize (C.constructorArity (C.nodeValue node))))) | (C.DataConstructor ident, node) <- boxed]
-        ++ [(ident, R.Node (R.ConstructorLayout (R.FrameSize (length (C.dictionarySuperclasses (C.nodeValue node)) + length (C.dictionaryMethods (C.nodeValue node)))))) | (ident, node) <- traits]
+        ++ [(ident, R.Node (R.ConstructorLayout (R.FrameSize (length (C.dictionarySuperclasses (C.nodeValue node)) + length (C.dictionaryMethods (C.nodeValue node)) + if C.dictionaryException (C.nodeValue node) then 1 else 0)))) | (ident, node) <- traits]
     allocate (known, table) (ident, descriptor) = case Map.lookup ident known of
       Just _ -> (known, table)
       Nothing -> (Map.insert ident (R.ConstructorIndex (V.length table)) known, V.snoc table descriptor)
@@ -155,7 +182,7 @@ representationTables previous modules = (allRepresentations, layouts, dictionary
               group <- C.coreBindings tree,
               binding <- C.groupBindings group,
               node <- descendants (C.bindingBody (C.nodeValue binding)),
-              C.ExceptionDictionary _ ty _ <- [C.formOf node],
+              C.ExceptionDictionary _ ty _ _ <- [C.formOf node],
               Just (ident, arguments) <- [nominalHead ty]
             ]
             `Map.union` Map.fromList [(ident, R.Node (R.ConstructorLayout (R.FrameSize 0))) | tree <- modules, (key', ident) <- Map.toList (C.coreBuiltins tree), key' `elem` P.builtinDataTypes]
@@ -248,11 +275,15 @@ expression context source = case C.formOf source of
       Erased -> expression context receiver
       Boxed tag -> R.Node . (\value -> R.Select value tag (R.FieldIndex index')) <$> expression context receiver
       Immediate _ -> failure E.InvalidCore source "record has an immediate representation"
-  C.ExceptionDictionary _ ty arguments -> do
+  C.ExceptionDictionary owner ty arguments supers -> do
     ident <- maybe (failure E.InvalidCore source "exception token has no nominal head") (pure . fst) (nominalHead ty)
     tag <- maybe (failure E.InvalidCore source "missing exception identity") pure (Map.lookup ident (typeTokens context))
-    values <- mapM (expression context) arguments
-    pure (R.Node (R.TypeToken tag values))
+    (dictionaryTag, _) <- dictionary context source owner
+    evidence <- mapM (expression context) arguments
+    parents <- mapM (expression context) supers
+    let tokens = [R.Node (R.Select value dictionaryTag (R.FieldIndex (length supers))) | value <- evidence]
+        identity = R.Node (R.TypeToken tag tokens)
+    pure (R.Node (R.Construct dictionaryTag (parents ++ [identity])))
   C.Dictionary owner _ supers methods -> do
     (tag, _) <- dictionary context source owner
     fields <- mapM (expression context) (supers ++ map (snd . C.nodeValue) methods)

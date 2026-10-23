@@ -1,0 +1,20 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+use Class.Show (Show, show)
+{-# BUILTIN EXCEPTION Failure #-}
+trait Show a => Failure a = {}
+{-# BUILTIN THROW raise #-}
+raise : Failure e => e -> a
+{-# BUILTIN CATCH rescue #-}
+rescue : Failure e => (Unit -> a) -> (e -> a) -> a
+{-# BUILTIN SOMEEXCEPTION AnyFailure #-}
+type AnyFailure = { render : Hidden -> String; Hidden : Type; payload : Hidden }
+{-# BUILTIN SOMEEXCEPTION_ERR AnyFailure.Hidden #-}
+{-# BUILTIN SOMEEXCEPTION_VALUE AnyFailure.payload #-}
+{-# BUILTIN SOMEEXCEPTION_SHOWERR AnyFailure.render #-}
+impl Show AnyFailure = { show (AnyFailure render payload) = render payload }
+impl Failure AnyFailure = {}
+impl Failure Int = {}
+check () = rescue (_ -> raise 19) ((error : AnyFailure) -> with error { AnyFailure render value -> { render value; 19 } })
+{-# BUILTIN MATCH_ERROR PatternError #-}
+type PatternError = PatternError String
+{-# BUILTIN MATCH_FAILURE PatternError #-}

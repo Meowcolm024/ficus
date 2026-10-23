@@ -1,0 +1,3 @@
+type Problem = Problem
+impl Show Problem = { show _ = "Problem" }
+check () = SomeException with { Err = Problem; err = Problem; showErr = show }

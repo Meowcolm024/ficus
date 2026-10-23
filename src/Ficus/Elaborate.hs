@@ -98,6 +98,7 @@ mergeInterfaces :: [CheckedInterface] -> Declarations
 mergeInterfaces interfaces =
   Declarations
     { builtinTypeAssociations = Map.unions (map builtinTypeAssociations entries),
+      builtinRecordMembers = Map.unions (map builtinRecordMembers entries),
       declarationTypes =
         TypeEnvironment
           { typeKinds = Map.unions (map (typeKinds . declarationTypes) entries),

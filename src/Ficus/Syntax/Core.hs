@@ -51,7 +51,7 @@ data ExprF ty
   | If [Node (Expr ty, Expr ty)] (Maybe (Expr ty))
   | SelectField (Expr ty) FieldId
   | Dictionary GlobalId ty [Expr ty] [PolyValue ty]
-  | ExceptionDictionary GlobalId ty [Expr ty]
+  | ExceptionDictionary GlobalId ty [Expr ty] [Expr ty]
   | SelectMethod (Expr ty) GlobalId Int [ty]
   | SelectSuperclass (Expr ty) GlobalId Int
   | ScopeTypes [Node Quantifier] (Expr ty)
@@ -131,6 +131,7 @@ data CoreModule ty = CoreModule
     coreSpan :: Span,
     coreOrigin :: Provenance,
     coreBuiltins :: Map Text GlobalId,
+    coreBuiltinMembers :: Map Text FieldDescriptor,
     coreKinds :: Map GlobalId Kind,
     coreImports :: Map Reference (Scheme ty),
     coreConstructors :: Map ConstructorId (Node (ConstructorDescriptor ty)),
@@ -178,7 +179,7 @@ children expression = case formOf expression of
   If arms fallback -> concatMap (\arm -> let (condition, body) = nodeValue arm in [condition, body]) arms ++ maybe [] pure fallback
   SelectField receiver _ -> [receiver]
   Dictionary _ _ supers methods -> supers ++ map (snd . nodeValue) methods
-  ExceptionDictionary _ _ arguments -> arguments
+  ExceptionDictionary _ _ arguments supers -> arguments ++ supers
   SelectMethod receiver _ _ _ -> [receiver]
   SelectSuperclass receiver _ _ -> [receiver]
   ScopeTypes _ body -> [body]

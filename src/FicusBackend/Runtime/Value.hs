@@ -13,7 +13,7 @@ import FicusBackend.Runtime.Error qualified as E
 import System.IO qualified as IO
 
 -- Typed throws remain distinct until the public execution boundary.
-data EvaluationError = RuntimeFailure E.RuntimeError | Thrown ExceptionToken Value Text
+data EvaluationError = RuntimeFailure E.RuntimeError | Thrown ExceptionToken Value (Maybe Value) Text
 
 data ExceptionToken = ExceptionToken ConstructorIndex [ExceptionToken] deriving (Eq, Show)
 
@@ -23,7 +23,7 @@ runEvaluation :: EvalM a -> IO (Either E.RuntimeError a)
 runEvaluation action = fmap (either (Left . report) Right) (runExceptT action)
   where
     report (RuntimeFailure failure) = failure
-    report (Thrown _ _ context) = E.RuntimeError (context <> "uncaught exception")
+    report (Thrown _ _ _ context) = E.RuntimeError (context <> "uncaught exception")
 
 raiseRuntime :: Text -> EvalM a
 raiseRuntime = throwError . RuntimeFailure . E.RuntimeError

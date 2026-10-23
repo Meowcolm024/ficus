@@ -113,7 +113,8 @@ data AbstractModule = AbstractModule
     abstractFields :: Map (GlobalId, Text) FieldDescriptor,
     visibleImplementations :: [ImplementationId],
     abstractOccurrences :: [Occurrence],
-    builtinAssociations :: Map Text GlobalId
+    builtinAssociations :: Map Text GlobalId,
+    builtinMemberAssociations :: Map Text FieldDescriptor
   }
   deriving (Eq, Show)
 

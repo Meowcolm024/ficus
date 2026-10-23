@@ -1,9 +1,16 @@
 use Control.Exception (throw, catch)
 
 type Problem = Problem String
+impl Show Problem = { show (Problem message) = message }
 impl Exception Problem = {}
 
 recover () = catch (_ -> throw (Problem "recovered from Problem")) ((Problem message) -> message)
 
 main : [String] -> Unit
-main _ = println (recover ())
+main _ =
+    println (recover ())
+    catch (_ -> throw (Problem "caught by SomeException")) ((error : SomeException) -> println (show error))
+    catch (_ -> 1 / 0) ((SomeException with { Err = e; err = value; showErr = render }) ->
+        println (render (value : e))
+        0)
+    ()

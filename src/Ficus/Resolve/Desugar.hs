@@ -56,6 +56,7 @@ data ResolveState = ResolveState
     messages :: [Diagnostic],
     occurrences :: [A.Occurrence],
     associations :: Map Text GlobalId,
+    memberAssociations :: Map Text FieldDescriptor,
     implementations :: [ImplementationId]
   }
 
@@ -78,7 +79,7 @@ resolveModuleWithNames interactive config registry header input interfaces =
             available -> Just available
       env = Env header scope own interactive Map.empty Map.empty config registry fields Map.empty
       (_, headerErrors) = scanHeader (headerId header) input
-      initial = ResolveState 0 (reverse (headerErrors ++ nameErrors ++ importErrors)) [] Map.empty []
+      initial = ResolveState 0 (reverse (headerErrors ++ nameErrors ++ importErrors)) [] Map.empty Map.empty []
       action = do
         collectBuiltins (C.modulePragmas input ++ [p | C.Located _ _ (C.PragmaDeclaration p) <- C.moduleDeclarations input])
         group <- declarations True (C.moduleDeclarations input)
@@ -90,7 +91,7 @@ resolveModuleWithNames interactive config registry header input interfaces =
       fields = Map.unions (collectFields (headerId header) input : map interfaceFields (Map.elems interfaces))
       iface = Interface exports entities visible fields (associations final) (headerOptions header)
       candidate = case result of
-        Right group | not (any ((== Error) . severity) ds) -> Just (A.AbstractModule (headerId header) (C.moduleLocation input) (C.moduleOrigin input) (headerOptions header) (headerPrelude header) group exports entities fields visible (reverse (occurrences final)) (associations final))
+        Right group | not (any ((== Error) . severity) ds) -> Just (A.AbstractModule (headerId header) (C.moduleLocation input) (C.moduleOrigin input) (headerOptions header) (headerPrelude header) group exports entities fields visible (reverse (occurrences final)) (associations final) (memberAssociations final))
         _ -> Nothing
       (tree, boundaryErrors) = case candidate of
         Just m -> case validateAbstract m of
@@ -858,18 +859,30 @@ collectBuiltins pragmas = forM_ [p | p@(C.Located _ _ (C.Pragma n _)) <- pragmas
   _ <- recover $ case validatePragma ModuleDirective p of
     Left err -> emit err >> throwError ()
     Right directive | directiveName directive == "BUILTIN" -> case C.concrete p of
-      C.Pragma _ [C.Located _ _ (C.IdentifierArgument key), C.Located _ _ (C.IdentifierArgument target)] -> do
-        requireName target
+      C.Pragma _ [C.Located _ _ (C.IdentifierArgument key), targetArgument] -> do
         keys <- asks (builtinKeys . envConfig)
         unless (Set.member (C.nameText key) keys) (failAt UnknownBuiltin (C.nameLocation key) "unknown compiler builtin key")
         own <- asks envOwn
-        let ns = case Map.lookup (C.nameText key) Builtin.builtinRegistry of
-              Just Builtin.ConstrBuiltin {} -> ConstructorNS
-              _ -> if C.nameSpace target == C.LowerName then ValueNS else TypeNS
-        entity <- maybe (failAt UnresolvedName (C.nameLocation target) "builtin target is not declared in this module") pure (Map.lookup (ns, C.nameText target) own)
-        table <- gets associations
-        when (Map.member (C.nameText key) table || A.entityId entity `elem` Map.elems table) (failAt ConflictingBuiltinAssociation (C.nameLocation key) "conflicting builtin association")
-        modify' (\s -> s {associations = Map.insert (C.nameText key) (A.entityId entity) (associations s)})
+        case (Map.lookup (C.nameText key) Builtin.builtinRegistry, C.concrete targetArgument) of
+          (Just Builtin.MemberBuiltin {}, C.QualifiedIdentifierArgument owner [label]) -> do
+            entity <- maybe (failAt UnresolvedName (C.nameLocation owner) "record target is not declared in this module") pure (Map.lookup (TypeNS, C.nameText owner) own)
+            unless (A.entityRole entity == RecordRole) (failAt InvalidPragmaTarget (C.nameLocation owner) "member target must name a record")
+            fields <- asks envFields
+            field <- maybe (failAt InvalidPragmaTarget (C.nameLocation label) "unknown record member") pure (Map.lookup (A.entityId entity, C.nameText label) fields)
+            table <- gets memberAssociations
+            when (Map.member (C.nameText key) table || field `elem` Map.elems table) (failAt ConflictingBuiltinAssociation (C.nameLocation key) "conflicting member association")
+            modify' (\s -> s {memberAssociations = Map.insert (C.nameText key) field (memberAssociations s)})
+          (Just Builtin.MemberBuiltin {}, _) -> failAt InvalidPragmaTarget (C.location targetArgument) "record member association requires Record.member"
+          (_, C.IdentifierArgument target) -> do
+            requireName target
+            let ns = case Map.lookup (C.nameText key) Builtin.builtinRegistry of
+                  Just Builtin.ConstrBuiltin {} -> ConstructorNS
+                  _ -> if C.nameSpace target == C.LowerName then ValueNS else TypeNS
+            entity <- maybe (failAt UnresolvedName (C.nameLocation target) "builtin target is not declared in this module") pure (Map.lookup (ns, C.nameText target) own)
+            table <- gets associations
+            when (Map.member (C.nameText key) table || A.entityId entity `elem` Map.elems table) (failAt ConflictingBuiltinAssociation (C.nameLocation key) "conflicting builtin association")
+            modify' (\s -> s {associations = Map.insert (C.nameText key) (A.entityId entity) (associations s)})
+          _ -> failAt InvalidPragmaTarget (C.location targetArgument) "this builtin requires a declaration target"
       _ -> throwError ()
     Right _ -> pure ()
   pure ()

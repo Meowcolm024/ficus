@@ -1,6 +1,6 @@
-{-# NO_IMPLICIT_PRELUDE #-}
+{-# NO_IMPLICIT_PRELUDE #-} use Class.Show (Show, show)
 {-# BUILTIN EXCEPTION Signal #-}
-trait Signal a = {}
+trait Show a => Signal a = {}
 {-# BUILTIN CATCH rescue #-}
 rescue : Signal e => (Unit -> a) -> (e -> a) -> a
 {-# BUILTIN ARITHMETIC_ERROR Problem #-}
@@ -16,3 +16,5 @@ check () = rescue (_ -> convert (divide 1.0 0.0)) ((Problem message) -> 38)
 {-# BUILTIN MATCH_ERROR MatchError #-}
 type MatchError = MatchError String
 {-# BUILTIN MATCH_FAILURE MatchError #-}
+
+impl Show Problem = { show (Problem message) = message }

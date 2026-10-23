@@ -38,12 +38,15 @@ validatePragma placement p = case C.concrete p of
     case (pragmaArguments rule, args) of
       (NoArguments, []) -> Right ()
       (NoArguments, _) -> failWith InvalidPragmaArguments (C.nameLocation n) "pragma takes no arguments"
-      (BuiltinArguments, [a, b]) -> mapM_ (\arg -> case C.concrete arg of C.IdentifierArgument _ -> Right (); _ -> failWith InvalidPragmaArguments (C.location arg) "expected identifier") [a, b]
+      (BuiltinArguments, [a, b]) -> do
+        case C.concrete a of C.IdentifierArgument _ -> Right (); _ -> failWith InvalidPragmaArguments (C.location a) "expected a builtin key identifier"
+        case C.concrete b of C.IdentifierArgument _ -> Right (); C.QualifiedIdentifierArgument _ _ -> Right (); _ -> failWith InvalidPragmaArguments (C.location b) "expected an identifier or qualified member target"
       (BuiltinArguments, _) -> failWith InvalidPragmaArguments (C.nameLocation n) "BUILTIN requires key and target identifiers"
     pure (Directive name (C.location p) (map argument args))
   where
     argument a = case C.concrete a of
       C.IdentifierArgument n -> Identifier (C.nameText n) (C.nameLocation n)
+      C.QualifiedIdentifierArgument n ns -> QualifiedIdentifier (map C.nameText (n : ns)) (C.location a)
       C.StringArgument t -> String t (C.location a)
 
 preludeEnabled :: ModuleOptions -> Bool

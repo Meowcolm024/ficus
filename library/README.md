@@ -26,10 +26,10 @@ The v1 `Data.Ref` module exposes `Ref`, `newRef`, `readRef`, and `modifyRef` fro
 `Ficus.Builtin.Ref`. Cells remain monomorphic under the existing value restriction.
 `Debug a => Debug (Ref a)` displays their current contents as `Ref (...)`.
 
-The v1 `Control.Exception` module exports `Exception`, `throw`, and `catch`.
-Prelude exports only the marker trait. `catch (_ -> action) handler` catches the
-handler's exact exception type; annotate the handler when inference cannot
-select it. Define `impl Exception MyError = {}` alongside a user error type.
+The v1 `Control.Exception` module exports `Exception`, `SomeException`, `throw`, and `catch`.
+Prelude exports the trait and `SomeException`. `catch (_ -> action) handler` catches the
+handler's exact exception type, or all typed exceptions for `SomeException`; annotate the handler when inference cannot
+select it. Define `Show MyError` and `impl Exception MyError = {}` alongside a user error type; `Exception` requires `Show`.
 Parameterized error types require explicit component constraints, for example
 `impl Exception a => Exception (Box a) = {}`. Runtime failures are not catchable;
 completed effects survive a throw. See SPEC §24.3 for the complete contract.
@@ -47,3 +47,14 @@ The v1 `System.IO` extension exports `openFile`, `close`, and `IOMode(..)`
 endings; close files explicitly. Failed file operations throw `IOError`.
 Standard streams remain owned by the runtime and cannot be closed through this
 API. These declarations are explicit imports.
+
+A handler annotated as `SomeException` catches every typed exception:
+
+```text
+catch (_ -> throw 42) ((error : SomeException) -> println (show error))
+```
+
+The package exposes `Err : Type`, `err : Err`, and `showErr : Err -> String`
+through ordinary existential unpacking. It retains the hidden `Exception`
+dictionary. Rethrowing it preserves the original exception type, so an enclosing
+`Int` handler can catch the value above.

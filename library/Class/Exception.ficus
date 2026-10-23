@@ -1,2 +1,2 @@
 {-# NO_IMPLICIT_PRELUDE #-}
-use Ficus.Builtin.Exception (Exception) pub
+use Ficus.Builtin.Exception (Exception, SomeException) pub

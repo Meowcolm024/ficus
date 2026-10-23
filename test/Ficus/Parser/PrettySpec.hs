@@ -143,7 +143,7 @@ normalize m =
     name n = n {nameLocation = dummy, nameOrigin = SourceOrigin dummy}
     block :: (a -> b) -> Block a -> Block b
     block f b = Block dummy (SourceOrigin dummy) (blockDelimiter b) (map f (blockItems b))
-    pragma = node (\(Pragma n args) -> Pragma (name n) (map (node (\case IdentifierArgument x -> IdentifierArgument (name x); StringArgument t -> StringArgument t)) args))
+    pragma = node (\(Pragma n args) -> Pragma (name n) (map (node (\case IdentifierArgument x -> IdentifierArgument (name x); QualifiedIdentifierArgument x xs -> QualifiedIdentifierArgument (name x) (map name xs); StringArgument t -> StringArgument t)) args))
     importNode =
       node
         ( \(Import ns mode) ->

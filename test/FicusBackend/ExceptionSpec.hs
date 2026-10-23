@@ -79,7 +79,20 @@ tests :: TestTree
 tests =
   testGroup
     "exceptions"
-    [ execution "Basic" "check" 7 [],
+    [ execution "SomeException" "integer" 1 ["7"],
+      execution "SomeException" "boolean" 2 ["True"],
+      execution "SomeException" "custom" 3 ["Problem 9"],
+      execution "SomeException" "primitive" 4 ["DivisionByZero"],
+      execution "SomeException" "unpack" 5 ["10"],
+      execution "SomeException" "rethrow" 11 [],
+      execution "SomeException" "manual" 12 [],
+      execution "SomeException" "normal" 13 [],
+      execution "SomeException" "nearest" 15 [],
+      execution "SomeException" "evidence" 6 ["16"],
+      execution "SomeException" "rethrowValue" 17 [],
+      execution "SomeException" "repack" 18 [],
+      execution "RenamedSomeException" "check" 19 [],
+      execution "Basic" "check" 7 [],
       execution "Library" "check" 21 [],
       execution "PrimitiveErrors" "division" 31 [],
       execution "PrimitiveErrors" "remainder" 32 [],
@@ -143,6 +156,14 @@ tests =
             problems = validateCore forged
         assertBool "forged primitive constructor was accepted" (not (null problems))
         mapM_ (\problem -> (E.diagnosticCode problem, E.diagnosticSpan problem) @?= (E.InvalidCoreTree, C.coreSpan tree)) problems,
+      testCase "Core rejects forged package members" $ do
+        compiled <- compileFixture "SomeException"
+        checked <- maybe (assertFailure "missing module" >> fail "missing module") pure (Map.lookup (ModuleId ("SomeException" :| [])) (compileModules compiled))
+        let tree = validatedModule (checkedCore checked)
+            members = C.coreBuiltinMembers tree
+        renderer <- maybe (assertFailure "missing renderer" >> fail "missing renderer") pure (Map.lookup "SOMEEXCEPTION_SHOWERR" members)
+        let forged = tree {C.coreBuiltinMembers = Map.insert "SOMEEXCEPTION_VALUE" renderer members}
+        assertBool "forged member contract was accepted" (not (null (validateCore forged))),
       testCase "Core rejects forged or malformed exception evidence" $ do
         compiled <- compileFixture "Basic"
         checked <- maybe (assertFailure "missing Basic module" >> fail "missing module") pure (Map.lookup (ModuleId ("Basic" :| [])) (compileModules compiled))
@@ -150,7 +171,7 @@ tests =
             descendants expression = expression : concatMap descendants (C.children expression)
             tokens = [node | group <- C.coreBindings tree, binding <- C.groupBindings group, node <- descendants (C.bindingBody (C.nodeValue binding)), C.ExceptionDictionary {} <- [C.formOf node]]
         case tokens of
-          [token] | C.ExceptionDictionary owner argument _ <- C.formOf token -> do
+          [token] | C.ExceptionDictionary owner argument _ _ <- C.formOf token -> do
             let corrupt form =
                   let body = fmap (\value -> value {C.expressionForm = form}) token
                       binding = fmap (const (C.Binding (GlobalRef (GlobalId (C.coreId tree) ValueNS "forged")) (Ty.monomorphic (C.typeOf body)) body (C.BindingFacts 0 Nothing))) token
@@ -161,15 +182,15 @@ tests =
                   assertBool "invalid evidence was accepted" (not (null errors))
                   mapM_ (\problem -> (E.diagnosticCode problem, E.diagnosticSpan problem) @?= (E.InvalidCoreTree, C.nodeSpan token)) errors
               )
-              [C.Dictionary owner argument [] [], C.ExceptionDictionary owner argument [token]]
+              [C.Dictionary owner argument [] [], C.ExceptionDictionary owner argument [token] []]
           _ -> assertFailure "expected one concrete exception token",
       testCase "REPL preserves exception identities across nominal rebinding" $ do
         current <- Repl.newSession (ModuleOptions [] ["library"] Nothing) >>= requireRight
         let quiet = R.Effects (\_ _ -> pure ()) (\_ _ -> pure "")
             submit current' text = fst <$> (Repl.submit quiet current' text >>= requireRight)
         imported <- submit current "use Control.Exception (..)"
-        first <- submit imported "type Problem = Problem Int\nimpl Exception Problem = {}\nold () = throw (Problem 7)\nrescue action = catch action ((Problem n) -> n)"
-        second <- submit first "type Problem = Problem Int\nimpl Exception Problem = {}"
+        first <- submit imported "type Problem = Problem Int\nimpl Show Problem = { show (Problem n) = show n }\nimpl Exception Problem = {}\nold () = throw (Problem 7)\nrescue action = catch action ((Problem n) -> n)"
+        second <- submit first "type Problem = Problem Int\nimpl Show Problem = { show (Problem n) = show n }\nimpl Exception Problem = {}"
         (_, value) <- Repl.submit quiet second "rescue (_ -> catch old ((Problem n) -> 0))" >>= requireRight
         value @?= Just "7",
       testCase "REPL reports an uncaught exception and remains usable" $ do
@@ -201,6 +222,10 @@ tests =
           negative "MissingEvidence" "T0403" (2, 6, 2, 22),
           negative "HigherKindHead" "T0403" (2, 6, 2, 26),
           negative "ConflictingImports" "T0501" (1, 1, 5, 1),
-          negative "NoInstance" "T0401" (2, 12, 2, 24)
+          negative "NoInstance" "T0401" (2, 12, 2, 24),
+          negative "NoPackageEvidence" "T0401" (3, 12, 3, 78),
+          negative "NoExceptionShow" "T0401" (2, 1, 2, 27),
+          negative "BadPackageMember" "N0105" (3, 39, 3, 45),
+          negative "MissingPackageMembers" "T0501" (1, 1, 4, 1)
         ]
     ]

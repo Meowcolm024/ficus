@@ -250,7 +250,7 @@ type Pragma = Located PragmaF
 
 data PragmaF = Pragma Name [Located PragmaArgument] deriving (Eq, Show)
 
-data PragmaArgument = IdentifierArgument Name | StringArgument Text deriving (Eq, Show)
+data PragmaArgument = IdentifierArgument Name | QualifiedIdentifierArgument Name [Name] | StringArgument Text deriving (Eq, Show)
 
 type Import = Located ImportF
 
@@ -306,7 +306,7 @@ validateConcrete m = do
     block f b = check (blockLocation b) (blockOrigin b) *> mapM_ f (blockItems b)
     optional :: (a -> Either Text ()) -> Maybe a -> Either Text ()
     optional f = maybe (Right ()) f
-    pragma = node (\(Pragma n args) -> name n *> mapM_ (node (\case IdentifierArgument x -> name x; StringArgument _ -> Right ())) args)
+    pragma = node (\(Pragma n args) -> name n *> mapM_ (node (\case IdentifierArgument x -> name x; QualifiedIdentifierArgument x xs -> mapM_ name (x : xs); StringArgument _ -> Right ())) args)
     importNode =
       node
         ( \(Import ns mode) ->

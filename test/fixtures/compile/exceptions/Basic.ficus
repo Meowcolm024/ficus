@@ -1,6 +1,6 @@
-{-# NO_IMPLICIT_PRELUDE #-}
+{-# NO_IMPLICIT_PRELUDE #-} use Class.Show (Show, show)
 {-# BUILTIN EXCEPTION Failure #-}
-trait Failure e = {}
+trait Show e => Failure e = {}
 {-# BUILTIN THROW raise #-}
 raise : Failure e => e -> a
 {-# BUILTIN CATCH handle #-}

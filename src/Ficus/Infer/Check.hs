@@ -383,8 +383,10 @@ constructorPattern context expected source ident patterns witnesses = do
       (fields, result) = splitFunctions instantiated
       opened = [S.apply mapping (Variable (Bound (quantifierId q)) (quantifierKind q)) | q <- hidden]
       named = Map.fromList [(sourceId, witness) | (label, binder) <- witnesses, let (sourceId, _, _) = A.nodeValue binder, q <- hidden, quantifierName q == label, let witness = S.apply mapping (Variable (Bound (quantifierId q)) (quantifierKind q))]
-      inner = context {contextTypes = named `Map.union` contextTypes context, contextWitnesses = opened ++ contextWitnesses context}
-  Infer (modify' (\s -> s {checkedInstantiations = Map.insert (A.nodeId source) arguments (checkedInstantiations s), openedWitnesses = Map.insert (A.nodeId source) opened (openedWitnesses s)}))
+      predicates = map (fmap (S.apply mapping)) (schemePredicates scheme)
+      evidence = [(predicate, GivenEvidence (A.nodeId source) index) | (index, predicate) <- zip [0 ..] predicates]
+      inner = context {contextTypes = named `Map.union` contextTypes context, contextWitnesses = opened ++ contextWitnesses context, contextGivens = evidence ++ contextGivens context}
+  Infer (modify' (\s -> s {checkedInstantiations = Map.insert (A.nodeId source) arguments (checkedInstantiations s), openedWitnesses = Map.insert (A.nodeId source) opened (openedWitnesses s), patternGivens = Map.fromList [((A.nodeId source, index), (A.nodeSpan source, A.nodeOrigin source, predicate)) | (index, predicate) <- zip [0 ..] predicates] `Map.union` patternGivens s}))
   when (length fields /= length patterns) (emit (E.diagnostic E.TypeMismatch (A.nodeSpan source) "constructor pattern has the wrong number of value fields"))
   void (equate (A.nodeSpan source) expected result)
   foldM (\environment (ty, p) -> patternCheck environment ty p) inner (zip fields patterns)
@@ -502,7 +504,7 @@ bindingGroup topLevel context group = case schedule group of
             )
             current
             refs
-        let scoped = finished {contextTypes = contextTypes patternContext `Map.union` contextTypes finished, contextWitnesses = contextWitnesses patternContext}
+        let scoped = finished {contextTypes = contextTypes patternContext `Map.union` contextTypes finished, contextWitnesses = contextWitnesses patternContext, contextGivens = contextGivens patternContext}
         when topLevel $ forM_ refs $ \reference -> case Map.lookup reference (contextValues scoped) of
           Just scheme -> checkOpened outer patternContext (A.nodeSpan source) [schemeType scheme] []
           Nothing -> pure ()
@@ -757,7 +759,7 @@ constructRecord context source constructor witnesses fields = do
         void (equate (A.nodeSpan body) ty (judgementType value))
         forM_ owner $ \ident -> Infer (modify' (\s -> s {checkedFields = Map.insert (A.nodeId field) (C.FieldId ident index) (checkedFields s)}))
     pure (judgementWanteds value)
-  pure (Judgement result (concat constraints))
+  pure (Judgement result (judgementWanteds use ++ concat constraints))
 
 checkDuplicateFields :: [A.FieldAssignment] -> Infer ()
 checkDuplicateFields fields = void (foldM check Set.empty fields)

@@ -1,5 +1,7 @@
 {-# NO_IMPLICIT_PRELUDE #-}
 use Ficus.Builtin.Exception (Exception)
+use Class.Show (Show, show)
+use Ficus.Builtin.String (stringAppend)
 
 {-# BUILTIN ARITHMETIC_ERROR ArithmeticError #-}
 type ArithmeticError = { DivisionByZero; InvalidConversion String }
@@ -16,3 +18,12 @@ impl Exception IOError = {}
 type MatchError = MatchError String
 {-# BUILTIN MATCH_FAILURE MatchError #-}
 impl Exception MatchError = {}
+
+impl Show ArithmeticError =
+    show value = with value
+        DivisionByZero -> "DivisionByZero"
+        InvalidConversion message -> stringAppend "InvalidConversion: " message
+impl Show IOError =
+    show (IOError operation message) = stringAppend operation (stringAppend ": " message)
+impl Show MatchError =
+    show (MatchError message) = message

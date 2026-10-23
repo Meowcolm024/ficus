@@ -160,7 +160,11 @@ pragma = located $ do
   args <-
     many $
       located
-        ( (IdentifierArgument <$> (identifier <|> try operatorName))
+        ( ( do
+              first <- identifier <|> try operatorName
+              rest <- many (text "." *> (identifier <|> try operatorName))
+              pure (if null rest then IdentifierArgument first else QualifiedIdentifierArgument first rest)
+          )
             <|> (StringArgument . tokenText <$> kind StringLiteral)
         )
   checkSeparated (nameLocation n) args

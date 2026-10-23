@@ -45,6 +45,7 @@ moduleWith scheme body =
     Map.empty
     Map.empty
     Map.empty
+    Map.empty
     [NonRecursive (node 0 (Binding global scheme body (BindingFacts 0 Nothing)))]
     Map.empty
 

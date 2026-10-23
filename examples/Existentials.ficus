@@ -1,0 +1,33 @@
+-- Each Printable hides its item type and keeps an operation for that type.
+type Printable =
+    Item : Type
+    item : Item
+    render : Item -> String
+
+-- The stored operation captures the Show dictionary supplied to pack.
+pack : {a} -> Show a => a -> Printable
+pack @a (value : a) = Printable with
+    Item = a
+    item = value
+    render = show
+
+-- Unpacking introduces a fresh abstract type t. Only the packaged operation
+-- knows how to render its item; callers do not need a Show t constraint.
+render : Printable -> String
+render package = with package
+    Printable with { Item = t; item = value; render = renderItem } -> renderItem (value : t)
+
+type Point = Point Int Int
+impl Show Point =
+    show (Point x y) = show (x, y)
+
+printAll : [Printable] -> Unit
+printAll values = with values
+    [] -> ()
+    value :: rest ->
+        println (render value)
+        printAll rest
+
+-- Different representation types share one ordinary list type: [Printable].
+main : [String] -> Unit
+main _ = printAll [pack 42, pack True, pack "hello", pack (Point 3 4)]

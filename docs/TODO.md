@@ -27,6 +27,7 @@ Unchecked items are pending; a settled design is not a completed feature.
 - [x] Explicit record patterns with constructor-style grouping, optional fields, type-directed refutability, and recursive-pattern binding rejection; parser/formatter, evaluator, diagnostic-span, and highlighting coverage ([tests](../test/FicusBackend/RecordPatternSpec.hs)).
 - [x] Mutable `Ref`, `newRef`, `readRef`, and `modifyRef` in `Ficus.Builtin.Ref` / `Data.Ref`, shared `REF_*` registry contracts, and `Debug (Ref a)`, preserving the existing value restriction.
 - [x] Typed exceptions: trait-targeted `BUILTIN EXCEPTION`, nominal component tokens, constrained primitives, dynamically scoped catches, library/driver integration, and differential/REPL fixtures ([tests](../test/FicusBackend/ExceptionSpec.hs)).
+- [x] Catch-all `SomeException` in Prelude: `Show` superclass, source record/member builtin associations, bundled dictionaries, unpacking evidence, and rethrowing with the original nominal identity; primitive-error, renamed-member, contract, and differential fixtures ([SPEC §24.3](SPEC.md#243-exceptions)).
 - [x] Source-defined builtin data types and primitive constructors (`DataBuiltin` / `ConstrBuiltin`), with typed arithmetic/conversion/IO/match failures, removal of Runtime `Raise Text`, validated runtime layouts, and contract/differential fixtures.
 - [x] File IO: `openFile`, `close`, source-defined builtin `IOMode` constructors, typed failures, and compiled/direct temporary-file tests ([tests](../test/FicusBackend/FileIOSpec.hs)).
 - [ ] Exception cleanup combinators and higher-kinded exception heads.
@@ -38,7 +39,8 @@ Unchecked items are pending; a settled design is not a completed feature.
 - [ ] Structural `DERIVE` for empty `Show`/`Eq` implementations.
 - [ ] Expression interpolation: settle delimiters and escapes.
 - [ ] Expanded libraries: `System.Environment`, `Data.Map`, JSON, and regular expressions.
-- [ ] Existential record members: settle witness inference, escape checks, updates, and exception API interaction (proposal).
+- [x] Existential record members: parsing, kinds, witness inference, named and anonymous unpacking, non-escape checks, dependent projection rejection, captured trait dictionaries, Core/Runtime lowering, and an [example with traits](../examples/Existentials.ficus) ([tests](../test/FicusBackend/RecordPatternSpec.hs)).
+- [ ] Existential record updates and records containing only type members.
 - [ ] Coverage through uninhabited fields and subpatterns beyond direct empty nominal types.
 
 ## v1 tooling and artifacts

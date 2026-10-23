@@ -1,0 +1,3 @@
+{-# BUILTIN SOMEEXCEPTION_ERR SomeException.Err #-}
+{-# BUILTIN SOMEEXCEPTION_SHOWERR SomeException.showErr #-}
+{-# FUTURE Example.member "argument" #-}

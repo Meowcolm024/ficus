@@ -26,6 +26,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       mapM_ (\((owner, label), field) -> do validName label; role owner [RecordRole]; unless (owner == fieldOwner field && label == fieldLabel field) (bad "inconsistent field descriptor")) (Map.toList (abstractFields m))
       mapM_ (validName . occurrenceSpelling) (abstractOccurrences m)
       mapM_ global (Map.elems (builtinAssociations m))
+      mapM_ (\field -> role (fieldOwner field) [RecordRole] >> validName (fieldLabel field)) (Map.elems (builtinMemberAssociations m))
       group (abstractDeclarations m)
     bad :: Text -> Check a
     bad = lift . Left

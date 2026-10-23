@@ -1,6 +1,6 @@
 {-# NO_IMPLICIT_PRELUDE #-}
 use Ficus.Builtin.Errors (..)
-
+use Class.Show (intShow) pub
 {-# BUILTIN INT_ADD intAdd #-}
 intAdd : Int -> Int -> Int
 {-# BUILTIN INT_SUB intSub #-}
@@ -15,7 +15,5 @@ intRem : Int -> Int -> Int
 intEq : Int -> Int -> Bool
 {-# BUILTIN INT_LT intLt #-}
 intLt : Int -> Int -> Bool
-{-# BUILTIN INT_SHOW intShow #-}
-intShow : Int -> String
 {-# BUILTIN INT_TO_FLOAT intToFloat #-}
 intToFloat : Int -> Float

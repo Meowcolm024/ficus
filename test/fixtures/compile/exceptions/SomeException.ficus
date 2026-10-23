@@ -1,0 +1,17 @@
+type Problem = Problem Int
+impl Show Problem = { show (Problem n) = "Problem " ++ show n }
+impl Exception Problem = {}
+
+integer () = catch (_ -> throw 7) ((error : SomeException) -> { print (show error); 1 })
+boolean () = catch (_ -> throw True) ((error : SomeException) -> { print (show error); 2 })
+custom () = catch (_ -> throw (Problem 9)) ((error : SomeException) -> { print (show error); 3 })
+primitive () = catch (_ -> 1 / 0) ((error : SomeException) -> { print (show error); 4 })
+unpack () = catch (_ -> throw 10) ((SomeException with { Err = e; err = value; showErr = render }) -> { print (render (value : e)); 5 })
+rethrow () = catch (_ -> catch (_ -> throw (Problem 11)) ((error : SomeException) -> throw error)) ((Problem n) -> n)
+manual () = catch (_ -> throw (SomeException with { Err = Int; err = 12; showErr = show })) ((value : Int) -> value)
+normal () = catch (_ -> 13) ((error : SomeException) -> 0)
+nearest () = catch (_ -> catch (_ -> throw 14) ((error : SomeException) -> 15)) ((value : Int) -> value)
+
+evidence () = catch (_ -> throw 16) ((SomeException with { err = value }) -> { print (show value); 6 })
+rethrowValue () = catch (_ -> catch (_ -> throw 17) ((SomeException with { err = value }) -> throw value)) ((value : Int) -> value)
+repack () = catch (_ -> catch (_ -> throw 18) ((SomeException with { Err = e; err = value }) -> throw (SomeException with { Err = e; err = value; showErr = show }))) ((value : Int) -> value)

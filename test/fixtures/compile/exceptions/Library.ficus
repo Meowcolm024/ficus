@@ -1,4 +1,4 @@
-{-# NO_IMPLICIT_PRELUDE #-}
+{-# NO_IMPLICIT_PRELUDE #-} use Class.Show (Show, show)
 use Control.Exception as Errors
 use Class.Exception (Exception)
 use Ficus.Builtin.Int (intAdd)
@@ -7,3 +7,5 @@ type Problem = Problem Int
 impl Exception Problem = {}
 
 check () = Errors.catch (_ -> Errors.throw (Problem 20)) ((Problem n) -> intAdd n 1)
+
+impl Show Problem = { show (Problem n) = show n }

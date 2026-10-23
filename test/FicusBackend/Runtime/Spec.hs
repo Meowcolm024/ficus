@@ -56,14 +56,15 @@ program body =
     (V.fromList [node (R.ConstructorLayout (R.FrameSize count)) | count <- [0, 2, 2, 0, 0, 0, 1, 2, 0]])
     Map.empty
     testErrors
+    Nothing
     (V.fromList P.allPrimitives)
     [node (R.GlobalGroup False ((R.GlobalIndex 0, node (R.Binding body False)) :| []))]
 
 testErrors :: Map.Map P.PrimitiveError R.ErrorConstructor
-testErrors = Map.fromList [(P.DivisionByZeroError, R.ErrorConstructor (R.ConstructorIndex 3) (Just (R.ConstructorIndex 5))), (P.InvalidConversionError, R.ErrorConstructor (R.ConstructorIndex 3) (Just (R.ConstructorIndex 6))), (P.IOError, R.ErrorConstructor (R.ConstructorIndex 4) (Just (R.ConstructorIndex 7))), (P.MatchError, R.ErrorConstructor (R.ConstructorIndex 8) Nothing)]
+testErrors = Map.fromList [(P.DivisionByZeroError, R.ErrorConstructor (R.ConstructorIndex 3) (Just (R.ConstructorIndex 5)) Nothing), (P.InvalidConversionError, R.ErrorConstructor (R.ConstructorIndex 3) (Just (R.ConstructorIndex 6)) Nothing), (P.IOError, R.ErrorConstructor (R.ConstructorIndex 4) (Just (R.ConstructorIndex 7)) Nothing), (P.MatchError, R.ErrorConstructor (R.ConstructorIndex 8) Nothing Nothing)]
 
 evaluatePrimitive :: Text -> Effects -> R.Primitive () -> [Value] -> EvalM Value
-evaluatePrimitive = Primitive.evaluatePrimitive testErrors Map.empty
+evaluatePrimitive = Primitive.evaluatePrimitive testErrors Map.empty Nothing (\_ -> invalidValue "no fixture evidence globals")
 
 errorDeclarations :: Text
 errorDeclarations = "\n{-# BUILTIN ARITHMETIC_ERROR ArithmeticError #-}\ntype ArithmeticError = { DivisionByZero; InvalidConversion String }\n{-# BUILTIN DIVISION_BY_ZERO DivisionByZero #-}\n{-# BUILTIN INVALID_CONVERSION InvalidConversion #-}\n{-# BUILTIN IO_ERROR IOError #-}\ntype IOError = IOError String String\n{-# BUILTIN IO_FAILURE IOError #-}\n"
@@ -444,7 +445,7 @@ holeCase :: String -> C.Expr C.CoreType -> TestTree
 holeCase name body = testCase name $ do
   let owner = N.ModuleId ("Hole" :| [])
       binding = coreNode (C.Binding (N.GlobalRef (N.GlobalId owner N.ValueNS "entry")) (Type.monomorphic coreInt) body (C.BindingFacts 0 Nothing))
-      tree = C.CoreModule owner defaultCompilationConfig origin (SourceOrigin origin) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty [C.NonRecursive binding] Map.empty
+      tree = C.CoreModule owner defaultCompilationConfig origin (SourceOrigin origin) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty [C.NonRecursive binding] Map.empty
   case lowerProgram [tree] of
     Right _ -> assertFailure "hole reached Runtime"
     Left errors -> map (\problem -> (B.errorKind problem, B.errorSpan problem)) errors @?= [(B.ExpressionHole, origin)]

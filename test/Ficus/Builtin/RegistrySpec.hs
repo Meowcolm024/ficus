@@ -86,3 +86,6 @@ tests =
     check (key, ConstrBuiltin _ _) = do
       typeKindFromKey key @?= Nothing
       primitiveFromKey key @?= Nothing
+    check (key, MemberBuiltin _ _) = do
+      typeKindFromKey key @?= Nothing
+      primitiveFromKey key @?= Nothing

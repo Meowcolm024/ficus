@@ -157,7 +157,7 @@ print : String -> Unit
 print text = write stdout text
 
 {-# BUILTIN EXCEPTION Exception #-}
-trait Exception e = {}
+trait Show e => Exception e = {}
 
 impl Exception Int = {}
 impl Exception Float = {}
@@ -189,3 +189,30 @@ impl Exception IOError = {}
 type MatchError = MatchError String
 {-# BUILTIN MATCH_FAILURE MatchError #-}
 impl Exception MatchError = {}
+
+{-# BUILTIN SOMEEXCEPTION SomeException #-}
+type SomeException = { Err : Type; err : Err; showErr : Err -> String }
+{-# BUILTIN SOMEEXCEPTION_ERR SomeException.Err #-}
+{-# BUILTIN SOMEEXCEPTION_VALUE SomeException.err #-}
+{-# BUILTIN SOMEEXCEPTION_SHOWERR SomeException.showErr #-}
+impl Show SomeException =
+    show package = with package { SomeException with { err = value; showErr = render } -> render value }
+impl Exception SomeException = {}
+
+{-# BUILTIN FLOAT_SHOW floatShow #-}
+floatShow : Float -> String
+{-# BUILTIN CHAR_SHOW charShow #-}
+charShow : Char -> String
+impl Show Float = { show value = floatShow value }
+impl Show Char = { show value = charShow value }
+impl Show a => Show [a] =
+    show values = "[" ++ items values
+        where
+            items xs = with xs
+                [] -> "]"
+                x :: rest -> show x ++ (with rest { [] -> "]"; _ :: _ -> ", " ++ items rest })
+impl (Show a, Show b) => Show (a * b) = { show (a, b) = "(" ++ show a ++ ", " ++ show b ++ ")" }
+impl Show ArithmeticError =
+    show error = with error { DivisionByZero -> "DivisionByZero"; InvalidConversion message -> message }
+impl Show IOError = { show (IOError operation message) = operation ++ ": " ++ message }
+impl Show MatchError = { show (MatchError message) = message }

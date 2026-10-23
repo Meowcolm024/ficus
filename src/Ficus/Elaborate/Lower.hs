@@ -2,7 +2,7 @@
 -- are boundary errors, never invented values or expression-hole placeholders.
 module Ficus.Elaborate.Lower (lowerModule) where
 
-import Control.Monad (foldM, forM, forM_)
+import Control.Monad (filterM, foldM, forM, forM_)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.State.Strict (gets, modify')
 import Control.Monad.Trans.Class (lift)
@@ -71,9 +71,10 @@ lowerModule inferred source = runInferFrom (inferenceState inferred) (runExceptT
             C.coreSpan = A.abstractSpan source,
             C.coreOrigin = A.abstractOrigin source,
             C.coreBuiltins = Map.restrictKeys (builtinTypeAssociations prepared) (Set.fromList (P.builtinDataKeys)),
+            C.coreBuiltinMembers = builtinRecordMembers prepared,
             C.coreKinds = typeKinds (declarationTypes prepared),
             C.coreImports = Map.restrictKeys (Map.map (evidenceScheme prepared) imported `Map.union` importedImplementations) references,
-            C.coreConstructors = constructorDeclarations prepared,
+            C.coreConstructors = fmap (fmap (\descriptor -> descriptor {C.constructorScheme = evidenceScheme prepared (C.constructorScheme descriptor), C.constructorArity = C.constructorArity descriptor + length (schemePredicates (C.constructorScheme descriptor))})) (constructorDeclarations prepared),
             C.coreRecords = recordDeclarations prepared,
             C.coreDictionaries = dictionaries,
             C.coreBindings = ordered,
@@ -242,26 +243,35 @@ referenceUse context source reference = do
 
 evidence :: Context -> A.Node a -> Predicate InferType -> Lower (C.Expr InferType)
 evidence context source predicate = do
-  let available = [(p, GivenEvidence (C.nodeId binder) 0) | (p, binder) <- givens context]
+  checked <- lift (Infer (gets checkedEvidence))
+  roots <- lift (Infer (gets patternGivens))
+  let origins proof' = case proof' of GivenEvidence ident index -> [(ident, index)]; SuperclassEvidence _ _ parent -> origins parent; ImplementationEvidence _ _ parents -> concatMap origins parents
+  matching <- filterM (\(wanted, _) -> do actual <- traverse (resolved context) (wantedPredicate wanted); pure (wantedNode wanted == A.nodeId source && actual == predicate)) checked
+  let required = Set.toList (Set.fromList [key' | (_, proof') <- matching, key' <- origins proof', Map.member key' roots])
+  opened <- forM required $ \key' -> do
+    binder <- patternGiven context source key'
+    p <- maybe (failure source "pattern evidence has no predicate") (\(_, _, p) -> traverse (resolved context) p) (Map.lookup key' roots)
+    pure (p, binder)
+  let available = [(p, GivenEvidence (C.nodeId binder) 0) | (p, binder) <- opened ++ givens context]
   proof <- lift (solvePredicate (declarations context) available predicate)
-  either (const (failure source "checked constraint has no dictionary evidence")) build proof
+  either (const (failure source "checked constraint has no dictionary evidence")) (build opened) proof
   where
-    build (GivenEvidence ident _) = case [binder | (_, binder) <- givens context, C.nodeId binder == ident] of
+    build opened (GivenEvidence ident _) = case [binder | (_, binder) <- opened ++ givens context, C.nodeId binder == ident] of
       binder : _ -> binderUse source binder
       [] -> failure source "given dictionary is out of scope"
-    build (SuperclassEvidence owner index parent) = do
-      receiver <- build parent
+    build opened (SuperclassEvidence owner index parent) = do
+      receiver <- build opened parent
       trait <- maybe (failure source "superclass descriptor missing") (pure . C.nodeValue) (Map.lookup owner (traitDeclarations (declarations context)))
       argument <- case C.typeOf receiver of Application (Constructor actual _) ty | actual == owner -> pure ty; _ -> failure source "superclass receiver has the wrong dictionary type"
       superclass <- case drop index (traitSuperclasses trait) of value : _ | index >= 0 -> pure value; _ -> failure source "superclass slot is out of range"
       let specialized = fmap (S.apply (binderSubstitution [traitParameter trait] [argument])) superclass
       makeExpression source (dictionaryType (declarations context) specialized) (C.SelectSuperclass receiver owner index)
-    build (ImplementationEvidence ident arguments proofs) = do
+    build opened (ImplementationEvidence ident arguments proofs) = do
       implementation <- maybe (failure source "evidence names an unknown implementation") (pure . C.nodeValue) (Map.lookup ident (implementationDeclarations (declarations context)))
       let scheme = implementationScheme (declarations context) implementation
           ty = S.apply (binderSubstitution (quantifiers scheme) arguments) (schemeType scheme)
       builder <- makeExpression source ty (C.Var (implementationReference ident) arguments)
-      contextEvidence <- mapM build proofs
+      contextEvidence <- mapM (build opened) proofs
       foldM (apply source) builder contextEvidence
 
 constructorUse :: Context -> A.Expr -> GlobalId -> Lower (C.Expr InferType)
@@ -271,7 +281,8 @@ constructorUse context source ident = do
   ty <- nodeType context source
   arguments <- useArguments context source scheme ty
   let instantiated = S.apply (binderSubstitution (quantifiers scheme) arguments) (schemeType scheme)
-  etaExpand source arity instantiated (\fields result -> makeExpression source result (C.Construct constructor arguments fields))
+  dictionaries <- mapM (evidence context source . fmap (S.apply (binderSubstitution (quantifiers scheme) arguments))) (schemePredicates scheme)
+  etaExpand source arity instantiated (\fields result -> makeExpression source result (C.Construct constructor arguments (dictionaries ++ fields)))
 
 constructorInfo :: Context -> A.Node a -> C.ConstructorId -> Lower (Scheme InferType, Int)
 constructorInfo context source ident = case constructorSignature ident of
@@ -346,11 +357,12 @@ matchPattern context receiver source success fallback = case A.nodeValue source 
     arguments <- mapM (resolved context) recorded
     let instantiated = S.apply (binderSubstitution (quantifiers scheme) arguments) (schemeType scheme)
         types = fst (splitFunctions instantiated)
+    dictionaries <- forM (zip [0 ..] (schemePredicates scheme)) $ \(index, _) -> patternGiven context source (A.nodeId source, index)
     binders <- sequence [freshBinder field "$field" C.ValueBinder ty | (field, ty) <- zip fields types]
     nested <- foldM (\body (field, binder) -> binderUse field binder >>= \value -> matchPattern context value field body fallback) success (reverse (zip fields binders))
     opened <- lift (Infer (gets (Map.findWithDefault [] (A.nodeId source) . openedWitnesses)))
     if null opened
-      then constructorCase (C.DataConstructor ident) arguments binders nested
+      then constructorCase (C.DataConstructor ident) arguments (dictionaries ++ binders) nested
       else do
         quantified <- forM opened $ \witness -> do
           ident' <- BoundId <$> lift freshId
@@ -359,7 +371,7 @@ matchPattern context receiver source success fallback = case A.nodeValue source 
           pure (witness, binder)
         let abstraction = S.fromBindings [(v, Variable (Bound (quantifierId (C.nodeValue binder))) (quantifierKind (C.nodeValue binder))) | (Variable v _, binder) <- quantified]
             abstractArguments = map (S.apply abstraction) arguments
-            abstractBinders = map (fmap (fmap (S.apply abstraction))) binders
+            abstractBinders = map (fmap (fmap (S.apply abstraction))) (dictionaries ++ binders)
         alternative <- generated source "existential constructor pattern" (C.OpenConstructorTest (map snd quantified) (C.DataConstructor ident) abstractArguments abstractBinders, fmap (fmap (S.apply abstraction)) nested)
         makeExpression source (C.typeOf success) (C.Case receiver [alternative] fallback)
   A.ProductPattern fields -> productPattern receiver fields success
@@ -423,9 +435,12 @@ recordConstruction context source _ fields = do
   (_, _, descriptor) <- recordDescriptor context source ty
   recorded <- lift (Infer (gets (Map.findWithDefault [] (A.nodeId source) . checkedInstantiations)))
   arguments <- mapM (resolved context) recorded
+  (scheme, _) <- constructorInfo context source (C.recordConstructor descriptor)
+  let substitution' = binderSubstitution (quantifiers scheme) arguments
+  dictionaries <- mapM (evidence context source . fmap (S.apply substitution')) (schemePredicates scheme)
   withFields context fields Map.empty $ \values -> do
     ordered <- forM [0 .. length (C.recordFields descriptor) - 1] $ \index -> maybe (failure source "record construction is missing a checked field") pure (Map.lookup index values)
-    makeExpression source ty (C.Construct (C.recordConstructor descriptor) arguments ordered)
+    makeExpression source ty (C.Construct (C.recordConstructor descriptor) arguments (dictionaries ++ ordered))
 
 recordUpdate :: Context -> A.Expr -> A.Expr -> [A.FieldAssignment] -> Lower (C.Expr InferType)
 recordUpdate context source receiver fields = do
@@ -699,7 +714,7 @@ lowerImplementation context source ident = do
             then do
               let arguments = typeArguments (predicateArgument head')
               tokens <- mapM (evidence scoped source . Predicate (predicateTrait head')) arguments
-              makeExpression source target (C.ExceptionDictionary (predicateTrait head') (predicateArgument head') tokens)
+              makeExpression source target (C.ExceptionDictionary (predicateTrait head') (predicateArgument head') tokens values)
             else makeExpression source target (C.Dictionary (predicateTrait head') (predicateArgument head') values (map snd lowered))
         foldM (\rest group -> makeExpression source target (case group of C.NonRecursive binding -> C.Let binding rest; C.Recursive bindings -> C.LetRec bindings rest)) packed (reverse ordered)
       withSupers (value : rest) values = letValue source value (\reference -> withSupers rest (values ++ [reference]))
@@ -712,3 +727,21 @@ typeArguments = go []
   where
     go arguments (Application f x) = go (x : arguments) f
     go arguments _ = arguments
+
+-- Lazily allocate one evidence binder per unpacking site, shared by the body
+-- and the constructor test even when the body is lowered first.
+patternGiven :: Context -> A.Node a -> (NodeId, Int) -> Lower (C.Binder InferType)
+patternGiven context source key' = do
+  known <- lift (Infer (gets (Map.lookup key' . loweredPatternGivens)))
+  case known of
+    Just binder -> do
+      let (ident, name, role, ty) = C.nodeValue binder
+      checked <- resolved context ty
+      pure (binder {C.nodeValue = (ident, name, role, checked)})
+    Nothing -> do
+      (origin, provenance, rawPredicate) <- lift (Infer (gets (Map.lookup key' . patternGivens))) >>= maybe (failure source "missing checked pattern evidence") pure
+      predicate <- traverse (resolved context) rawPredicate
+      let originNode = source {A.nodeSpan = origin, A.nodeOrigin = provenance}
+      binder <- freshBinder originNode "$packageEvidence" C.EvidenceBinder (dictionaryType (declarations context) predicate)
+      lift (Infer (modify' (\state -> state {loweredPatternGivens = Map.insert key' binder (loweredPatternGivens state)})))
+      pure binder

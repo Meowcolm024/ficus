@@ -753,12 +753,14 @@ Retain the arrow's strict/call-by-name mode in type checking and typed Core unti
 
 ### 10.4 Exceptions (v1+) and fibers (v2+)
 
-`BUILTIN EXCEPTION` marks an ordinary empty trait with a Type parameter. Checked
+`BUILTIN EXCEPTION` marks an ordinary method-free trait with a Type parameter
+and one rendering superclass. Validate the superclass method as `a -> String`. Checked
 interfaces and Core dictionary descriptors retain this marker by canonical
 identity. Source primitive contracts for THROW/CATCH quantify two independent
 variables and carry a trait predicate; Core uses a leading evidence operand.
 `ExceptionDictionary` constructs evidence from the nominal head and component
-dictionaries, with independent validation of the marker, kinds, and operands.
+dictionaries and superclass evidence, with independent validation of the marker,
+kinds, and operands. Runtime evidence stores the rendering dictionary and nominal token.
 Parameterized instances require an explicit exception constraint for every
 Type parameter, including phantom parameters; higher-kinded heads are rejected.
 
@@ -769,17 +771,27 @@ old closures and new code agree on existing types while rebinding creates a new
 identity. Wrapper erasure never erases these tokens.
 
 `EvalM` carries either a generic runtime failure or a typed throw containing token,
-payload, and explicit primitive context. CATCH handles only matching typed
-throws around invocation of its action thunk; the handler runs outside that
+payload, evidence dictionary, and explicit primitive context. CATCH handles matching typed
+throws or packages any typed throw for a `SomeException` handler around invocation of its action thunk; the handler runs outside that
 catch. Runtime failures pass through, completed effects remain, and a throwing
 reference updater skips its final write. `runEvaluation` converts uncaught throws
 to generic runtime messages at the embedding/driver boundary. Cleanup APIs and fibers remain deferred.
 
+Resolve `SOMEEXCEPTION` and its three member associations into ordinary record and
+field identities. Carry the member map through Abstract and Core; link numeric
+constructor/field slots into Runtime. The source constructor has an `Exception`
+predicate for its hidden witness. Core prepends a dictionary slot, and unpacking
+binds that dictionary with the pattern's source span/provenance. Use only evidence
+proved available at each expression, preserving witness scope. Primitive-generated
+throws retain their source error implementation's dictionary. Catch-all packaging
+retains it; throwing a package unwraps it and preserves original type identity and
+the supplied renderer. Runtime performs no string-based name lookup.
+
 ### 10.5 Existential packages (v1+)
 
-Existential records are implemented as a v1+ extension. The parser accepts uppercase type-member labels and lowercase value-field labels in declarations and named `with` blocks. Concrete construction retains uppercase RHSs as `TypeField` type expressions; patterns retain uniform `PatternField` nodes. An uppercase label selects a type-expression RHS in construction or a lowercase type binder in patterns; do not require `@`. Parse the entire type RHS at its own nesting depth so function-type arrows cannot become enclosing lambda or clause arrows. Validate the resolved record member, kind, duplicate labels, and field types semantically. In `SomeException with { Err = String; showErr = (e : String) -> e }`, use the supplied witness while checking all value fields, independent of label order. In `SomeException with { Err = e; showErr = se }`, create a fresh abstract witness and scope it over the pattern's value bindings and permitted body; reject concrete type matching and witness escape.
+Existential records are implemented as a v1+ extension. The parser accepts uppercase type-member labels and lowercase value-field labels in declarations and named `with` blocks. Concrete construction retains uppercase RHSs as `TypeField` type expressions; patterns retain uniform `PatternField` nodes. An uppercase label selects a type-expression RHS in construction or a lowercase type binder in patterns; do not require `@`. Parse the entire type RHS at its own nesting depth so function-type arrows cannot become enclosing lambda or clause arrows. Validate the resolved record member, kind, duplicate labels, and field types semantically. In `SomeException with { Err = String; err = "failure"; showErr = (e : String) -> e }`, use the supplied witness while checking all value fields, independent of label order. In `SomeException with { Err = e; showErr = se }`, create a fresh abstract witness and scope it over the pattern's value bindings and permitted body; reject concrete type matching and witness escape.
 
-Keep type members out of positional slots and out of the constructor's ordinary visible `@` parameters. Positional construction/matching contains only value fields; infer the witness during construction and open it anonymously during matching. Named patterns omitting the type member likewise open an anonymous witness. Only a named `with` member can explicitly supply or name the witness. Retain package evidence/dispatch needed at runtime; do not assume all witness evidence can be erased. Construction infers omitted witnesses from a single instantiation shared by all value fields. Records containing only type members, existential updates, and potential exception/fiber API revisions remain open. Abstract records retain their hidden type binders separately from value fields; `PackRecord` retains explicit witnesses, and `OpenPattern` names local type binders without adding runtime slots. Inference opens constructor existentials with fresh skolems and checks result, enclosing environment, and residual constraint escape. Core constructor descriptors identify hidden quantifiers; `OpenConstructorTest` binds fresh types in its arm, independently validated against the constructor layout. Runtime lowering erases those type binders while retaining value fields and operation closures, including any captured dictionaries. Dependent projection requires unpacking; independent fields use ordinary selectors. Versioned parser and semantic cases are in `test/fixtures/record-patterns/`; v0 type-directed coverage cases are in the parsing and type-checking fixture directories.
+Keep type members out of positional slots and out of the constructor's ordinary visible `@` parameters. Positional construction/matching contains only value fields; infer the witness during construction and open it anonymously during matching. Named patterns omitting the type member likewise open an anonymous witness. Only a named `with` member can explicitly supply or name the witness. Retain package evidence/dispatch needed at runtime; do not assume all witness evidence can be erased. Construction infers omitted witnesses from a single instantiation shared by all value fields. Records containing only type members, existential updates, and potential fiber API revisions remain open. Abstract records retain their hidden type binders separately from value fields; `PackRecord` retains explicit witnesses, and `OpenPattern` names local type binders without adding runtime slots. Inference opens constructor existentials with fresh skolems and checks result, enclosing environment, and residual constraint escape. Core constructor descriptors identify hidden quantifiers; `OpenConstructorTest` binds fresh types in its arm, independently validated against the constructor layout. Runtime lowering erases those type binders while retaining value fields and operation closures, including any captured dictionaries. Dependent projection requires unpacking; independent fields use ordinary selectors. Versioned parser and semantic cases are in `test/fixtures/record-patterns/`; v0 type-directed coverage cases are in the parsing and type-checking fixture directories.
 
 ### 10.6 Private members and structural deriving
 

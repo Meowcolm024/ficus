@@ -65,7 +65,7 @@ Imports are initialized once, in source order, before the importing module. Impo
 
 All top-level declarations are public in v0. Private pragmas are planned in Section 24.4.
 
-Pragmas occur only at global declaration level in v0. v1+ extends declaration-level placement to implementation members, `where` groups, and local definitions; each directive retains its own target and placement requirements. Each block contains an ALL_CAPITAL name followed by whitespace-separated identifiers or strings. Every pragma uses the same syntax; its arguments, placement, and meaning are checked semantically. `STANDALONE` permits acyclic expansive module initialization and prevents importing that module (Section 24.4). Module pragmas appear before imports; declaration pragmas appear among top-level declarations. `NO_IMPLICIT_PRELUDE` disables implicit Prelude and its dependent sugar. `BUILTIN` does not disable Prelude (Section 19). Private/deprecation pragmas are planned in Section 24.4; `FOREIGN` is planned in Section 25.
+Pragmas occur only at global declaration level in v0. v1+ extends declaration-level placement to implementation members, `where` groups, and local definitions; each directive retains its own target and placement requirements. Each block contains an ALL_CAPITAL name followed by whitespace-separated identifiers, dotted identifier paths, or strings. Every pragma uses the same syntax; its arguments, placement, and meaning are checked semantically. `STANDALONE` permits acyclic expansive module initialization and prevents importing that module (Section 24.4). Module pragmas appear before imports; declaration pragmas appear among top-level declarations. `NO_IMPLICIT_PRELUDE` disables implicit Prelude and its dependent sugar. `BUILTIN` does not disable Prelude (Section 19). Private/deprecation pragmas are planned in Section 24.4; `FOREIGN` is planned in Section 25.
 
 ## 3. Lexical structure
 
@@ -982,7 +982,7 @@ Handle : Type
 intAdd : Int -> Int -> Int
 ```
 
-`BUILTIN key name` associates compiler behavior with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source implementation for a primitive value are static errors. Source-defined data types and primitive constructors retain their ordinary definitions as described below. Placement and argument checks are semantic, not special parser productions.
+`BUILTIN key name` (or `BUILTIN key Record.member` for a record-member key) associates compiler behavior with an ordinarily declared top-level name in the same module. The pragma contains no signature and need not be adjacent to its target declaration; signatures and kinds come from ordinary declarations. A target without a source body must have a complete ordinary signature, which the builtin supplies with an implementation. Unknown keys, unresolved targets, incompatible types or kinds, conflicting associations, and an additional source implementation for a primitive value are static errors. Source-defined data types and primitive constructors retain their ordinary definitions as described below. Placement and argument checks are semantic, not special parser productions.
 
 `HANDLE` and `BYTE` supply opaque types of kind `Type`; `VEC` and `REF` supply opaque types of kind `Type -> Type`. Their conventional names are `Handle`, `Byte`, `Vec`, and `Ref`. `Void` and `absurd` are ordinary source definitions; there are no `VOID` or `ABSURD` compiler keys. For example, `HANDLE` supplies an opaque type conventionally declared as `Handle`. Its declared name is ordinary and may be renamed or imported; it is not an additional reserved primitive type.
 
@@ -1289,7 +1289,7 @@ Empty type bodies, empty matches, `STANDALONE`, mutable references, typed except
 
 ## 24. v1+ language features and libraries
 
-Empty types, empty matching, and standalone modules are implemented. Other features in this section remain planned. “Settled” means a selected design; draft proposals may change. Unspecified details remain open.
+Empty types, empty matching, record patterns, references, typed and catch-all exceptions, file IO, standalone modules, and existential records are implemented. Other features in this section remain planned. “Settled” means a selected design; draft proposals may change. Unspecified details remain open.
 
 ### 24.1 Types and patterns
 
@@ -1336,7 +1336,7 @@ A top-level record-pattern binding extends `top_decl` with a record pattern
 followed by `=`, an expression, and an optional `where` clause. Its head may
 also be parenthesized or annotated. Other unnamed top-level patterns remain
 unsupported. The bound values are public under the ordinary module rules.
-Existential type-member patterns remain a separate proposal in Section 24.6.
+Existential type-member patterns are described separately in Section 24.6.
 
 Record patterns use explicit braces and mirror named construction without punning, for example `Point with { x = px; y = py }`. Fields may be omitted: `Point with { x = px }` ignores `y`, and `Point with {}` ignores every field. Omitted fields introduce no bindings; supplied labels must be distinct and belong to the record. They are allowed in `with` clauses, lambda/function arguments, non-recursive value bindings, and both forms of `do` binding: `pattern <- expr` and `pattern = expr`. They are not allowed in recursive `let` groups. At top level or inside `where`, reject a binding headed by a record pattern when it participates in a recursive binding group; the error should suggest matching with `with` inside a named function instead. In `do`, a record pattern may appear on the left of either `<-` or `=`, for example:
 
@@ -1400,16 +1400,18 @@ restriction. Interaction with future fibers remains unspecified.
 
 #### Exception primitives
 
-The implemented v1 extension exposes in Prelude the compiler-recognized marker trait:
+The implemented v1 extension exposes in Prelude the compiler-recognized trait:
 
 ```text
 {-# BUILTIN EXCEPTION Exception #-}
-trait Exception e = {}
+trait Show e => Exception e = {}
 ```
 
 This extension permits `BUILTIN` to target an ordinarily declared
 top-level trait in the same module. The `EXCEPTION` contract requires one
-`Type` parameter, no methods, and no superclasses. Association follows ordinary
+`Type` parameter, no methods, and exactly one rendering superclass. That superclass
+has one `Type` parameter, no superclasses, and one method of type `e -> String`;
+Prelude uses `Show`. Association follows ordinary
 trait identity through renaming and imports; the spelling `Exception` has no
 special meaning. Wrong target categories, incompatible trait shapes, and
 conflicting associations are static errors. The pragma retains the generic
@@ -1432,8 +1434,8 @@ catch : Exception e => (Unit -> a) -> (e -> a) -> a
 Catches are dynamically scoped around the call to `action ()`. Ordinary strict
 argument evaluation happens before that call; exceptions while evaluating the
 action or handler expressions are outside this catch. A normal action result
-skips the handler. The nearest active catch with exactly the same nominal type
-handles a throw. The handler runs outside its own catch; throws from it propagate
+skips the handler. The nearest active catch whose selected type matches the nominal type or is
+`SomeException` handles a throw. The handler runs outside its own catch; throws from it propagate
 to enclosing catches. Type aliases preserve identity, while distinct nominal
 types and distinct type arguments remain distinct after wrapper erasure.
 
@@ -1453,7 +1455,8 @@ writes already performed by the updater remain visible. No implicit cleanup or
 resource finalization runs; cleanup APIs are deferred. An uncaught typed
 exception is reported as a generic runtime error with throw context; `run` exits
 with status 1 and the REPL reports the error and remains available under its
-ordinary failed-submission rules. No `Show` constraint is implicitly required.
+ordinary failed-submission rules. Every `Exception` implementation must satisfy
+its `Show` superclass.
 
 #### Standard primitive exceptions
 
@@ -1477,8 +1480,39 @@ construction, explicit `throw`, and primitive-generated errors have the same
 nominal identity and payload representation. Builtin Int, Float, and Handle
 modules import the error bindings explicitly. No effect constraints are added to arithmetic or IO signatures.
 
-Existential errors (Section 24.6), cleanup combinators, and fibers remain
-separate future extensions.
+#### Catch-all exception packages
+
+Prelude and `Control.Exception` re-export the ordinary source record:
+
+```text
+{-# BUILTIN SOMEEXCEPTION SomeException #-}
+{-# BUILTIN SOMEEXCEPTION_ERR SomeException.Err #-}
+{-# BUILTIN SOMEEXCEPTION_VALUE SomeException.err #-}
+{-# BUILTIN SOMEEXCEPTION_SHOWERR SomeException.showErr #-}
+type SomeException =
+    Err : Type
+    err : Err
+    showErr : Err -> String
+```
+
+`SomeException` implements `Show` using `showErr err`, and implements `Exception`.
+A `catch` whose handler accepts `SomeException` catches every typed exception,
+including primitive-generated errors. It packages the original exception value,
+its rendering operation, and its `Exception` dictionary. Ordinary typed handlers
+remain selective, and generic runtime failures remain outside typed catches.
+Throwing a `SomeException` unwraps it and preserves the original nominal exception
+identity, so an enclosing typed handler can catch the original type.
+
+Constructing this builtin record requires `Exception Err`; unpacking it brings
+that evidence and its rendering superclass into the witness scope. This permits
+rendering, rethrowing, and repacking the hidden value without matching on its type.
+The three member keys resolve ordinary members of the record associated with
+`SOMEEXCEPTION`; spellings, declaration order, and the record name are not special.
+The contract requires a nullary record with exactly one hidden `Type` member and
+two value fields of types `Err` and `Err -> String`. Invalid or conflicting member
+associations are static errors. Dotted pragma arguments use the uniform pragma
+syntax; member targets are resolved semantically. Cleanup combinators and fibers
+remain separate future extensions.
 
 
 #### File IO
@@ -1640,6 +1674,7 @@ Existential record declarations mix an uppercase abstract type member with lower
 ```text
 type SomeException =
     Err : Type
+    err : Err
     showErr : Err -> String
 ```
 
@@ -1656,7 +1691,7 @@ SomeException with { Err = e; showErr = se } = ...
 Type members can be supplied or opened only through named `with` fields. Uppercase labels identify type-member slots: their construction right-hand sides are type expressions, and their pattern right-hand sides bind lowercase type-variable names. No `@` marker is used inside these slots:
 
 ```text
-SomeException with { Err = String; showErr = (e : String) -> e }
+SomeException with { Err = String; err = "failure"; showErr = (e : String) -> e }
 with package { SomeException with { Err = e; showErr = se } -> ... }
 ```
 
@@ -1664,11 +1699,11 @@ The parser retains uppercase declaration labels as field signatures and uppercas
 
 All supplied labels must be distinct and belong to the record. In construction, check each supplied type against the member's kind and check value fields against that witness, irrespective of field order. In a pattern, `Err = e` binds a fresh abstract witness, never tests for equality with a concrete type; `Err = String` is invalid there. Type members are not ordinary record type parameters, so `SomeException @String` cannot supply the hidden witness. Ordinary `@` type application still applies to explicitly quantified parameters, not record members.
 
-Type members occupy no positional constructor or pattern slots. Value fields retain their positional slots in declaration order: `SomeException ((e : String) -> e)` infers the witness, and `SomeException se` opens it anonymously without binding a type name. Named patterns may omit type members and value fields; `SomeException with { showErr = se }` also leaves the witness unnamed. Every unpacking introduces fresh abstract types, including when the same package is unpacked twice. These types cannot occur in the result, exported bindings, or enclosing type variables. A function/lambda parameter scopes its named witnesses over the remaining value patterns, body, and attached `where` group; a match clause scopes them over its value patterns, guard, and body. A sequential pattern declaration scopes its witnesses over the remaining block; a `where` pattern declaration scopes them over its group and owning body. A top-level pattern declaration cannot export witness-dependent values. Repacking into another existential record is permitted. Fields whose types mention hidden members require unpacking; independent value fields retain ordinary projection. Every unpacking enforces witness non-escape. Only a named `with` type-member pattern can give that witness a source name. The previous alternative of positional type-member arguments is excluded; positional value-only matching is retained. Omitted construction witnesses are inferred by unifying the supplied value fields against one shared instantiation of the declaration. Type members support declared higher kinds. Records with only type members and updates of existential records remain open and are rejected. See [TAPL, Chapter 24](https://www.cis.upenn.edu/~bcpierce/tapl/contents.pdf).
+Type members occupy no positional constructor or pattern slots. Value fields retain their positional slots in declaration order: `SomeException "failure" ((e : String) -> e)` infers the witness, and `SomeException value se` opens it anonymously without binding a type name. Named patterns may omit type members and value fields; `SomeException with { showErr = se }` also leaves the witness unnamed. Every unpacking introduces fresh abstract types, including when the same package is unpacked twice. These types cannot occur in the result, exported bindings, or enclosing type variables. A function/lambda parameter scopes its named witnesses over the remaining value patterns, body, and attached `where` group; a match clause scopes them over its value patterns, guard, and body. A sequential pattern declaration scopes its witnesses over the remaining block; a `where` pattern declaration scopes them over its group and owning body. A top-level pattern declaration cannot export witness-dependent values. Repacking into another existential record is permitted. Fields whose types mention hidden members require unpacking; independent value fields retain ordinary projection. Every unpacking enforces witness non-escape. Only a named `with` type-member pattern can give that witness a source name. The previous alternative of positional type-member arguments is excluded; positional value-only matching is retained. Omitted construction witnesses are inferred by unifying the supplied value fields against one shared instantiation of the declaration. Type members support declared higher kinds. Records with only type members and updates of existential records remain open and are rejected. See [TAPL, Chapter 24](https://www.cis.upenn.edu/~bcpierce/tapl/contents.pdf).
 
 Packaged operations may capture trait dictionaries supplied at construction. For example, a polymorphic factory constrained by `Show a` may store `show` in a field of type `Err -> String` while setting `Err = a`; unpacking can invoke that operation without knowing the representation. The implementation must preserve this captured evidence through Core and Runtime. A bare type member of kind `Type` does not itself grant any trait evidence to clients; operations requiring hidden evidence must be supplied by the package's interface.
 
-Existentials could also support a `SomeException`-like package for heterogeneous errors in v1+. If adopted, it may change the v1+ exception interface above and the v2+ concurrency interface (Section 25.4), including the current `Fiber e a`/`join` result types. That possibility does not commit to an existential error API yet.
+The builtin `SomeException` package additionally carries `Exception` evidence as specified in Section 24.3. This is a contract of that builtin association, not a general grant of evidence from type members. Possible changes to the v2+ `Fiber e a`/`join` interface (Section 25.4) remain open.
 
 ## 25. v2+ language and library work
 

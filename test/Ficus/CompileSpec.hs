@@ -46,7 +46,7 @@ tests =
         assertBool (show (compileDiagnostics result)) (compileSucceeded result)
         let modules = Map.elems (Map.delete (ModuleId ("Main" :| [])) (frontendModules (compileFrontend result)))
         mapM_ (\source -> assertBool "library dependencies must be explicit" (not (A.implicitPrelude source))) modules
-        Set.fromList (concatMap (Map.keys . A.builtinAssociations) modules) @?= Builtin.builtinKeys
+        Set.fromList (concatMap (\tree -> Map.keys (A.builtinAssociations tree) ++ Map.keys (A.builtinMemberAssociations tree)) modules) @?= Builtin.builtinKeys
         mapM_ checkLibrarySource (Map.toList (compileSources result))
         mapM_ (\checked -> validateCore (validatedModule (checkedCore checked)) @?= []) (Map.elems (compileModules result))
         case Map.lookup (ModuleId ("Prelude" :| [])) (frontendModules (compileFrontend result)) of

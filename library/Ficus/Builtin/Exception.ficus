@@ -1,4 +1,5 @@
 {-# NO_IMPLICIT_PRELUDE #-}
+use Class.Show (Show, show)
 
 {-# BUILTIN THROW throw #-}
 throw : Exception e => e -> a
@@ -7,7 +8,22 @@ throw : Exception e => e -> a
 catch : Exception e => (Unit -> a) -> (e -> a) -> a
 
 {-# BUILTIN EXCEPTION Exception #-}
-trait Exception e = {}
+trait Show e => Exception e = {}
+
+{-# BUILTIN SOMEEXCEPTION SomeException #-}
+type SomeException =
+    Err : Type
+    err : Err
+    showErr : Err -> String
+{-# BUILTIN SOMEEXCEPTION_ERR SomeException.Err #-}
+{-# BUILTIN SOMEEXCEPTION_VALUE SomeException.err #-}
+{-# BUILTIN SOMEEXCEPTION_SHOWERR SomeException.showErr #-}
+
+impl Show SomeException =
+    show package = with package
+        SomeException with { err = value; showErr = render } -> render value
+impl Exception SomeException = {}
+
 
 impl Exception Int = {}
 impl Exception Float = {}

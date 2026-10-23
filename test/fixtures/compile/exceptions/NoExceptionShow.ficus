@@ -1,0 +1,2 @@
+type Problem = Problem
+impl Exception Problem = {}

@@ -28,6 +28,7 @@ validateCore tree =
   checkOrigin (coreSpan tree) (coreOrigin tree)
     ++ concatMap (checkScheme tree Map.empty (coreSpan tree)) (Map.elems (coreImports tree))
     ++ concatMap checkBuiltin (Map.toList (coreBuiltins tree))
+    ++ checkExceptionPackage tree
     ++ concatMap checkConstructor (Map.elems (coreConstructors tree))
     ++ concatMap checkRecord (Map.elems (coreRecords tree))
     ++ concatMap checkDictionary (Map.toList (coreDictionaries tree))
@@ -66,10 +67,20 @@ validateCore tree =
           names = map (fst . nodeValue) methods
        in checkNode descriptor
             ++ require (nodeSpan descriptor) (Map.lookup ident (coreKinds tree) == Just (KindArrow (quantifierKind parameter) TypeKind)) "dictionary has the wrong constructor kind"
-            ++ require (nodeSpan descriptor) (not (dictionaryException value) || (quantifierKind parameter == TypeKind && null methods && null (dictionarySuperclasses value))) "invalid exception dictionary layout"
+            ++ require (nodeSpan descriptor) (not (dictionaryException value) || (quantifierKind parameter == TypeKind && null methods && validExceptionDisplay value)) "invalid exception dictionary layout"
             ++ require (nodeSpan descriptor) (length names == length (nub names)) "duplicate dictionary method"
             ++ concatMap (\super -> checkNode super ++ checkType tree scope (nodeSpan super) (nodeValue super) ++ require (nodeSpan super) (maybe False (`Map.member` coreDictionaries tree) (typeHead (nodeValue super))) "superclass is not a dictionary type") (dictionarySuperclasses value)
             ++ concatMap (\method -> checkNode method ++ checkScheme tree scope (nodeSpan method) (snd (nodeValue method))) methods
+    validExceptionDisplay descriptor = case dictionarySuperclasses descriptor of
+      [super] ->
+        let parameter = dictionaryParameter descriptor
+            argument = Variable (BoundVariable (quantifierId parameter)) TypeKind
+         in case applicationSpine (nodeValue super) of
+              (Constructor owner _, [actual]) | actual == argument -> case specializeDictionary tree owner argument of
+                Right (_, [], [method]) -> null (quantifiers method) && null (schemePredicates method) && schemeType method == function argument (primitive StringType)
+                _ -> False
+              _ -> False
+      _ -> False
     checkGroup (environment, errors) group =
       let bindings = groupBindings group
           extended = extendBindings bindings environment
@@ -162,16 +173,19 @@ checkExpression tree environment scope expression =
               ++ checkOperands location expectedSupers supers
               ++ require location (length methods == length expectedMethods) "dictionary method count differs from its layout"
               ++ concat (zipWith checkMethod expectedMethods methods)
-      ExceptionDictionary owner argument tokens ->
+      ExceptionDictionary owner argument tokens supers ->
         let (base, arguments) = applicationSpine argument
             dict ty' = Application (Constructor owner (KindArrow TypeKind TypeKind)) ty'
          in checkType tree scope location argument
-              ++ concatMap check tokens
-              ++ require location (isException tree owner) "exception token requires a marker trait"
+              ++ concatMap check (tokens ++ supers)
+              ++ require location (isException tree owner) "exception evidence requires the exception trait"
               ++ require location (case base of Constructor _ _ -> True; _ -> False) "exception identity requires a nominal head"
               ++ require location (all ((== Right TypeKind) . kindOf) arguments) "exception token parameters must have kind Type"
               ++ same ty (dict argument)
               ++ checkOperands location (map dict arguments) tokens
+              ++ case specializeDictionary tree owner argument of
+                Left message -> invalid location message
+                Right (_, expectedSupers, _) -> checkOperands location expectedSupers supers
       SelectMethod receiver owner index arguments ->
         check receiver ++ concatMap (checkType tree scope location) arguments ++ case dictionaryReceiver tree owner (typeOf receiver) of
           Left message -> invalid location message
@@ -376,3 +390,35 @@ invalid origin message = [E.diagnostic E.InvalidCoreTree origin message]
 
 isException :: CoreModule ty -> GlobalId -> Bool
 isException tree owner = maybe False (dictionaryException . nodeValue) (Map.lookup owner (coreDictionaries tree))
+
+-- Recheck the source-defined package contract at the independent Core boundary.
+checkExceptionPackage :: CoreModule CoreType -> [E.Diagnostic]
+checkExceptionPackage tree
+  | Map.null (coreBuiltinMembers tree) && Map.notMember "SOMEEXCEPTION" (coreBuiltins tree) = []
+  | otherwise = require (coreSpan tree) (valid == Just True) "invalid SomeException member associations or constructor evidence"
+  where
+    valid = do
+      owner <- Map.lookup "SOMEEXCEPTION" (coreBuiltins tree)
+      record <- nodeValue <$> Map.lookup owner (coreRecords tree)
+      hidden <- case recordTypeMembers record of [member] -> Just (snd (nodeValue member)); _ -> Nothing
+      hiddenMember <- Map.lookup "SOMEEXCEPTION_ERR" (coreBuiltinMembers tree)
+      valueMember <- Map.lookup "SOMEEXCEPTION_VALUE" (coreBuiltinMembers tree)
+      renderMember <- Map.lookup "SOMEEXCEPTION_SHOWERR" (coreBuiltinMembers tree)
+      constructor <- nodeValue <$> Map.lookup (recordConstructor record) (coreConstructors tree)
+      exception <- case [ident | (ident, descriptor) <- Map.toList (coreDictionaries tree), dictionaryException (nodeValue descriptor)] of [ident] -> Just ident; _ -> Nothing
+      let witness = Variable (BoundVariable (quantifierId hidden)) TypeKind
+          result = Constructor owner TypeKind
+          fields = [(name, schemeType scheme) | member <- recordFields record, let (name, scheme) = nodeValue member]
+          evidence = Application (Constructor exception (KindArrow TypeKind TypeKind)) witness
+          (inputs, output) = splitArrows (schemeType (constructorScheme constructor))
+      pure
+        ( all ((== owner) . fieldOwner) [hiddenMember, valueMember, renderMember]
+            && fieldLabel hiddenMember == quantifierName hidden
+            && quantifierKind hidden == TypeKind
+            && length fields == 2
+            && output == result
+            && constructorArity constructor == 3
+            && lookup (fieldLabel valueMember) fields == Just (function result witness)
+            && lookup (fieldLabel renderMember) fields == Just (function result (function witness (primitive StringType)))
+            && case inputs of first : _ -> first == evidence; [] -> False
+        )

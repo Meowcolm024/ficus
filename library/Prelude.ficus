@@ -1,6 +1,6 @@
 {-# NO_IMPLICIT_PRELUDE #-}
 
-use Class.Exception (Exception) pub
+use Class.Exception (Exception, SomeException) pub
 use Class.Eq (Eq, (==), (/=)) pub
 use Class.Ord (Ord, compare, (<), (<=), (>), (>=), min, max) pub
 use Class.Show (Show, show) pub

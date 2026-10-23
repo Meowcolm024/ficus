@@ -1,12 +1,15 @@
 {-# NO_IMPLICIT_PRELUDE #-}
 
-use Ficus.Builtin.Int (..)
-use Ficus.Builtin.Float (..)
 use Ficus.Builtin.Char (..)
 use Ficus.Builtin.String (..)
 use Data.Ordering (Ordering(..))
 trait Show a =
     show : a -> String
+
+{-# BUILTIN INT_SHOW intShow #-}
+intShow : Int -> String
+{-# BUILTIN FLOAT_SHOW floatShow #-}
+floatShow : Float -> String
 impl Show Int =
     show value = intShow value
 impl Show Float =

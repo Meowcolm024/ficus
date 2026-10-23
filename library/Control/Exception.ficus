@@ -1,5 +1,5 @@
 {-# NO_IMPLICIT_PRELUDE #-}
-use Class.Exception (Exception) pub
+use Class.Exception (Exception, SomeException) pub
 use Ficus.Builtin.Exception (throw, catch) pub
 
 use Ficus.Builtin.Errors (ArithmeticError(..), IOError(..), MatchError(..)) pub

@@ -1,3 +1,3 @@
-{-# NO_IMPLICIT_PRELUDE #-}
+{-# NO_IMPLICIT_PRELUDE #-} use Class.Show (Show, show)
 {-# BUILTIN EXCEPTION Other #-}
-trait Other e = {}
+trait Show e => Other e = {}

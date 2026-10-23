@@ -37,6 +37,7 @@ extra-source-files:
     test/fixtures/compile/exceptions/BadErrorOwner.ficus
     test/fixtures/compile/exceptions/BadErrorType.ficus
     test/fixtures/compile/exceptions/BadIOMode.ficus
+    test/fixtures/compile/exceptions/BadPackageMember.ficus
     test/fixtures/compile/exceptions/Basic.ficus
     test/fixtures/compile/exceptions/Conflicting.ficus
     test/fixtures/compile/exceptions/ConflictingErrors.ficus
@@ -52,11 +53,16 @@ extra-source-files:
     test/fixtures/compile/exceptions/MissingErrorConstructor.ficus
     test/fixtures/compile/exceptions/MissingErrorType.ficus
     test/fixtures/compile/exceptions/MissingEvidence.ficus
+    test/fixtures/compile/exceptions/MissingPackageMembers.ficus
+    test/fixtures/compile/exceptions/NoExceptionShow.ficus
     test/fixtures/compile/exceptions/NoInstance.ficus
+    test/fixtures/compile/exceptions/NoPackageEvidence.ficus
     test/fixtures/compile/exceptions/OtherMarker.ficus
     test/fixtures/compile/exceptions/Positive.ficus
     test/fixtures/compile/exceptions/PrimitiveErrors.ficus
     test/fixtures/compile/exceptions/RenamedErrors.ficus
+    test/fixtures/compile/exceptions/RenamedSomeException.ficus
+    test/fixtures/compile/exceptions/SomeException.ficus
     test/fixtures/compile/exceptions/Superclass.ficus
     test/fixtures/compile/exceptions/WrongCatch.ficus
     test/fixtures/compile/exceptions/WrongResult.ficus
@@ -286,6 +292,7 @@ extra-source-files:
     test/fixtures/parsing/negative/ValueOperatorImportMembers.ficus
     test/fixtures/parsing/negative/ValueOperatorPattern.ficus
     test/fixtures/parsing/negative/WhereNotIndented.ficus
+    test/fixtures/parsing/positive/BuiltinRecordMembers.ficus
     test/fixtures/parsing/positive/ControlInteraction.ficus
     test/fixtures/parsing/positive/DeclarationsTypes.ficus
     test/fixtures/parsing/positive/EmptyMatch.ficus

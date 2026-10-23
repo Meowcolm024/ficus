@@ -1,4 +1,4 @@
-# v0 examples
+# Examples
 
 - `Main.ficus`: implicit Prelude, a total list lookup, debug strings, and IO.
 - `Interpolation.ficus`: variable and qualified-name interpolation, computed
@@ -9,8 +9,10 @@
   composition operators, `do` sequencing, and Result traversal.
 - `Builtins.ficus`: explicit Byte/Vec imports, direct compiler-key operations,
   and standard handle reads/writes.
-- `Exceptions.ficus`: the v1 typed exception API, an explicit nominal instance,
+- `Exceptions.ficus`: the v1 typed exception API, catch-all `SomeException` handlers, an explicit nominal instance,
   and recovery through a matching handler.
+- `Existentials.ficus`: existential records, captured `Show` dictionaries, and
+  a list containing values with different hidden representation types.
 - `Fibonacci.ficus`: recursive calls and branches with deliberately repeated work.
 - `Primes.ficus`: integer division, remainder, branching, and bounded accumulation.
 - `MergeSort.ficus`: deterministic data generation, list allocation, and recursive
@@ -19,7 +21,7 @@
 Check all examples from the repository root:
 
 ```sh
-stack exec ficus -- compile --library library examples/Main.ficus examples/Interpolation.ficus examples/Collections.ficus examples/Control.ficus examples/Builtins.ficus examples/Fibonacci.ficus examples/Primes.ficus examples/MergeSort.ficus
+stack exec ficus -- compile --library library examples/Main.ficus examples/Interpolation.ficus examples/Collections.ficus examples/Control.ficus examples/Builtins.ficus examples/Fibonacci.ficus examples/Primes.ficus examples/MergeSort.ficus examples/Existentials.ficus
 ```
 
 Compilation validates typed Core. The compile command does not execute `main`.
@@ -37,6 +39,25 @@ Hello, Ada! Argument count: 1
 Qualified value: ()
 Literal braces: {name} and {name}
 Braces around a value: {Ada}
+```
+
+## Existential records and traits
+
+`pack` requires `Show a` and stores both a value of the hidden type and a
+rendering operation that captures its trait dictionary. Unpacking introduces a
+fresh type name; `render` uses the stored operation without discovering that
+type or requiring a new trait instance. The example also supplies a custom
+`Show Point` implementation.
+
+```sh
+stack exec ficus -- run examples/Existentials.ficus --library library
+```
+
+```text
+42
+True
+hello
+(3, 4)
 ```
 
 ## Mini benchmarks

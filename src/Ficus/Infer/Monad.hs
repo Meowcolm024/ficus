@@ -58,6 +58,8 @@ data InferState = InferState
     pendingFields :: [FieldWanted],
     checkedFields :: Map NodeId C.FieldId,
     openedWitnesses :: Map NodeId [InferType],
+    patternGivens :: Map (NodeId, Int) (Span, Provenance, Predicate InferType),
+    loweredPatternGivens :: Map (NodeId, Int) (C.Binder InferType),
     checkedEvidence :: [(Wanted, Evidence)],
     pendingNegations :: Map NodeId (C.Node InferType)
   }
@@ -86,6 +88,8 @@ initialState =
       pendingFields = [],
       checkedFields = Map.empty,
       openedWitnesses = Map.empty,
+      patternGivens = Map.empty,
+      loweredPatternGivens = Map.empty,
       checkedEvidence = [],
       pendingNegations = Map.empty
     }

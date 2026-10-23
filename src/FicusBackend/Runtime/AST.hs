@@ -95,7 +95,15 @@ primitiveArity :: Primitive nominal -> Arity
 primitiveArity = Arity . P.primitiveArity
 
 -- Numeric identities and payload representation for source-defined errors.
-data ErrorConstructor = ErrorConstructor ConstructorIndex (Maybe ConstructorIndex) deriving (Eq, Show)
+data ErrorConstructor = ErrorConstructor ConstructorIndex (Maybe ConstructorIndex) (Maybe GlobalIndex) deriving (Eq, Show)
+
+data SomeExceptionLayout = SomeExceptionLayout
+  { someExceptionIdentity :: ConstructorIndex,
+    someExceptionConstructor :: ConstructorIndex,
+    someExceptionValue :: FieldIndex,
+    someExceptionRenderer :: FieldIndex
+  }
+  deriving (Eq, Show)
 
 data Program = Program
   { programFunctions :: Vector Function,
@@ -103,6 +111,7 @@ data Program = Program
     programConstructors :: Vector (Node ConstructorLayout),
     programFileModes :: Map ConstructorIndex P.FileMode,
     programErrors :: Map P.PrimitiveError ErrorConstructor,
+    programSomeException :: Maybe SomeExceptionLayout,
     programPrimitives :: Vector (Primitive ()),
     programInitialization :: [Node GlobalGroup]
   }

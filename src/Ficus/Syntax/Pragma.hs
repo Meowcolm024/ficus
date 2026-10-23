@@ -8,7 +8,7 @@ import Ficus.Util.Source (Span)
 
 data Directive = Directive {directiveName :: Text, directiveSpan :: Span, directiveArguments :: [DirectiveArgument]} deriving (Eq, Show)
 
-data DirectiveArgument = Identifier Text Span | String Text Span deriving (Eq, Show)
+data DirectiveArgument = Identifier Text Span | QualifiedIdentifier [Text] Span | String Text Span deriving (Eq, Show)
 
 type ModuleOptions = Map Text [Directive]
 

@@ -1,0 +1,3 @@
+{-# NO_IMPLICIT_PRELUDE #-}
+{-# BUILTIN SOMEEXCEPTION Package #-}
+type Package = { Err : Type; err : Err; showErr : Err -> String }

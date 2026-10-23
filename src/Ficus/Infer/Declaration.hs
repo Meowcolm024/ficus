@@ -1,4 +1,4 @@
-module Ficus.Infer.Declaration (Declarations (..), TraitDeclaration (..), ImplementationDeclaration (..), emptyDeclarations, prepareDeclarations, prepareDeclarationsWithConfig, sameImplementationHead) where
+module Ficus.Infer.Declaration (Declarations (..), TraitDeclaration (..), ImplementationDeclaration (..), emptyDeclarations, prepareDeclarations, prepareDeclarationsWithConfig, sameImplementationHead, exceptionDisplayTrait) where
 
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.Graph (SCC (..), stronglyConnComp)
@@ -40,6 +40,7 @@ data ImplementationDeclaration = ImplementationDeclaration
 
 data Declarations = Declarations
   { builtinTypeAssociations :: Map Text GlobalId,
+    builtinRecordMembers :: Map Text A.FieldDescriptor,
     declarationTypes :: TypeEnvironment,
     valueSignatures :: Map Reference Signature,
     uninhabitedTypes :: Set.Set GlobalId,
@@ -51,7 +52,7 @@ data Declarations = Declarations
   deriving (Eq, Show)
 
 emptyDeclarations :: Declarations
-emptyDeclarations = Declarations Map.empty emptyTypes Map.empty Set.empty Map.empty Map.empty Map.empty Map.empty
+emptyDeclarations = Declarations Map.empty Map.empty emptyTypes Map.empty Set.empty Map.empty Map.empty Map.empty Map.empty
 
 prepareDeclarations :: Declarations -> A.AbstractModule -> Infer Declarations
 prepareDeclarations = prepareDeclarationsWithConfig defaultCompilationConfig
@@ -70,12 +71,12 @@ prepareDeclarationsWithConfig config imported tree = do
       dataKeys = P.builtinDataKeys
       localData = Map.restrictKeys (A.builtinAssociations tree) (Set.fromList dataKeys)
       associations = localData `Map.union` maybe (builtinTypeAssociations imported) (\ident -> Map.insert "EXCEPTION" ident (builtinTypeAssociations imported)) localException
-  prepared <- foldM prepare (imported {declarationTypes = preparedTypes, builtinTypeAssociations = associations}) declarations
+  prepared <- foldM prepare (imported {declarationTypes = preparedTypes, builtinTypeAssociations = associations, builtinRecordMembers = A.builtinMemberAssociations tree `Map.union` builtinRecordMembers imported}) declarations
   forM_ localException $ \ident -> do
-    let location = maybe (A.abstractSpan tree) A.entitySpan (Map.lookup ident (A.abstractEntities tree))
+    let location = maybe (maybe (A.abstractSpan tree) A.entitySpan (Map.lookup ident (A.abstractEntities tree))) C.nodeSpan (Map.lookup ident (traitDeclarations prepared))
     unless
-      (maybe False (traitException . C.nodeValue) (Map.lookup ident (traitDeclarations prepared)))
-      (emit (E.diagnostic E.BuiltinContractMismatch location "EXCEPTION must target an empty trait with one Type parameter and no superclasses"))
+      (exceptionDisplayTrait prepared ident /= Nothing)
+      (emit (E.diagnostic E.BuiltinContractMismatch location "EXCEPTION requires one Type parameter, no methods, and a rendering superclass"))
   when
     (length (filter (traitException . C.nodeValue) (Map.elems (traitDeclarations prepared))) > 1)
     (emit (E.diagnostic E.BuiltinContractMismatch (A.abstractSpan tree) "conflicting visible EXCEPTION trait associations"))
@@ -88,6 +89,7 @@ prepareDeclarationsWithConfig config imported tree = do
         valid = if key `elem` P.builtinDataTypes then validType else or [validConstructor owner fields | (constructor, owner, fields) <- P.builtinConstructors, constructor == key]
     unless valid (emit (E.diagnostic E.BuiltinContractMismatch location "builtin data or constructor association has an incompatible declaration"))
     when (maybe False (/= ident) (Map.lookup key (builtinTypeAssociations imported))) (emit (E.diagnostic E.BuiltinContractMismatch location "conflicting visible builtin associations"))
+  validateExceptionPackage prepared tree
   mapM_ emit (regularityDiagnostics prepared declarations)
   mapM_ emit (superclassDiagnostics prepared)
   implementations <- foldM prepareImplementation prepared declarations
@@ -129,7 +131,9 @@ prepareDeclarationsWithConfig config imported tree = do
           let (name, sourceType) = A.nodeValue field
           ty <- readTypeAt (declarationTypes environment) completeScope False TypeKind sourceType
           pure (field, name, ty)
-        let scheme = Scheme [] (quantified ++ hidden) [] (foldr function result [ty | (_, _, ty) <- entries])
+        let package = Map.lookup "SOMEEXCEPTION" (builtinTypeAssociations environment) == Just ident
+            evidence = [Predicate exception (Variable (Bound (quantifierId q)) (quantifierKind q)) | package, Just exception <- [Map.lookup "EXCEPTION" (builtinTypeAssociations environment)], q <- hidden]
+            scheme = Scheme [] (quantified ++ hidden) evidence (foldr function result [ty | (_, _, ty) <- entries])
             descriptor = C.ConstructorDescriptor scheme (length fields) ident hidden
             record = C.RecordDescriptor (C.DataConstructor constructor) [coreNode field (name, Scheme [] (quantified ++ [q | q <- hidden, Bound (quantifierId q) `Set.member` freeVariables ty]) [] (function result ty)) | (field, name, ty) <- entries] [coreNode member (quantifierName q, q) | (member, q) <- zip members hidden]
         pure environment {constructorDeclarations = Map.insert (C.DataConstructor constructor) (coreNode source descriptor) (constructorDeclarations environment), recordDeclarations = Map.insert ident (coreNode source record) (recordDeclarations environment)}
@@ -151,8 +155,8 @@ prepareDeclarationsWithConfig config imported tree = do
         let exception = Map.lookup "EXCEPTION" (A.builtinAssociations tree) == Just ident
         when exception $
           unless
-            (null superclasses && null members && map quantifierKind parameters == [TypeKind])
-            (emit (E.diagnostic E.BuiltinContractMismatch (A.nodeSpan source) "EXCEPTION requires an empty trait with one Type parameter and no superclasses"))
+            (length superclasses == 1 && null members && map quantifierKind parameters == [TypeKind])
+            (emit (E.diagnostic E.BuiltinContractMismatch (A.nodeSpan source) "EXCEPTION requires one Type parameter, no methods, and one rendering superclass"))
         case parameters of
           [quantifier] ->
             pure
@@ -286,3 +290,55 @@ regularityDiagnostics environment sources = nub (concatMap check (Map.toList def
     spine = collect []
     collect supplied (Application f x) = collect (x : supplied) f
     collect supplied base = (base, supplied)
+
+-- The superclass is resolved structurally, preserving renamed trait identities.
+exceptionDisplayTrait :: Declarations -> GlobalId -> Maybe GlobalId
+exceptionDisplayTrait environment ident = do
+  source <- Map.lookup ident (traitDeclarations environment)
+  let trait = C.nodeValue source
+      q = traitParameter trait
+      a = Variable (Bound (quantifierId q)) (quantifierKind q)
+  parent <- case traitSuperclasses trait of [p] | predicateArgument p == a -> Just p; _ -> Nothing
+  displaySource <- Map.lookup (predicateTrait parent) (traitDeclarations environment)
+  let display = C.nodeValue displaySource
+      parameter = traitParameter display
+      expected = function (Variable (Bound (quantifierId parameter)) TypeKind) (primitive StringType)
+  method <- case Map.elems (traitMethods display) of [scheme] -> Just scheme; _ -> Nothing
+  if traitException trait
+    && quantifierKind q == TypeKind
+    && Map.null (traitMethods trait)
+    && quantifierKind parameter == TypeKind
+    && null (traitSuperclasses display)
+    && null (explicitQuantifiers method)
+    && implicitQuantifiers method == [parameter]
+    && schemePredicates method == [Predicate (predicateTrait parent) (Variable (Bound (quantifierId parameter)) TypeKind)]
+    && schemeType method == expected
+    then Just (predicateTrait parent)
+    else Nothing
+
+validateExceptionPackage :: Declarations -> A.AbstractModule -> Infer ()
+validateExceptionPackage environment tree = do
+  let local = Map.member "SOMEEXCEPTION" (A.builtinAssociations tree) || not (Map.null (A.builtinMemberAssociations tree))
+      package = Map.lookup "SOMEEXCEPTION" (builtinTypeAssociations environment)
+      members = builtinRecordMembers environment
+      origin = A.abstractSpan tree
+      valid = do
+        owner <- package
+        record <- C.nodeValue <$> Map.lookup owner (recordDeclarations environment)
+        q <- case C.recordTypeMembers record of [member] -> Just (snd (C.nodeValue member)); _ -> Nothing
+        hidden <- Map.lookup "SOMEEXCEPTION_ERR" members
+        value <- Map.lookup "SOMEEXCEPTION_VALUE" members
+        renderer <- Map.lookup "SOMEEXCEPTION_SHOWERR" members
+        let fields = [(name, schemeType scheme) | field <- C.recordFields record, let (name, scheme) = C.nodeValue field]
+            witness = Variable (Bound (quantifierId q)) TypeKind
+            result = Constructor owner TypeKind
+        pure
+          ( map A.fieldOwner [hidden, value, renderer] == replicate 3 owner
+              && A.fieldLabel hidden == quantifierName q
+              && quantifierKind q == TypeKind
+              && Map.lookup owner (typeKinds (declarationTypes environment)) == Just TypeKind
+              && length fields == 2
+              && lookup (A.fieldLabel value) fields == Just (function result witness)
+              && lookup (A.fieldLabel renderer) fields == Just (function result (function witness (primitive StringType)))
+          )
+  when (local && valid /= Just True) (emit (E.diagnostic E.BuiltinContractMismatch origin "SOMEEXCEPTION requires one hidden Type member, its value, and a renderer for that same member; associate every member key"))

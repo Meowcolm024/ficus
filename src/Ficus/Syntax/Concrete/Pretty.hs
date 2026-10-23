@@ -288,7 +288,7 @@ pragma :: Pragma -> Doc
 pragma p = case concrete p of
   Pragma n args -> spaces (chunk "{-#" : name n : map pragmaArgument args ++ [chunk "#-}"])
   where
-    pragmaArgument a = case concrete a of IdentifierArgument n -> name n; StringArgument t -> chunk t
+    pragmaArgument a = case concrete a of IdentifierArgument n -> name n; QualifiedIdentifierArgument n ns -> dottedNames (n : ns); StringArgument t -> chunk t
 
 importDoc :: Import -> Doc
 importDoc i = case concrete i of

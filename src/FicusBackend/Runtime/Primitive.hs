@@ -37,8 +37,8 @@ readFileChunk handle count = T.pack . reverse <$> loop handle count []
               character <- IO.hGetChar handle'
               loop handle' (remaining - 1) (character : buffer)
 
-evaluatePrimitive :: Map P.PrimitiveError ErrorConstructor -> Map ConstructorIndex P.FileMode -> T.Text -> Effects -> Primitive () -> [Value] -> EvalM Value
-evaluatePrimitive errors modes origin effects operation arguments = case (operation, arguments) of
+evaluatePrimitive :: Map P.PrimitiveError ErrorConstructor -> Map ConstructorIndex P.FileMode -> Maybe SomeExceptionLayout -> (GlobalIndex -> EvalM Value) -> T.Text -> Effects -> Primitive () -> [Value] -> EvalM Value
+evaluatePrimitive errors modes packageLayout loadGlobal origin effects operation arguments = case (operation, arguments) of
   (IntAdd, [LiteralValue (Integer a), LiteralValue (Integer b)]) -> integer (a + b)
   (IntSubtract, [LiteralValue (Integer a), LiteralValue (Integer b)]) -> integer (a - b)
   (IntMultiply, [LiteralValue (Integer a), LiteralValue (Integer b)]) -> integer (a * b)
@@ -82,10 +82,16 @@ evaluatePrimitive errors modes origin effects operation arguments = case (operat
   (ByteFromInt (), [LiteralValue (Integer value)]) -> pure (ByteValue (fromIntegral value))
   (ByteToInt (), [ByteValue value]) -> integer (fromIntegral value)
   (MatchFailure, [LiteralValue (String message)]) -> typedFailure P.MatchError message [LiteralValue (String message)]
-  (Throw (), [TokenValue token, value]) -> throwError (Thrown token value origin)
-  (Catch (), [TokenValue expected, action, handler]) ->
+  (Throw (), [dictionary, value]) -> throwException dictionary value
+  (Catch (), [dictionary, action, handler]) -> do
+    (expected, _) <- exceptionParts dictionary
     catchError (applyValueWithEffects effects action (LiteralValue Unit)) $ \case
-      Thrown actual value _ | expected == actual -> applyValueWithEffects effects handler value
+      Thrown actual value evidence _
+        | Just layout <- packageLayout,
+          expected == ExceptionToken (someExceptionIdentity layout) [] -> do
+            packaged <- packageException layout value evidence
+            applyValueWithEffects effects handler packaged
+        | expected == actual -> applyValueWithEffects effects handler value
       failure' -> throwError failure'
   (RefNew (), [value]) -> RefValue <$> liftIO (newIORef value)
   (RefRead (), [RefValue cell]) -> liftIO (readIORef cell)
@@ -127,11 +133,48 @@ evaluatePrimitive errors modes origin effects operation arguments = case (operat
     typedFailure :: P.PrimitiveError -> T.Text -> [Value] -> EvalM a
     typedFailure kind message fields = case Map.lookup kind errors of
       Nothing -> invalidValue "missing primitive error association"
-      Just (ErrorConstructor identity representation) -> do
+      Just (ErrorConstructor identity representation evidenceGlobal) -> do
         payload <- case representation of
           Just tag -> pure (Aggregate tag (V.fromList fields))
           Nothing -> case fields of [value] -> pure value; _ -> invalidValue "invalid erased error constructor"
-        throwError (Thrown (ExceptionToken identity []) payload (origin <> message <> ": "))
+        evidence <- traverse loadGlobal evidenceGlobal
+        throwError (Thrown (ExceptionToken identity []) payload evidence (origin <> message <> ": "))
+    exceptionParts dictionary = case dictionary of
+      Aggregate _ fields | V.length fields == 2 -> do
+        display <- index fields 0
+        identity <- index fields 1
+        case (display, identity) of
+          (Aggregate _ methods, TokenValue token) | V.length methods == 1 -> (token,) <$> index methods 0
+          _ -> invalidValue "invalid exception rendering evidence"
+      _ -> invalidValue "exception dictionary expected"
+    packageException layout value evidence = do
+      dictionary <- maybe (invalidValue "missing primitive exception rendering evidence") pure evidence
+      (_, renderer) <- exceptionParts dictionary
+      let FieldIndex valueSlot = someExceptionValue layout
+          FieldIndex renderSlot = someExceptionRenderer layout
+          payload = V.generate 3 (\slot -> if slot == 0 then dictionary else if slot == valueSlot then value else renderer)
+      if valueSlot == renderSlot || valueSlot < 1 || renderSlot < 1 || valueSlot > 2 || renderSlot > 2
+        then invalidValue "invalid SomeException layout"
+        else pure (Aggregate (someExceptionConstructor layout) payload)
+    throwException dictionary value = do
+      (token, _) <- exceptionParts dictionary
+      case (packageLayout, value) of
+        (Just layout, Aggregate tag fields)
+          | token == ExceptionToken (someExceptionIdentity layout) [] && tag == someExceptionConstructor layout -> do
+              underlying <- index fields 0
+              let FieldIndex valueSlot = someExceptionValue layout
+                  FieldIndex renderSlot = someExceptionRenderer layout
+              payload <- index fields valueSlot
+              renderer <- index fields renderSlot
+              case underlying of
+                Aggregate evidenceTag evidenceFields -> do
+                  display <- index evidenceFields 0
+                  identity <- index evidenceFields 1
+                  case display of
+                    Aggregate displayTag _ -> throwException (Aggregate evidenceTag (V.fromList [Aggregate displayTag (V.singleton renderer), identity])) payload
+                    _ -> invalidValue "invalid packaged exception renderer"
+                _ -> invalidValue "invalid packaged exception evidence"
+        _ -> throwError (Thrown token value (Just dictionary) origin)
     conversion message = typedFailure P.InvalidConversionError message [LiteralValue (String message)]
     ioFailure :: T.Text -> T.Text -> EvalM a
     ioFailure operation' message = typedFailure P.IOError (operation' <> ": " <> message) [LiteralValue (String operation'), LiteralValue (String message)]

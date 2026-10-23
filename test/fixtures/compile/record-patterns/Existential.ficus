@@ -1,0 +1,33 @@
+type Package = { Err : Type; value : Err; render : Err -> String }
+make : {a} -> Show a => a -> Package
+make @a (x : a) = Package with { render = show; value = x; Err = a }
+unpack p = with p { Package with { Err = e; value = x; render = render } -> render (x : e) }
+readAnonymous (Package x render) = render x
+readNamed (Package with { value = x; render = render }) = render x
+local p = { Package with { Err = e; value = x; render = render } = p; render (x : e) }
+check () = unpack (make 42)
+boolean () = readAnonymous (make True)
+string () = readNamed (make "hello")
+localCheck () = local (make 7)
+positional () = unpack (Package 9 intShow)
+inferred () = unpack (Package with { value = 10; render = intShow })
+omit p = with p { Package with {} -> 12 }
+omitted () = omit (make 1)
+repack p = with p { Package with { Err = e; value = x; render = r } -> Package with { Err = e; value = x; render = r } }
+repacked () = unpack (repack (make 13))
+
+whereUse p = render (x : e) where { Package with { Err = e; value = x; render = render } = p }
+whereCheck () = whereUse (make 14)
+lambdaCheck () = ((Package with { Err = e; value = x; render = render }) -> render (x : e)) (make 15)
+doUse p = do { Package with { Err = e; value = x; render = render } <- Just p; Just (render (x : e)) }
+doCheck () = with (doUse (make 16)) { Just text -> text; Nothing -> "missing" }
+type Higher = { F : Type -> Type; value : F Int; consume : F Int -> Int }
+higher () = with (Higher with { F = Maybe; value = Just 17; consume = m -> with m { Just n -> n; Nothing -> 0 } }) { Higher with { F = f; value = x; consume = c } -> c (x : f Int) }
+type Tagged a = { tag : a; Hidden : Type; value : Hidden; render : Hidden -> String }
+tagged () = with (Tagged with { Hidden = Int; tag = 18; value = 19; render = intShow }) { Tagged with { tag = n; value = x; render = r } -> (n, r x) }
+type Independent = { Hidden : Type; value : Hidden; number : Int }
+independent () = (Independent with { Hidden = Int; value = 1; number = 20 }).number
+order () = with (Package with { render = { print "render"; intShow }; Err = Int; value = { print "value"; 21 } }) { Package x r -> r x }
+
+forwardWhere p = r (identity x) where { identity (a : e) = a; Package with { Err = e; value = x; render = r } = p }
+forwardWhereCheck () = forwardWhere (make 22)

@@ -123,6 +123,9 @@
   "negative/RecordPatternPunning.ficus": {"kind": "SyntaxError", "span": [1, 19, 1, 19]},
   "negative/RecordPatternLayout.ficus": {"kind": "SyntaxError", "span": [2, 5, 2, 5]},
   "negative/RecordPatternTrailingComma.ficus": {"kind": "SyntaxError", "span": [1, 26, 1, 26]},
-  "negative/RecordPatternTypeMember.ficus": {"kind": "SyntaxError", "span": [1, 17, 1, 20]},
-  "negative/RecordPatternUnparenthesized.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 12]}
+  "negative/RecordPatternUnparenthesized.ficus": {"kind": "SyntaxError", "span": [1, 9, 1, 12]},
+  "negative/TypeMemberProjectionAnnotation.ficus": {"kind": "SyntaxError", "span": [1, 15, 1, 15]},
+  "negative/TypeMemberProjectionWitness.ficus": {"kind": "SyntaxError", "span": [1, 29, 1, 29]},
+  "negative/RecordTypeMemberThenConstructor.ficus": {"kind": "SyntaxError", "span": [1, 22, 1, 22]},
+  "negative/ConstructorThenTypeMember.ficus": {"kind": "SyntaxError", "span": [1, 15, 1, 15]}
 }

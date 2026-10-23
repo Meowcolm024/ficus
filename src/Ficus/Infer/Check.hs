@@ -48,7 +48,8 @@ data Context = Context
     contextTypes :: TypeScope,
     contextNames :: Map Reference (Text, Span),
     visibleNames :: Map Text Reference,
-    contextGivens :: [(Predicate InferType, Evidence)]
+    contextGivens :: [(Predicate InferType, Evidence)],
+    contextWitnesses :: [InferType]
   }
 
 data Judgement = Judgement {judgementType :: InferType, judgementWanteds :: [Wanted]}
@@ -63,7 +64,7 @@ inferModuleWithConfig config imported tree =
         let names = Map.fromList [(A.occurrenceReference occurrence, (A.occurrenceSpelling occurrence, A.occurrenceSpan occurrence)) | occurrence <- A.abstractOccurrences tree]
             importedValues = Map.map signatureScheme (valueSignatures imported)
             methods = Map.fromList [(GlobalRef method, scheme) | trait <- Map.elems (traitDeclarations prepared), (method, scheme) <- Map.toList (traitMethods (C.nodeValue trait))]
-            context = Context prepared (methods `Map.union` importedValues) Map.empty names Map.empty []
+            context = Context prepared (methods `Map.union` importedValues) Map.empty names Map.empty [] []
         (checked, wanteds) <- bindingGroup (checkTopLevelInitializers config) context (A.abstractDeclarations tree)
         solveFields checked
         checkImplementations checked tree
@@ -82,6 +83,9 @@ inferModuleWithConfig config imported tree =
         goals <- Infer (gets checkedGoals)
         reportGoals goals
         values <- mapM zonkScheme (contextValues checked)
+        forM_ (Map.toList values) $ \(reference, scheme) -> case reference of
+          GlobalRef _ -> checkOpened context checked (maybe (A.abstractSpan tree) snd (Map.lookup reference (contextNames checked))) [schemeType scheme] []
+          LocalRef _ -> pure ()
         pure (prepared, values, constraints)
       ((finalDeclarations, finalValues, finalWanteds), state) = runInferFrom (initialState {compilationConfig = config, nextVariable = importedFreshStart imported}) action
    in Inference config finalDeclarations finalValues finalWanteds state
@@ -207,7 +211,8 @@ expression context expected source = do
           when (coverage == A.RequiredTotal) $ do
             total <- patternTotal (contextDeclarations inner) (judgementType value) pattern'
             unless total (emit (E.diagnostic E.RefutablePattern (A.nodeSpan pattern') "do-bind pattern does not cover every possible value"))
-          pure (foldMap judgementWanteds guardResult ++ judgementWanteds branch)
+          let wanted = foldMap judgementWanteds guardResult ++ judgementWanteds branch
+          finishOpened context inner (A.nodeSpan body) [result] wanted
         when (coverage == A.WarningCoverage) (checkCoverage (contextDeclarations context) origin [judgementType value] [([pattern'], maybe False (const True) guard, A.nodeSpan clause) | clause <- clauses, let (pattern', guard, _) = A.nodeValue clause])
         pure (Judgement result (judgementWanteds value ++ concat wanted))
       A.Conditional clauses -> do
@@ -221,11 +226,13 @@ expression context expected source = do
       A.Sequence statements body -> do
         (inner, constraints) <- foldM statement (context, []) statements
         result <- expression inner expected body
-        pure result {judgementWanteds = constraints ++ judgementWanteds result}
+        pending <- finishOpened context inner (A.nodeSpan body) [judgementType result] (constraints ++ judgementWanteds result)
+        pure result {judgementWanteds = pending}
       A.Where _ bindings body -> do
         (inner, constraints) <- bindingGroup False context bindings
         result <- expression inner expected body
-        pure result {judgementWanteds = constraints ++ judgementWanteds result}
+        pending <- finishOpened context inner (A.nodeSpan body) [judgementType result] (constraints ++ judgementWanteds result)
+        pure result {judgementWanteds = pending}
       A.Product components -> do
         results <- mapM (expression context Nothing) components
         pure (Judgement (tupleType (map judgementType results)) (concatMap judgementWanteds results))
@@ -248,7 +255,8 @@ expression context expected source = do
         result <- resultType
         addField context (A.nodeId source) (A.nodeSpan label) origin origin (judgementType value) (A.nodeValue label) result False
         pure (Judgement result (judgementWanteds value))
-      A.ConstructRecord constructor fields -> constructRecord context source constructor fields
+      A.ConstructRecord constructor fields -> constructRecord context source constructor [] fields
+      A.PackRecord constructor witnesses fields -> constructRecord context source constructor witnesses fields
       A.UpdateRecord receiver fields -> do
         value <- expression context Nothing receiver
         checkDuplicateFields fields
@@ -355,13 +363,51 @@ patternCheck context expected source = do
       void (equate (A.nodeSpan annotation) expected written)
       patternCheck context expected body
     A.NegatedPattern body -> patternCheck context expected body
-    A.ConstructorPattern ident patterns -> do
-      scheme <- constructorScheme context (A.nodeSpan source) ident
-      result <- instantiateUse context source scheme []
-      let (arguments, final) = splitFunctions (judgementType result)
-      when (length arguments /= length patterns) (emit (E.diagnostic E.TypeMismatch (A.nodeSpan source) "constructor pattern has the wrong number of fields"))
-      void (equate (A.nodeSpan source) expected final)
-      foldM (\inner (ty, p) -> patternCheck inner ty p) context (zip arguments patterns)
+    A.OpenPattern witnesses body -> case A.nodeValue body of
+      A.ConstructorPattern ident patterns -> do
+        recordType body expected
+        constructorPattern context expected body ident patterns witnesses
+      _ -> emit (E.diagnostic E.InvalidCoreTree (A.nodeSpan source) "type witnesses require a record constructor pattern") >> pure context
+    A.ConstructorPattern ident patterns -> constructorPattern context expected source ident patterns []
+
+constructorPattern :: Context -> InferType -> A.Pattern -> GlobalId -> [A.Pattern] -> [(Text, A.TypeBinder)] -> Infer Context
+constructorPattern context expected source ident patterns witnesses = do
+  scheme <- constructorScheme context (A.nodeSpan source) ident
+  let descriptor = C.nodeValue <$> Map.lookup (C.DataConstructor ident) (constructorDeclarations (contextDeclarations context))
+      hidden = maybe [] C.constructorExistentials descriptor
+      hiddenIds = Set.fromList (map quantifierId hidden)
+  arguments <- forM (quantifiers scheme) $ \q ->
+    if Set.member (quantifierId q) hiddenIds then freshSkolem (quantifierKind q) else fresh (A.nodeSpan source) (quantifierKind q)
+  let mapping = binderSubstitution (quantifiers scheme) arguments
+      instantiated = S.apply mapping (schemeType scheme)
+      (fields, result) = splitFunctions instantiated
+      opened = [S.apply mapping (Variable (Bound (quantifierId q)) (quantifierKind q)) | q <- hidden]
+      named = Map.fromList [(sourceId, witness) | (label, binder) <- witnesses, let (sourceId, _, _) = A.nodeValue binder, q <- hidden, quantifierName q == label, let witness = S.apply mapping (Variable (Bound (quantifierId q)) (quantifierKind q))]
+      inner = context {contextTypes = named `Map.union` contextTypes context, contextWitnesses = opened ++ contextWitnesses context}
+  Infer (modify' (\s -> s {checkedInstantiations = Map.insert (A.nodeId source) arguments (checkedInstantiations s), openedWitnesses = Map.insert (A.nodeId source) opened (openedWitnesses s)}))
+  when (length fields /= length patterns) (emit (E.diagnostic E.TypeMismatch (A.nodeSpan source) "constructor pattern has the wrong number of value fields"))
+  void (equate (A.nodeSpan source) expected result)
+  foldM (\environment (ty, p) -> patternCheck environment ty p) inner (zip fields patterns)
+
+finishOpened :: Context -> Context -> Span -> [InferType] -> [Wanted] -> Infer [Wanted]
+finishOpened outer inner origin results wanted
+  | contextWitnesses outer == contextWitnesses inner = pure wanted
+  | otherwise = do
+      pending <- resolveWanteds inner wanted
+      checkOpened outer inner origin results pending
+      pure pending
+
+-- Opening a package cannot refine any enclosing type or export its witness.
+checkOpened :: Context -> Context -> Span -> [InferType] -> [Wanted] -> Infer ()
+checkOpened outer inner origin results wanted = do
+  let opened = filter (`notElem` contextWitnesses outer) (contextWitnesses inner)
+      rigid = Set.unions (map freeVariables opened)
+  resultTypes <- mapM zonk results
+  environment <- mapM zonkScheme (Map.elems (contextValues outer))
+  scope <- mapM zonk (Map.elems (contextTypes outer))
+  pending <- mapM zonkWanted wanted
+  let escaping = Set.unions (map freeVariables (resultTypes ++ scope ++ map (predicateArgument . wantedPredicate) pending)) `Set.union` Set.unions (map freeSchemeVariables environment)
+  unless (Set.null (rigid `Set.intersection` escaping)) (emit (E.diagnostic E.EscapingExistential origin "the hidden representation type escapes its unpacking scope"))
 
 tupleType :: [InferType] -> InferType
 tupleType [] = primitive UnitType
@@ -456,7 +502,11 @@ bindingGroup topLevel context group = case schedule group of
             )
             current
             refs
-        pure (finished, accumulated ++ filter (`notElem` retained) wanted)
+        let scoped = finished {contextTypes = contextTypes patternContext `Map.union` contextTypes finished, contextWitnesses = contextWitnesses patternContext}
+        when topLevel $ forM_ refs $ \reference -> case Map.lookup reference (contextValues scoped) of
+          Just scheme -> checkOpened outer patternContext (A.nodeSpan source) [schemeType scheme] []
+          Nothing -> pure ()
+        pure (scoped, accumulated ++ filter (`notElem` retained) wanted)
       Just (reference, signature, explicit) -> do
         wanted <- resolveWanteds patternContext (judgementWanteds inferred)
         let nonExpansiveInitializer = initializerExpansiveOrigin source == Nothing
@@ -526,7 +576,7 @@ valueBody context source expected explicit = case A.nodeValue source of
           recordType (A.clauseBody value) (judgementType result)
           pure result
         _ -> expression withWhere (Just resultType) (A.clauseBody value)
-      pure (whereWanted ++ judgementWanteds body)
+      finishOpened context withWhere (A.nodeSpan (A.clauseBody value)) (resultType : parameterTypes) (whereWanted ++ judgementWanteds body)
     checkCoverage (contextDeclarations context) (A.nodeSpan source) parameterTypes [(A.clausePatterns (A.nodeValue clause), False, A.nodeSpan clause) | clause <- NE.toList clauses]
     pure (Judgement expected (concat wanted))
   _ -> pure (Judgement expected [])
@@ -648,9 +698,13 @@ solveFields context = do
         Nothing -> do
           emit (E.diagnostic (if fieldIsUpdate field then E.NonRecordReceiver else E.TypeMismatch) (fieldSite field) "receiver is not a nominal record")
           pure []
+        Just record | fieldIsUpdate field && not (null (C.recordTypeMembers (C.nodeValue record))) -> emit (E.diagnostic E.ExistentialUpdate (fieldSite field) "updates of existential records remain unspecified") >> pure []
         Just record -> case [(index, scheme) | (index, descriptor) <- zip [0 ..] (C.recordFields (C.nodeValue record)), let (name, scheme) = C.nodeValue descriptor, name == fieldName field] of
           [] -> emit (E.diagnostic E.UnknownField (fieldOrigin field) "record has no field with this label") >> pure []
           (index, scheme) : _ -> do
+            let hidden = [Bound (quantifierId q) | member <- C.recordTypeMembers (C.nodeValue record), let (_, q) = C.nodeValue member]
+                dependent = any (`Set.member` freeVariables (schemeType scheme)) hidden
+            when dependent (emit (E.diagnostic E.ExistentialProjection (fieldSite field) "unpack the record before using a field whose type mentions a hidden member"))
             (ty, _, _) <- instantiate (fieldOrigin field) scheme
             case functionParts ty of
               Just (input, output) -> do
@@ -665,21 +719,43 @@ solveFields context = do
 typeHead :: InferType -> Maybe GlobalId
 typeHead ty = case ty of Constructor ident _ -> Just ident; Application f _ -> typeHead f; Variable _ _ -> Nothing
 
-constructRecord :: Context -> A.Expr -> GlobalId -> [A.FieldAssignment] -> Infer Judgement
-constructRecord context source constructor fields = do
+constructRecord :: Context -> A.Expr -> GlobalId -> [A.Node (Text, A.TypeSyntax)] -> [A.FieldAssignment] -> Infer Judgement
+constructRecord context source constructor witnesses fields = do
   scheme <- constructorScheme context (A.nodeSpan source) constructor
   use <- instantiateUse context source scheme []
-  let (_, result) = splitFunctions (judgementType use)
+  arguments <- Infer (gets (Map.findWithDefault [] (A.nodeId source) . checkedInstantiations))
+  let (fieldTypes, result) = splitFunctions (judgementType use)
       owner = typeHead result
       record = owner >>= (\ident -> Map.lookup ident (recordDeclarations (contextDeclarations context)))
       declared = maybe [] (map (fst . C.nodeValue) . C.recordFields . C.nodeValue) record
+      members = maybe [] (map C.nodeValue . C.recordTypeMembers . C.nodeValue) record
+      mapping = binderSubstitution (quantifiers scheme) arguments
       supplied = map (fst . A.nodeValue) fields
   checkDuplicateFields fields
-  when (any (`notElem` supplied) declared) (emit (E.diagnostic E.MissingField (constructorSpan source constructor) "named construction must supply every field"))
+  void
+    ( foldM
+        ( \seen field -> do
+            let (name, written) = A.nodeValue field
+            when (Set.member name seen) (emit (E.diagnostic E.DuplicateField (labelSpan field) "duplicate type member"))
+            case lookup name members of
+              Nothing -> emit (E.diagnostic E.UnknownField (labelSpan field) "record has no type member with this label")
+              Just q -> do
+                witness <- readTypeAt (declarationTypes (contextDeclarations context)) (contextTypes context) False (quantifierKind q) written
+                void (equate (A.nodeSpan written) (S.apply mapping (Variable (Bound (quantifierId q)) (quantifierKind q))) witness)
+            pure (Set.insert name seen)
+        )
+        Set.empty
+        witnesses
+    )
+  when (any (`notElem` supplied) declared) (emit (E.diagnostic E.MissingField (constructorSpan source constructor) "named construction must supply every value field"))
   constraints <- forM fields $ \field -> do
     let (name, body) = A.nodeValue field
     value <- expression context Nothing body
-    addField context (A.nodeId field) (labelSpan field) (A.nodeSpan source) (A.nodeSpan body) result name (judgementType value) False
+    case [(index, ty) | (index, (label, ty)) <- zip [0 ..] (zip declared fieldTypes), name == label] of
+      [] -> emit (E.diagnostic E.UnknownField (labelSpan field) "record has no value field with this label")
+      (index, ty) : _ -> do
+        void (equate (A.nodeSpan body) ty (judgementType value))
+        forM_ owner $ \ident -> Infer (modify' (\s -> s {checkedFields = Map.insert (A.nodeId field) (C.FieldId ident index) (checkedFields s)}))
     pure (judgementWanteds value)
   pure (Judgement result (concat constraints))
 
@@ -691,7 +767,7 @@ checkDuplicateFields fields = void (foldM check Set.empty fields)
       when (Set.member name seen) (emit (E.diagnostic E.DuplicateField (labelSpan field) "duplicate record field"))
       pure (Set.insert name seen)
 
-labelSpan :: A.FieldAssignment -> Span
+labelSpan :: A.Node (Text, a) -> Span
 labelSpan field = let origin = A.nodeSpan field; name = fst (A.nodeValue field) in origin {end = (start origin) {column = column (start origin) + T.length name - 1, offset = offset (start origin) + T.length name - 1}}
 
 constructorSpan :: A.Expr -> GlobalId -> Span

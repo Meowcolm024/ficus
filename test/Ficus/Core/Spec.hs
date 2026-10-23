@@ -70,11 +70,45 @@ dictionaryFixture =
       tree = (moduleWith (monomorphic dictionaryType) dictionary) {coreKinds = Map.singleton trait (KindArrow TypeKind TypeKind), coreDictionaries = Map.singleton trait descriptor}
    in (tree, trait, dictionary, methodScheme int)
 
+existentialFixture :: (CoreModule CoreType, ConstructorId, CoreType, Expr CoreType, Quantifier)
+existentialFixture =
+  let packageId = GlobalId owner TypeNS "Package"
+      constructor = DataConstructor (GlobalId owner ConstructorNS "Package")
+      packageType = Constructor packageId TypeKind
+      hidden = Quantifier (BoundId 20) "Hidden" TypeKind
+      opened = Quantifier (BoundId 21) "witness" TypeKind
+      hiddenType = Variable (BoundVariable (quantifierId hidden)) TypeKind
+      witness = Variable (BoundVariable (quantifierId opened)) TypeKind
+      descriptor = node 20 (ConstructorDescriptor (Scheme [] [hidden] [] (function hiddenType packageType)) 1 packageId [hidden])
+      packed = expr 22 packageType (Construct constructor [int] [expr 23 int (Literal (L.IntegerLiteral "1"))])
+      value = node 24 (LocalId 20, "value", ValueBinder, witness)
+      arm = node 25 (OpenConstructorTest [node 26 opened] constructor [witness] [value], expr 27 int (Literal (L.IntegerLiteral "2")))
+      body = expr 28 int (Case packed [arm] (expr 29 int Fail))
+      tree = (moduleWith (monomorphic int) body) {coreKinds = Map.singleton packageId TypeKind, coreConstructors = Map.singleton constructor descriptor}
+   in (tree, constructor, witness, packed, opened)
+
 tests :: TestTree
 tests =
   testGroup
     "Core validation"
-    [ testCase "accept a closed polymorphic identity" $ do
+    [ testCase "existential cases bind fresh types and cannot test concrete witnesses" $ do
+        let (tree, constructor, _, packed, opened) = existentialFixture
+            concreteBinder = node 30 (LocalId 30, "value", ValueBinder, int)
+            result = expr 31 int (Literal (L.IntegerLiteral "2"))
+            ordinary = node 32 (ConstructorTest constructor [int] [concreteBinder], result)
+            concrete = node 33 (OpenConstructorTest [node 34 opened] constructor [int] [concreteBinder], result)
+            withArm arm = tree {coreBindings = coreBindings (moduleWith (monomorphic int) (expr 35 int (Case packed [arm] (expr 36 int Fail))))}
+        validateCore tree @?= []
+        fmap validatedModule (acceptCore tree) @?= Right tree
+        assertInvalid (withArm ordinary)
+        assertInvalid (withArm concrete),
+      testCase "existential types cannot escape a Core case alternative" $ do
+        let (tree, constructor, witness, packed, opened) = existentialFixture
+            binder = node 30 (LocalId 30, "value", ValueBinder, witness)
+            arm = node 31 (OpenConstructorTest [node 32 opened] constructor [witness] [binder], expr 33 witness (Var (binderReference binder) []))
+            body = expr 34 witness (Case packed [arm] (expr 35 witness Fail))
+        assertInvalid (tree {coreBindings = coreBindings (moduleWith (monomorphic witness) body)}),
+      testCase "accept a closed polymorphic identity" $ do
         let q = Quantifier (BoundId 0) "a" TypeKind
             a = Variable (BoundVariable (BoundId 0)) TypeKind
             binder = node 2 (LocalId 0, "x", ValueBinder, a)

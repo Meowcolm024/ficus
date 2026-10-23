@@ -100,6 +100,7 @@ a well-scoped but incompatible annotation is a T error.
 | N0013 | UnknownRecordPatternField | Unknown supplied label in a named record pattern |
 | N0014 | DuplicateRecordPatternField | Later duplicate label in a named record pattern |
 | N0015 | RecursiveRecordPattern | Record pattern heading a binding that participates in a recursive component |
+| N0016 | InvalidTypeMemberPattern | RHS of an uppercase record-pattern label that is not a bare lowercase type binder |
 | N0099 | InvalidAbstractTree | Invalid node's origin; internal boundary error, not a substitute for a source diagnostic |
 | N0101 | UnknownPragma | Directive name |
 | N0102 | UnsupportedFeature | Directive/construct unavailable in selected language version |
@@ -157,6 +158,9 @@ ownership and Core checks are in [TYPECHECKING.md](TYPECHECKING.md).
 | T0302 | UnknownField | Field label; inferred nominal record declaration |
 | T0303 | DuplicateField | Repeated field label; first occurrence |
 | T0304 | MissingField | Constructor occurrence; missing nominal field declarations |
+| T0305 | EscapingExistential | Unpacking body/result or exported binding that exposes a hidden representation type |
+| T0306 | ExistentialProjection | Projection of a value field whose type depends on a hidden type member |
+| T0307 | ExistentialUpdate | Update of a record with hidden type members |
 | T0401 | UnsatisfiedConstraint | Constrained use; trait/context declaration |
 | T0402 | AmbiguousConstraint | Binding/signature; unresolved predicates and variable origins |
 | T0403 | InvalidImplementation | Impl header or offending member; head/context or missing-member evidence |

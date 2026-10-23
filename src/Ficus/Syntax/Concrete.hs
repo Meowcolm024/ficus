@@ -227,7 +227,7 @@ data WhereClauseF = WhereClause (Block Declaration) deriving (Eq, Show)
 
 type Field = Located FieldF
 
-data FieldF = Field Name Expr (Maybe WhereClause) deriving (Eq, Show)
+data FieldF = Field Name Expr (Maybe WhereClause) | TypeField Name TypeExpr deriving (Eq, Show)
 
 type IfClause = Located IfClauseF
 
@@ -348,7 +348,7 @@ validateConcrete m = do
       With e b -> expr e *> block (node (\(MatchClause p g r) -> pat p *> optional expr g *> expr r)) b
       Do b -> block (node (\case PatternBind p e -> pat p *> expr e; DoDeclaration d -> decl d; DoExpression e -> expr e)) b
       ExprBlock b -> block (node (\case LocalDeclaration d -> decl d; Expression e -> expr e)) b
-      RecordWith e b -> expr e *> block (node (\(Field n r w) -> name n *> expr r *> optional whereNode w)) b
+      RecordWith e b -> expr e *> block (node (\case Field n r w -> name n *> expr r *> optional whereNode w; TypeField n t -> name n *> typeExpr t)) b
       Dotted e ns -> expr e *> mapM_ name ns
       Paren e -> expr e
       Annotated e t -> expr e *> typeExpr t

@@ -50,6 +50,17 @@ tests = do
           [rejectFixture (root </> path) e | (path, e) <- Map.toList expectations],
         testGroup "semantic errors remain parseable" (map acceptFixture semanticSources),
         acceptFixture "test/fixtures/support/Prelude.ficus",
+        testGroup
+          "existential record syntax"
+          ( [ acceptFixture ("test/fixtures/record-patterns" </> f)
+            | f <-
+                ["ParsingV1.ficus", "PositionalValuesV1.ficus", "PatternConcreteTypeV1.ficus", "DuplicateTypeMemberV1.ficus", "WitnessEscapeV1.ficus", "PositionalTypeV1.ficus"]
+            ]
+              ++ [ rejectFixture ("test/fixtures/record-patterns" </> f) (Expectation "SyntaxError" coordinates)
+                 | (f, coordinates) <-
+                     [("TypeMemberAtConstructionV1.ficus", [1, 29, 1, 29]), ("TypeMemberAtPatternV1.ficus", [1, 37, 1, 37]), ("MissingFieldEqualsV1.ficus", [1, 35, 1, 35])]
+                 ]
+          ),
         structuralTests,
         Pretty.tests,
         testGroup
@@ -104,7 +115,25 @@ structuralTests :: TestTree
 structuralTests =
   testGroup
     "Concrete structure"
-    [ testCase "trailing RHS annotation wraps the full expression and retains spans" $
+    [ testCase "type-member arrows stay inside their construction field" $
+        parsed "f = Package with { Err = Int -> Int; value = 1 }" $ \m -> do
+          validateConcrete m @?= Right ()
+          case rhs m of
+            [e] -> case concrete e of
+              RecordWith _ b -> case blockItems b of
+                [field, value] -> do
+                  spanCoordinates (location field) @?= [1, 20, 1, 35]
+                  case concrete field of
+                    TypeField n t -> do
+                      nameText n @?= "Err"
+                      spanCoordinates (location t) @?= [1, 26, 1, 35]
+                      case concrete t of ArrowT _ _ -> pure (); other -> assertFailure (show other)
+                    other -> assertFailure (show other)
+                  case concrete value of Field n _ _ -> nameText n @?= "value"; other -> assertFailure (show other)
+                other -> assertFailure (show other)
+              other -> assertFailure (show other)
+            other -> assertFailure (show other),
+      testCase "trailing RHS annotation wraps the full expression and retains spans" $
         parsed "x = 2 + 3 : Int" $ \m -> case rhs m of
           [e] -> do
             spanCoordinates (location e) @?= [1, 5, 1, 15]
@@ -219,6 +248,7 @@ instance Arbitrary Source where
             (\a b -> "[" <> a <> ", " <> b <> "]") <$> term (n - 1) <*> term (n - 1),
             (\a b -> "(" <> a <> ") + (" <> b <> ")") <$> term (n - 1) <*> term (n - 1),
             (\a -> "if { True -> " <> a <> "; _ -> x }") <$> term (n - 1),
+            (\a -> "Package with { Err = Int -> Int; value = " <> a <> " }") <$> term (n - 1),
             (\a -> "{ local = " <> a <> "; local }") <$> term (n - 1)
           ]
 

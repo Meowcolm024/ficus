@@ -1,0 +1,2 @@
+type Package = { Err : Type; value : Err; consume : Err -> Int }
+f (Package x c) (Package y d) = c y

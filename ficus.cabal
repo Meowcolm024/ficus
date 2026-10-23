@@ -77,6 +77,27 @@ extra-source-files:
     test/fixtures/compile/library/Renamed.ficus
     test/fixtures/compile/record-patterns/Client.ficus
     test/fixtures/compile/record-patterns/Duplicate.ficus
+    test/fixtures/compile/record-patterns/Existential.ficus
+    test/fixtures/compile/record-patterns/ExistentialAnonymousEscape.ficus
+    test/fixtures/compile/record-patterns/ExistentialClient.ficus
+    test/fixtures/compile/record-patterns/ExistentialDuplicate.ficus
+    test/fixtures/compile/record-patterns/ExistentialDuplicatePattern.ficus
+    test/fixtures/compile/record-patterns/ExistentialEscape.ficus
+    test/fixtures/compile/record-patterns/ExistentialEvidence.ficus
+    test/fixtures/compile/record-patterns/ExistentialInitializerScope.ficus
+    test/fixtures/compile/record-patterns/ExistentialKind.ficus
+    test/fixtures/compile/record-patterns/ExistentialLocalEscape.ficus
+    test/fixtures/compile/record-patterns/ExistentialMismatch.ficus
+    test/fixtures/compile/record-patterns/ExistentialOuterEscape.ficus
+    test/fixtures/compile/record-patterns/ExistentialProjection.ficus
+    test/fixtures/compile/record-patterns/ExistentialSeparate.ficus
+    test/fixtures/compile/record-patterns/ExistentialTopEscape.ficus
+    test/fixtures/compile/record-patterns/ExistentialTypeMemberProjection.ficus
+    test/fixtures/compile/record-patterns/ExistentialTypePattern.ficus
+    test/fixtures/compile/record-patterns/ExistentialTypeWildcard.ficus
+    test/fixtures/compile/record-patterns/ExistentialUnknown.ficus
+    test/fixtures/compile/record-patterns/ExistentialUnknownPattern.ficus
+    test/fixtures/compile/record-patterns/ExistentialUpdate.ficus
     test/fixtures/compile/record-patterns/NonRecord.ficus
     test/fixtures/compile/record-patterns/Positive.ficus
     test/fixtures/compile/record-patterns/Records.ficus
@@ -140,6 +161,7 @@ extra-source-files:
     test/fixtures/parsing/negative/BareOperatorPragmaArgument.ficus
     test/fixtures/parsing/negative/BarePrefixOperator.ficus
     test/fixtures/parsing/negative/ConcreteTypeBinder.ficus
+    test/fixtures/parsing/negative/ConstructorThenTypeMember.ficus
     test/fixtures/parsing/negative/DeclarationOnlyBlock.ficus
     test/fixtures/parsing/negative/DoNotIndented.ficus
     test/fixtures/parsing/negative/DoSignature.ficus
@@ -225,9 +247,9 @@ extra-source-files:
     test/fixtures/parsing/negative/RecordPatternLayout.ficus
     test/fixtures/parsing/negative/RecordPatternPunning.ficus
     test/fixtures/parsing/negative/RecordPatternTrailingComma.ficus
-    test/fixtures/parsing/negative/RecordPatternTypeMember.ficus
     test/fixtures/parsing/negative/RecordPatternUnparenthesized.ficus
     test/fixtures/parsing/negative/RecordPunning.ficus
+    test/fixtures/parsing/negative/RecordTypeMemberThenConstructor.ficus
     test/fixtures/parsing/negative/RecordWithBadLayout.ficus
     test/fixtures/parsing/negative/RecordWithEmptyUpdate.ficus
     test/fixtures/parsing/negative/RecordWithMissingBlock.ficus
@@ -249,6 +271,8 @@ extra-source-files:
     test/fixtures/parsing/negative/TypeLiteralChar.ficus
     test/fixtures/parsing/negative/TypeLiteralInteger.ficus
     test/fixtures/parsing/negative/TypeLiteralString.ficus
+    test/fixtures/parsing/negative/TypeMemberProjectionAnnotation.ficus
+    test/fixtures/parsing/negative/TypeMemberProjectionWitness.ficus
     test/fixtures/parsing/negative/UndelimitedNestedIf.ficus
     test/fixtures/parsing/negative/UnmatchedClosingBrace.ficus
     test/fixtures/parsing/negative/UnmatchedOpeningBrace.ficus
@@ -267,6 +291,7 @@ extra-source-files:
     test/fixtures/parsing/positive/EmptyMatch.ficus
     test/fixtures/parsing/positive/EmptyModule.ficus
     test/fixtures/parsing/positive/EmptyType.ficus
+    test/fixtures/parsing/positive/ExistentialRecords.ficus
     test/fixtures/parsing/positive/ExpressionIntroducers.ficus
     test/fixtures/parsing/positive/FourColumnTabs.ficus
     test/fixtures/parsing/positive/ImportsPragmas.ficus
@@ -278,6 +303,7 @@ extra-source-files:
     test/fixtures/parsing/positive/RecordPatternBinder.ficus
     test/fixtures/parsing/positive/RecordPatternMatch.ficus
     test/fixtures/parsing/positive/RecordPatterns.ficus
+    test/fixtures/parsing/positive/RecordPatternTypeMember.ficus
     test/fixtures/parsing/positive/RecordWith.ficus
     test/fixtures/parsing/positive/RefutabilityIsSemantic.ficus
     test/fixtures/parsing/positive/SharedPrefixes.ficus

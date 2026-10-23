@@ -137,7 +137,7 @@ collect :: A.Declaration -> KindCheck ()
 collect source = case A.nodeValue source of
   A.AliasDefinition ident parameters annotation _ -> header ident parameters annotation =<< fresh (A.nodeSpan source) False
   A.DataDefinition ident parameters annotation _ -> header ident parameters annotation Star
-  A.RecordDefinition ident parameters annotation _ _ -> header ident parameters annotation Star
+  A.RecordDefinition ident parameters annotation _ _ _ -> header ident parameters annotation Star
   A.OpaqueBuiltinType ident key annotation -> do
     kind <- kindSyntax annotation
     case typeKindFromKey key of
@@ -215,7 +215,7 @@ declaration source = case A.nodeValue source of
     declared <- global (A.nodeSpan source) ident
     unify (A.nodeSpan body) declared (foldr Arrow result parametersKinds)
   A.DataDefinition _ _ _ constructors -> mapM_ (mapM_ ordinary . snd . A.nodeValue) constructors
-  A.RecordDefinition _ _ _ _ fields -> mapM_ (ordinary . snd . A.nodeValue) fields
+  A.RecordDefinition _ _ _ _ fields members -> void (mapM binder members) >> mapM_ (ordinary . snd . A.nodeValue) fields
   A.OpaqueBuiltinType {} -> pure ()
   A.TraitDefinition _ _ supers members -> mapM_ predicate supers >> mapM_ declaration members
   A.MethodDefinition _ annotation -> void (scheme annotation)
@@ -241,6 +241,7 @@ expression source = case A.nodeValue source of
   A.Sequence statements body -> mapM_ statement statements >> expression body
   A.Where _ bindings body -> mapM_ declaration (A.declarations bindings) >> expression body
   A.Project receiver _ -> expression receiver
+  A.PackRecord _ ts fields -> void (mapM (typeSyntax . snd . A.nodeValue) ts) >> mapM_ (expression . snd . A.nodeValue) fields
   A.ConstructRecord _ fields -> mapM_ (expression . snd . A.nodeValue) fields
   A.UpdateRecord receiver fields -> expression receiver >> mapM_ (expression . snd . A.nodeValue) fields
   A.Product components -> mapM_ expression components
@@ -253,6 +254,7 @@ expression source = case A.nodeValue source of
 patternSyntax :: A.Pattern -> KindCheck ()
 patternSyntax source = case A.nodeValue source of
   A.AnnotatedPattern body annotation -> ordinary annotation >> patternSyntax body
+  A.OpenPattern witnesses body -> void (mapM (binder . snd) witnesses) >> patternSyntax body
   A.ConstructorPattern _ patterns -> mapM_ patternSyntax patterns
   A.ProductPattern patterns -> mapM_ patternSyntax patterns
   A.ListPattern patterns -> mapM_ patternSyntax patterns

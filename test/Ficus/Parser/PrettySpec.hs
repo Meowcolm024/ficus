@@ -192,7 +192,7 @@ normalize m =
       With e b -> With (expr e) (block (node (\(MatchClause p g r) -> MatchClause (pat p) (fmap expr g) (expr r))) b)
       Do b -> Do (block (node (\case PatternBind p e -> PatternBind (pat p) (expr e); DoDeclaration d -> DoDeclaration (decl d); DoExpression e -> DoExpression (expr e))) b)
       ExprBlock b -> ExprBlock (block (node (\case LocalDeclaration d -> LocalDeclaration (decl d); Expression e -> Expression (expr e))) b)
-      RecordWith e b -> RecordWith (expr e) (block (node (\(Field n r w) -> Field (name n) (expr r) (fmap whereNode w))) b)
+      RecordWith e b -> RecordWith (expr e) (block (node (\case Field n r w -> Field (name n) (expr r) (fmap whereNode w); TypeField n t -> TypeField (name n) (typeExpr t))) b)
       Dotted e ns -> Dotted (expr e) (map name ns)
       Paren e -> Paren (expr e)
       Annotated e t -> Annotated (expr e) (typeExpr t)

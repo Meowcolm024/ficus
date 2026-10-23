@@ -1,15 +1,18 @@
 # Existential record patterns and type members (v1+ proposal)
 
 Ordinary explicit value-field record patterns are implemented and tested in
-`../compile/record-patterns/` and `../parsing/`. The combined existential
-type-member cases in this directory remain authored proposals and are not
-executed by the runner.
+`../compile/record-patterns/` and `../parsing/`. The parser runner executes the combined existential type-member acceptance
+cases and the three parser rejection cases in this directory. Semantic
+expectations remain authored proposals.
 ParsingV1.ficus is parser acceptance only: resolution/type checking may fail.
 It covers record patterns in every admitted declaration/binder/match/do context,
 omitted fields, uppercase type-member fields without @, explicit/layout
 construction, arrow-containing type RHSs, and existing @/clause boundaries.
-Uppercase type-member labels remain unsupported; these combined cases do not
-promote the existential extension.
+Uppercase type-member labels are parsed and checked. Executable existential
+fixtures are in `../compile/record-patterns/Existential*.ficus`; these exercise
+witness scoping and escape, higher kinds, constructor slots, and captured trait
+dictionaries against both Runtime evaluators. Function and lambda record binders require
+parentheses, as ordinary constructor applications do.
 PositionalValuesV1.ficus retains value-only construction and anonymous unpacking.
 
 Negative expectations use semantic validation unless marked parser rejection:

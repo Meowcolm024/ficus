@@ -26,7 +26,10 @@ schedule group = case A.scopeMode group of
   where
     indexed = zip [0 :: Int ..] (filter isValue (A.declarations group))
     owners = Map.fromList [(ref, index) | (index, declaration) <- indexed, ref <- Set.toList (definedReferences declaration)]
-    dependencies declaration = Set.fromList [index | ref <- Set.toList (valueDependencies (declarationDependencies declaration)), Just index <- [Map.lookup ref owners]]
+    typeOwners = Map.fromList [(ident, index) | (index, declaration) <- indexed, A.PatternDefinition pattern' _ <- [A.nodeValue declaration], binder <- A.patternTypeBinders pattern', let (ident, _, _) = A.nodeValue binder]
+    dependencies declaration =
+      let edges = declarationDependencies declaration
+       in Set.fromList ([index | ref <- Set.toList (valueDependencies edges), Just index <- [Map.lookup ref owners]] ++ [index | ident <- Set.toList (scopedTypeDependencies edges), Just index <- [Map.lookup ident typeOwners]])
     components = sortOn firstIndex (map component (stronglyConnComp [((index, declaration), index, Set.toList (dependencies declaration)) | (index, declaration) <- indexed]))
     component (AcyclicSCC entry) = (False, [entry])
     component (CyclicSCC entries) = (True, sortOn fst entries)
@@ -71,6 +74,7 @@ definedReferences declaration = case A.nodeValue declaration of
   where
     binders pattern' = case A.nodeValue pattern' of
       A.Bind binder -> Set.singleton (LocalRef (fst (A.nodeValue binder)))
+      A.OpenPattern _ body -> binders body
       A.ConstructorPattern _ arguments -> Set.unions (map binders arguments)
       A.ProductPattern arguments -> Set.unions (map binders arguments)
       A.ListPattern arguments -> Set.unions (map binders arguments)

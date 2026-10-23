@@ -353,11 +353,12 @@ typeDeclaration = located $ do
     _ -> Constructors <$> traverseBlock constructorOnly body
   pure (DataDeclaration n ps typedBody)
   where
-    fieldMember =
+    fieldMember = do
+      void (lookAhead (try (identifier <* text ":") <|> lowerName))
       Left
         <$> located
           ( do
-              n <- lowerName
+              n <- identifier
               colon <- nextIs ":"
               when (not colon) (failAt InvalidDeclarationHead (nameLocation n) "constructor name or field signature required")
               void (text ":")
@@ -614,9 +615,11 @@ postfix = atom >>= suffixes
             )
         <|> pure a
     recordField = located $ do
-      n <- lowerName
+      n <- identifier
       intro <- text "="
-      Field n <$> introducedExpression intro <*> optional whereClause
+      if nameSpace n == UpperName
+        then TypeField n <$> typeExpression
+        else Field n <$> introducedExpression intro <*> optional whereClause
     modulePrefix a = case concrete a of
       Ident n -> upperComponent n
       Dotted base ns -> modulePrefix base && all upperComponent ns
@@ -706,7 +709,7 @@ recordPattern = do
     -- A record pattern is self-delimiting; construction alone admits layout.
     void (lookAhead (text "{"))
     fields <- block True False intro $ located $ do
-      n <- lowerName
+      n <- identifier
       void (text "=")
       PatternField n <$> patternParser
     pure (RecordP receiver fields)

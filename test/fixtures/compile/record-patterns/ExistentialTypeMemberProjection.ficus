@@ -1,0 +1,2 @@
+type Package = { Err : Type; value : Err }
+f (p : Package) = p.Err

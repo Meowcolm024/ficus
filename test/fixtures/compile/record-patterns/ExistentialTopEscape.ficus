@@ -1,0 +1,2 @@
+type Package = { Err : Type; value : Err }
+Package with { value = x } = Package 1

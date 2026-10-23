@@ -197,6 +197,7 @@ expression context source = do
       value <- expression context receiver
       field <- fieldId source
       sourced (C.SelectField value field)
+    A.PackRecord constructor _ fields -> recordConstruction context source constructor fields
     A.ConstructRecord constructor fields -> recordConstruction context source constructor fields
     A.UpdateRecord receiver fields -> recordUpdate context source receiver fields
 
@@ -332,6 +333,7 @@ matchPattern context receiver source success fallback = case A.nodeValue source 
         makeExpression source (C.typeOf success) (C.Let binding success)
   A.Wildcard -> pure success
   A.AnnotatedPattern pattern' _ -> matchPattern context receiver pattern' success fallback
+  A.OpenPattern _ pattern' -> matchPattern context receiver pattern' success fallback
   A.LiteralPattern literal -> literalCase literal
   A.NegatedPattern pattern' -> case A.nodeValue pattern' of
     A.LiteralPattern (L.IntegerLiteral value) -> literalCase (L.IntegerLiteral ("-" <> value))
@@ -346,7 +348,20 @@ matchPattern context receiver source success fallback = case A.nodeValue source 
         types = fst (splitFunctions instantiated)
     binders <- sequence [freshBinder field "$field" C.ValueBinder ty | (field, ty) <- zip fields types]
     nested <- foldM (\body (field, binder) -> binderUse field binder >>= \value -> matchPattern context value field body fallback) success (reverse (zip fields binders))
-    constructorCase (C.DataConstructor ident) arguments binders nested
+    opened <- lift (Infer (gets (Map.findWithDefault [] (A.nodeId source) . openedWitnesses)))
+    if null opened
+      then constructorCase (C.DataConstructor ident) arguments binders nested
+      else do
+        quantified <- forM opened $ \witness -> do
+          ident' <- BoundId <$> lift freshId
+          kind <- either (const (failure source "invalid hidden witness kind")) pure (kindOf witness)
+          binder <- generated source "existential witness" (Quantifier ident' "$witness" kind)
+          pure (witness, binder)
+        let abstraction = S.fromBindings [(v, Variable (Bound (quantifierId (C.nodeValue binder))) (quantifierKind (C.nodeValue binder))) | (Variable v _, binder) <- quantified]
+            abstractArguments = map (S.apply abstraction) arguments
+            abstractBinders = map (fmap (fmap (S.apply abstraction))) binders
+        alternative <- generated source "existential constructor pattern" (C.OpenConstructorTest (map snd quantified) (C.DataConstructor ident) abstractArguments abstractBinders, fmap (fmap (S.apply abstraction)) nested)
+        makeExpression source (C.typeOf success) (C.Case receiver [alternative] fallback)
   A.ProductPattern fields -> productPattern receiver fields success
   A.ListPattern fields -> listPattern receiver fields success
   where
@@ -405,7 +420,9 @@ recordDescriptor context source ty = case spine ty of
 recordConstruction :: Context -> A.Expr -> GlobalId -> [A.FieldAssignment] -> Lower (C.Expr InferType)
 recordConstruction context source _ fields = do
   ty <- nodeType context source
-  (_, arguments, descriptor) <- recordDescriptor context source ty
+  (_, _, descriptor) <- recordDescriptor context source ty
+  recorded <- lift (Infer (gets (Map.findWithDefault [] (A.nodeId source) . checkedInstantiations)))
+  arguments <- mapM (resolved context) recorded
   withFields context fields Map.empty $ \values -> do
     ordered <- forM [0 .. length (C.recordFields descriptor) - 1] $ \index -> maybe (failure source "record construction is missing a checked field") pure (Map.lookup index values)
     makeExpression source ty (C.Construct (C.recordConstructor descriptor) arguments ordered)
@@ -622,6 +639,7 @@ lowerPatternBinding context source pattern' rhs continuation = do
 patternBinders :: A.Pattern -> [A.Binder]
 patternBinders source = case A.nodeValue source of
   A.Bind binder -> [binder]
+  A.OpenPattern _ body -> patternBinders body
   A.ConstructorPattern _ patterns -> concatMap patternBinders patterns
   A.ProductPattern patterns -> concatMap patternBinders patterns
   A.ListPattern patterns -> concatMap patternBinders patterns

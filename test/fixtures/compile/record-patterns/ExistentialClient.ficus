@@ -1,0 +1,2 @@
+use Existential as P
+check () = with (P.make 23) { P.Package with { Err = e; value = x; render = r } -> r (x : e) }

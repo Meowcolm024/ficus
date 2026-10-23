@@ -264,7 +264,9 @@ scopedBody body wh =
         _ -> spaces [rhs, whereDoc wh]
 
 field :: Field -> Doc
-field f = case concrete f of Field n e wh -> spaces [name n, chunk "=", scopedBody e wh]
+field f = case concrete f of
+  Field n e wh -> spaces [name n, chunk "=", scopedBody e wh]
+  TypeField n t -> spaces [name n, chunk "=", typeDoc t]
 
 ifClause :: IfClause -> Doc
 ifClause c = case concrete c of IfClause condition body -> spaces [expr condition, chunk "->", expr body]

@@ -3,10 +3,11 @@
 -- diagnostics, and Except aborts only the current independently recoverable item.
 module Ficus.Resolve.Desugar (ResolveConfig (..), Resolution (..), resolveModule, resolveModuleWithNames) where
 
-import Control.Monad (foldM, forM, forM_, unless, when)
+import Control.Monad (foldM, forM, forM_, unless, void, when)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Strict
+import Data.Char (isUpper)
 import Data.Graph (SCC (..))
 import Data.List (nub, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -46,7 +47,8 @@ data Env = Env
     envTypes :: Map Text TypeVarId,
     envConfig :: ResolveConfig,
     envSugar :: SugarRegistry,
-    envFields :: Map (GlobalId, Text) FieldDescriptor
+    envFields :: Map (GlobalId, Text) FieldDescriptor,
+    envPatternTypes :: Map Span (Map Text TypeVarId, Map Text TypeVarId)
   }
 
 data ResolveState = ResolveState
@@ -74,7 +76,7 @@ resolveModuleWithNames interactive config registry header input interfaces =
         | otherwise = case filter (constructorVisible (own `Map.union` interactive) . candidateEntity) candidates of
             [] -> Nothing
             available -> Just available
-      env = Env header scope own interactive Map.empty Map.empty config registry fields
+      env = Env header scope own interactive Map.empty Map.empty config registry fields Map.empty
       (_, headerErrors) = scanHeader (headerId header) input
       initial = ResolveState 0 (reverse (headerErrors ++ nameErrors ++ importErrors)) [] Map.empty []
       action = do
@@ -192,11 +194,11 @@ freshBinder s spelling = do
   i <- newId
   generated "binder" s (LocalId i, spelling)
 
-bindPatterns :: [C.Pattern] -> Resolve (Map Text Reference, [A.Pattern])
+bindPatterns :: [C.Pattern] -> Resolve (Map Text Reference, Map Text TypeVarId, [A.Pattern])
 bindPatterns ps = do
   bindings <- foldM bind Map.empty (concatMap patternNames ps)
-  resolved <- local (\e -> e {envValues = bindings `Map.union` envValues e}) (mapM patternNode ps)
-  pure (bindings, resolved)
+  (types, resolved) <- withPatternTypes ps $ local (\e -> e {envValues = bindings `Map.union` envValues e}) (mapM patternNode ps)
+  pure (bindings, types, resolved)
   where
     bind table n = case Map.lookup (C.nameText n) table of
       Just _ -> failAt DuplicatePatternBinder (C.nameLocation n) "duplicate pattern binder"
@@ -237,11 +239,26 @@ patternNode p =
       owner <- maybe (failAt InvalidAbstractTree (C.location receiver) "record constructor has no owner") pure (A.entityOwner entity)
       descriptors <- asks (sortOn fieldSpan . Map.elems . Map.filter ((== owner) . fieldOwner) . envFields)
       let labels = Set.fromList (map fieldLabel descriptors)
-      supplied <- foldM (resolveField labels) Map.empty (C.blockItems fields)
-      ordered <- forM descriptors $ \descriptor -> case Map.lookup (fieldLabel descriptor) supplied of
+          valueDescriptors = filter (\descriptor -> case T.uncons (fieldLabel descriptor) of Just (c, _) -> not (isUpper c); Nothing -> True) descriptors
+      supplied <- foldM (resolveField labels) Map.empty [f | f <- C.blockItems fields, C.PatternField n _ <- [C.concrete f], C.nameSpace n == C.LowerName]
+      witnesses <- forM [f | f <- C.blockItems fields, C.PatternField n _ <- [C.concrete f], C.nameSpace n == C.UpperName] $ \f -> case C.concrete f of
+        C.PatternField label q -> do
+          unless (Set.member (C.nameText label) labels) (failAt UnknownRecordPatternField (C.nameLocation label) "record has no type member with this label")
+          n <- typePatternName q
+          variables <- asks envTypes
+          ident <- maybe (failAt InvalidAbstractTree (C.location q) "type pattern binder was not allocated") pure (Map.lookup (C.nameText n) variables)
+          binder <- sourceNode q (ident, C.nameText n, Nothing)
+          pure (C.nameText label, binder)
+      let typeLabels = [n | C.Located _ _ (C.PatternField n _) <- C.blockItems fields, C.nameSpace n == C.UpperName]
+      void (foldM (\seen n -> if Set.member (C.nameText n) seen then failAt DuplicateRecordPatternField (C.nameLocation n) "duplicate record pattern field" else pure (Set.insert (C.nameText n) seen)) Set.empty typeLabels)
+      ordered <- forM valueDescriptors $ \descriptor -> case Map.lookup (fieldLabel descriptor) supplied of
         Just suppliedPattern -> pure suppliedPattern
         Nothing -> generated "omitted record field" (C.location p) A.Wildcard
-      pure (A.ConstructorPattern (A.entityId entity) ordered)
+      if null witnesses
+        then pure (A.ConstructorPattern (A.entityId entity) ordered)
+        else do
+          body <- sourceNode p (A.ConstructorPattern (A.entityId entity) ordered)
+          pure (A.OpenPattern witnesses body)
     C.OpAppP a n b -> do e <- lookupEntity ConstructorNS n; A.ConstructorPattern (A.entityId e) <$> mapM patternNode [a, b]
     C.ParenP q -> A.nodeValue <$> patternNode q
     C.AnnotatedP q t -> A.AnnotatedPattern <$> patternNode q <*> typeNode False t
@@ -296,7 +313,11 @@ typeNode implicit t =
       case Map.lookup (C.nameText n) variables of
         Just i -> pure (A.TypeVariable i)
         Nothing -> failAt (if implicit then UnresolvedName else InvalidTypeVariableScope) (C.nameLocation n) "type variable is not in scope"
-    C.IdentT n -> A.TypeConstructor . A.entityId <$> lookupEntity TypeNS n
+    C.IdentT n -> do
+      variables <- asks envTypes
+      case Map.lookup (C.nameText n) variables of
+        Just ident -> pure (A.TypeVariable ident)
+        Nothing -> A.TypeConstructor . A.entityId <$> lookupEntity TypeNS n
     C.DottedT names -> case reverse names of
       n : rest -> A.TypeConstructor . A.entityId <$> qualified TypeNS (reverse rest) n
       [] -> failAt InvalidAbstractTree (C.location t) "empty type path"
@@ -375,8 +396,8 @@ expr e = case C.concrete e of
   C.Negate a -> sourceNode e . A.Negate =<< expr a
   C.Lam bs ps body -> do
     (types, (patterns, result)) <- withTypes bs $ do
-      (bindings, patterns) <- bindPatterns ps
-      result <- local (\env -> env {envValues = bindings `Map.union` envValues env}) (expr body)
+      (bindings, patternTypes, patterns) <- bindPatterns ps
+      result <- local (\env -> env {envValues = bindings `Map.union` envValues env, envTypes = patternTypes `Map.union` envTypes env}) (expr body)
       pure (patterns, result)
     value <- foldM (\body' pat -> normalizeLambda A.WarningCoverage pat body') result (reverse patterns)
     sourceNode e (if null types then A.nodeValue value else A.TypeLambda types value)
@@ -391,12 +412,18 @@ expr e = case C.concrete e of
   C.ExprBlock b -> sequential e (C.blockItems b)
   C.RecordWith base b -> do
     receiver <- expr base
-    fields <- mapM field (C.blockItems b)
+    fields <- mapM field [f | f <- C.blockItems b, C.Field {} <- [C.concrete f]]
+    typeFields <- forM [f | f <- C.blockItems b, C.TypeField {} <- [C.concrete f]] $ \f -> case C.concrete f of
+      C.TypeField n t -> sourceNode f . (C.nameText n,) =<< typeNode False t
+      C.Field {} -> failAt InvalidAbstractTree (C.location f) "expected type field"
     env <- ask
     let entities = Map.unions (Map.fromList [(A.entityId x, x) | x <- Map.elems (envOwn env)] : map allEntities (Map.elems (scopeInterfaces (envScope env))))
         result = case A.nodeValue receiver of
-          A.Constructor gid | Just entity <- Map.lookup gid entities, A.entityRole entity == RecordConstructorRole -> A.ConstructRecord gid fields
+          A.Constructor gid | Just entity <- Map.lookup gid entities, A.entityRole entity == RecordConstructorRole -> if null typeFields then A.ConstructRecord gid fields else A.PackRecord gid typeFields fields
           _ -> A.UpdateRecord receiver fields
+    when (not (null typeFields)) $ case result of
+      A.UpdateRecord {} -> failAt UnsupportedFeature (C.location e) "existential record updates are not supported"
+      _ -> pure ()
     sourceNode e result
   C.Dotted base names -> dottedExpr e base names
   C.Paren a -> expr a
@@ -416,14 +443,15 @@ expr e = case C.concrete e of
         sourceNode clause (test, result)
     matchClause clause = case C.concrete clause of
       C.MatchClause p guard body -> do
-        (bindings, patterns) <- bindPatterns [p]
-        local (\env -> env {envValues = bindings `Map.union` envValues env}) $ do
+        (bindings, patternTypes, patterns) <- bindPatterns [p]
+        local (\env -> env {envValues = bindings `Map.union` envValues env, envTypes = patternTypes `Map.union` envTypes env}) $ do
           g <- traverse expr guard
           result <- expr body
           case patterns of
             [pat] -> sourceNode clause (pat, g, result)
             _ -> failAt InvalidAbstractTree (C.location clause) "missing match pattern"
     field f = case C.concrete f of
+      C.TypeField n _ -> failAt InvalidAbstractTree (C.nameLocation n) "a type field cannot be lowered as a value field"
       C.Field n rhs w -> do
         requireName n
         result <- withWhere 0 w (expr rhs)
@@ -501,8 +529,8 @@ doExpr whole = \case
       apply2 (C.location statement) bind value lambda
     C.PatternBind p rhs -> do
       value <- expr rhs
-      (bindings, patterns) <- bindPatterns [p]
-      continuation <- local (\env -> env {envValues = bindings `Map.union` envValues env}) (doExpr whole rest)
+      (bindings, patternTypes, patterns) <- bindPatterns [p]
+      continuation <- local (\env -> env {envValues = bindings `Map.union` envValues env, envTypes = patternTypes `Map.union` envTypes env}) (doExpr whole rest)
       case patterns of
         [pat] -> do
           lambda <- normalizeLambda A.RequiredTotal pat continuation
@@ -536,10 +564,12 @@ sequentialGroup :: C.Expr -> [C.Declaration] -> Resolve A.Expr -> Resolve A.Expr
 sequentialGroup whole ds continuation = do
   -- Preallocate new identities, but resolve initializers in the previous scope.
   (bindings, _) <- localBindings ds
-  group <- declarationsWith False bindings ds
+  (_, (group, remaining)) <- withPatternTypes [p | C.Located _ _ (C.PatternBinding p _ _) <- ds] $ do
+    group <- declarationsWith False bindings ds
+    remaining <- local (\e -> e {envValues = bindings `Map.union` envValues e}) continuation
+    pure (group, remaining)
   old <- asks envValues
   forM_ (Map.keys bindings) $ \spelling -> when (Map.member spelling old) (emit (diagnostic Shadowing (C.location whole) ("sequential binding shadows " <> spelling)))
-  remaining <- local (\e -> e {envValues = bindings `Map.union` envValues e}) continuation
   statement <- generated "sequential binding" (C.location whole) (A.BindStatement group)
   sourceNode whole (A.Sequence [statement] remaining)
 
@@ -548,7 +578,7 @@ withWhere _ Nothing action = action
 withWhere arity (Just w) action = case C.concrete w of
   C.WhereClause block -> do
     (bindings, _) <- localBindings (C.blockItems block)
-    local (\e -> e {envValues = bindings `Map.union` envValues e}) $ do
+    withDeclarationPatternTypes (C.blockItems block) $ local (\e -> e {envValues = bindings `Map.union` envValues e}) $ do
       group <- declarationsWith True bindings (C.blockItems block)
       result <- action
       sourceNode w (A.Where (plan arity) group result)
@@ -683,6 +713,7 @@ rejectRecursivePatterns source group = when (A.scopeMode group == A.Recursive) $
       _ -> False
     references p = case A.nodeValue p of
       A.Bind b -> Set.singleton (LocalRef (fst (A.nodeValue b)))
+      A.OpenPattern _ body -> references body
       A.ConstructorPattern _ ps -> Set.unions (map references ps)
       A.ProductPattern ps -> Set.unions (map references ps)
       A.ListPattern ps -> Set.unions (map references ps)
@@ -735,10 +766,11 @@ resolveClause :: C.Declaration -> Resolve A.Clause
 resolveClause d = case C.concrete d of
   C.FunctionClause _ bs ps body w -> do
     (types, (patterns, result, whereGroup)) <- withTypes bs $ do
-      (bindings, patterns) <- bindPatterns ps
-      local (\e -> e {envValues = bindings `Map.union` envValues e}) $ do
+      (bindings, patternTypes, patterns) <- bindPatterns ps
+      local (\e -> e {envValues = bindings `Map.union` envValues e, envTypes = patternTypes `Map.union` envTypes e}) $ do
         (whereBindings, _) <- case w of Nothing -> pure (Map.empty, ()); Just (C.Located _ _ (C.WhereClause block)) -> localBindings (C.blockItems block)
-        local (\e -> e {envValues = whereBindings `Map.union` envValues e}) $ do
+        let whereDeclarations = case w of Nothing -> []; Just (C.Located _ _ (C.WhereClause block)) -> C.blockItems block
+        withDeclarationPatternTypes whereDeclarations $ local (\e -> e {envValues = whereBindings `Map.union` envValues e}) $ do
           group <- case w of Nothing -> pure (A.BindingGroup A.Recursive []); Just (C.Located _ _ (C.WhereClause block)) -> declarationsWith True whereBindings (C.blockItems block)
           result <- expr body
           pure (patterns, result, group)
@@ -748,8 +780,9 @@ resolveClause d = case C.concrete d of
 otherDeclaration :: Map Text Reference -> [C.Declaration] -> C.Declaration -> Resolve A.Declaration
 otherDeclaration allocated siblings d = case C.concrete d of
   C.PatternBinding p rhs w -> do
-    result <- withWhere 0 w (expr rhs)
-    patterns <- local (\e -> e {envValues = allocated `Map.union` envValues e}) (patternNode p)
+    outerTypes <- asks (fmap snd . Map.lookup (C.location p) . envPatternTypes)
+    result <- local (\e -> e {envTypes = maybe (envTypes e) id outerTypes}) (withWhere 0 w (expr rhs))
+    (_, patterns) <- withPatternTypes [p] $ local (\e -> e {envValues = allocated `Map.union` envValues e}) (patternNode p)
     sourceNode d (A.PatternDefinition patterns result)
   C.TypeAlias n ps t -> do
     gid <- A.entityId <$> lookupEntity TypeNS n
@@ -759,15 +792,21 @@ otherDeclaration allocated siblings d = case C.concrete d of
   C.DataDeclaration n ps body -> do
     gid <- A.entityId <$> lookupEntity TypeNS n
     k <- kindSignature n
-    (parameters, result) <- withParameters ps $ case body of
+    (parameters, (members, result)) <- withParameters ps $ case body of
       C.Constructors block -> do
         cs <- forM (C.blockItems block) $ \c -> case C.concrete c of
           C.Constructor name ts -> do ctor <- A.entityId <$> lookupEntity ConstructorNS name; args <- mapM (typeNode False) ts; sourceNode c (ctor, args)
-        pure (Left cs)
+        pure ([], Left cs)
       C.Fields block -> do
-        fs <- forM (C.blockItems block) $ \f -> case C.concrete f of C.FieldSignature name t -> do ty <- typeNode False t; sourceNode f (C.nameText name, ty)
-        pure (Right fs)
-    sourceNode d (case result of Left cs -> A.DataDefinition gid parameters k cs; Right fs -> A.RecordDefinition gid parameters k (globalInNamespace gid ConstructorNS) fs)
+        bs <- forM [f | f <- C.blockItems block, C.FieldSignature name _ <- [C.concrete f], C.nameSpace name == C.UpperName] $ \f -> case C.concrete f of
+          C.FieldSignature name t -> do
+            k' <- memberKind t
+            pure (C.Located (C.location f) (C.origin f) (C.TypeBinder name (Just k')))
+        (members, fs) <- withTypes bs $ forM [f | f <- C.blockItems block, C.FieldSignature name _ <- [C.concrete f], C.nameSpace name == C.LowerName] $ \f -> case C.concrete f of
+          C.FieldSignature name t -> do ty <- typeNode False t; sourceNode f (C.nameText name, ty)
+        when (not (null members) && null fs) (failAt UnsupportedFeature (C.location d) "records containing only type members remain unspecified")
+        pure (members, Right fs)
+    sourceNode d (case result of Left cs -> A.DataDefinition gid parameters k cs; Right fs -> A.RecordDefinition gid parameters k (globalInNamespace gid ConstructorNS) fs members)
   C.TraitDeclaration cs n p block -> do
     gid <- A.entityId <$> lookupEntity TypeNS n
     (parameters, (supers, methods)) <- withParameters [p] $ do
@@ -893,3 +932,53 @@ stringExpr original raw = do
         [] -> throwError ()
       showMethod <- sugar (C.location original) (SugarKey "string.show")
       generated "interpolation show" (C.location original) (A.Apply showMethod value)
+
+-- Type-member patterns introduce types; they never test type identity.
+typePatternName :: C.Pattern -> Resolve C.Name
+typePatternName p = case C.concrete p of
+  C.IdentP n | C.nameSpace n == C.LowerName && C.nameText n /= "_" -> pure n
+  _ -> failAt InvalidTypeMemberPattern (C.location p) "a type-member pattern requires a bare lowercase type binder; matching on types is not supported"
+
+patternTypeNames :: C.Pattern -> Resolve [C.Name]
+patternTypeNames p = case C.concrete p of
+  C.RecordP _ fields -> fmap concat $ forM (C.blockItems fields) $ \f -> case C.concrete f of
+    C.PatternField label q | C.nameSpace label == C.UpperName -> (: []) <$> typePatternName q
+    C.PatternField _ q -> patternTypeNames q
+  C.ConstructorP f ps -> concat <$> mapM patternTypeNames (f : ps)
+  C.OpAppP a _ b -> (++) <$> patternTypeNames a <*> patternTypeNames b
+  C.ParenP q -> patternTypeNames q
+  C.AnnotatedP q _ -> patternTypeNames q
+  C.ProductP ps -> concat <$> mapM patternTypeNames ps
+  C.ListP ps -> concat <$> mapM patternTypeNames ps
+  C.NegateP q -> patternTypeNames q
+  _ -> pure []
+
+withPatternTypes :: [C.Pattern] -> Resolve a -> Resolve (Map Text TypeVarId, a)
+withPatternTypes ps action = do
+  names <- concat <$> mapM patternTypeNames ps
+  allocated <- asks envPatternTypes
+  outer <- asks envTypes
+  let existing = Map.unions [fst (Map.findWithDefault (Map.empty, outer) (C.location p) allocated) | p <- ps]
+  entries <-
+    foldM
+      ( \table n -> do
+          when (Map.member (C.nameText n) table) (failAt DuplicatePatternBinder (C.nameLocation n) "duplicate type pattern binder")
+          ident <- maybe (TypeVarId <$> newId) pure (Map.lookup (C.nameText n) existing)
+          pure (Map.insert (C.nameText n) ident table)
+      )
+      Map.empty
+      names
+  result <- local (\e -> e {envTypes = entries `Map.union` envTypes e, envPatternTypes = Map.fromList [(C.location p, (entries, maybe outer snd (Map.lookup (C.location p) allocated))) | p <- ps] `Map.union` envPatternTypes e}) action
+  pure (entries, result)
+
+memberKind :: C.TypeExpr -> Resolve C.KindExpr
+memberKind t =
+  C.Located (C.location t) (C.origin t) <$> case C.concrete t of
+    C.IdentT n -> pure (C.IdentK n)
+    C.DottedT ns -> pure (C.DottedK ns)
+    C.ArrowT a b -> C.ArrowK <$> memberKind a <*> memberKind b
+    C.ParenT a -> C.ParenK <$> memberKind a
+    _ -> failAt WrongNamespace (C.location t) "a type member requires a kind"
+
+withDeclarationPatternTypes :: [C.Declaration] -> Resolve a -> Resolve a
+withDeclarationPatternTypes ds action = snd <$> withPatternTypes [p | C.Located _ _ (C.PatternBinding p _ _) <- ds] action

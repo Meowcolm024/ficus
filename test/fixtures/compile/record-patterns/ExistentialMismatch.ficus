@@ -1,0 +1,2 @@
+type Package = { Err : Type; value : Err }
+f () = Package with { Err = Int; value = True }

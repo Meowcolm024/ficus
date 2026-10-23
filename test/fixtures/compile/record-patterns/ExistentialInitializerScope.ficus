@@ -1,0 +1,3 @@
+type Package = { Err : Type; value : Err }
+identity @a x = x
+f p = { Package with { Err = e; value = x } = identity @e p; () }

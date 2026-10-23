@@ -1,0 +1,1 @@
+f p = Package with { Err = p.Err; value = 1 }

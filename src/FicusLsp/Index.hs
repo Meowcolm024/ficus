@@ -240,6 +240,7 @@ declarations tokens group = concatMap declaration (A.declarations group)
     binder source = let (ident, name) = A.nodeValue source in [(LocalRef ident, name, A.nodeSpan source, Parameter) | not ("$" `T.isPrefixOf` name)]
     patternBinders pattern' = case A.nodeValue pattern' of
       A.Bind value -> binder value
+      A.OpenPattern _ body -> patternBinders body
       A.ConstructorPattern _ patterns -> concatMap patternBinders patterns
       A.ProductPattern patterns -> concatMap patternBinders patterns
       A.ListPattern patterns -> concatMap patternBinders patterns
@@ -257,6 +258,7 @@ declarations tokens group = concatMap declaration (A.declarations group)
       A.Sequence statements body -> concatMap (\statement -> case A.nodeValue statement of A.Effect value -> expression value; A.BindStatement bindings -> declarations tokens bindings) statements ++ expression body
       A.Where _ bindings body -> declarations tokens bindings ++ expression body
       A.Project receiver _ -> expression receiver
+      A.PackRecord _ _ fields -> concatMap (expression . snd . A.nodeValue) fields
       A.ConstructRecord _ fields -> concatMap (expression . snd . A.nodeValue) fields
       A.UpdateRecord receiver fields -> expression receiver ++ concatMap (expression . snd . A.nodeValue) fields
       A.Product values -> concatMap expression values

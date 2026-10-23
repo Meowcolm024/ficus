@@ -10,9 +10,6 @@ unpack p = with p { Package with { Err = e; value = x } -> () }
 omitType p = with p { Package with { value = x } -> () }
 omitAll p = with p { Package with {} -> () }
 binder (Package with { Err = e; value = x }) = ()
-bareBinder Package with { Err = e; value = x } = ()
-followingBinder Package with {} y = y
-bareLambda () = Package with {} -> ()
 lambda () = (Package with { Err = e; value = x }) -> ()
 local p = { Package with { Err = e; value = x } = p; () }
 doForms action p = do

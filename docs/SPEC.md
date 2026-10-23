@@ -1631,11 +1631,11 @@ to use `NO_IMPLICIT_PRELUDE` and explicit dependencies. Future additions do not
 silently expand Prelude or change declaration identity and instance ownership.
 JSON and regular-expression support are planned; their APIs remain open.
 
-### 24.6 Existential type abstraction (proposal)
+### 24.6 Existential type abstraction
 
-#### Existential record type members (v1+ proposal)
+#### Existential record type members (v1+)
 
-A proposed declaration mixes an uppercase abstract type member with lowercase value fields in one record body:
+Existential record declarations mix an uppercase abstract type member with lowercase value fields in one record body:
 
 ```text
 type SomeException =
@@ -1643,9 +1643,9 @@ type SomeException =
     showErr : Err -> String
 ```
 
-Here `Err` names a hidden representation type, while `showErr` is a runtime operation over values of that type. This is an existential package in the style of *Types and Programming Languages*, not a path-dependent type.
+Here `Err` names a hidden representation type, while `showErr` is a runtime operation over values of that type. This is an existential package in the style of *Types and Programming Languages*, not a path-dependent type. A type member cannot be projected as `package.Err`, either as a value or within a type expression; a named unpacking pattern introduces the type name used inside its scope.
 
-When record patterns and existential type members are both available, the proposed unpacking pattern is:
+A named unpacking pattern is:
 
 ```text
 SomeException with { Err = e; showErr = se } = ...
@@ -1660,11 +1660,13 @@ SomeException with { Err = String; showErr = (e : String) -> e }
 with package { SomeException with { Err = e; showErr = se } -> ... }
 ```
 
-The v1+ grammar extends record field blocks with `upper_ident, "=", type_expr`. In pattern contexts, a record pattern is `(upper_name | qualified_constructor), "with", block(record_pattern_field)`, where `record_pattern_field = ident, "=", pattern`; it follows the constructor-pattern grouping rules of Section 24.1. Parse field patterns uniformly, then require an uppercase type-member slot to contain a bare lowercase type binder during semantic validation. This preserves ordinary constructor patterns in lowercase value fields. Explicit braces delimit record patterns; record construction retains its existing explicit/layout field blocks. Type-expression arrows in uppercase construction fields stay inside the field until its separator or closing delimiter.
+The parser retains uppercase declaration labels as field signatures and uppercase construction fields as distinct type-expression nodes, with source spans and provenance. The v1+ grammar extends record field blocks with `upper_ident, "=", type_expr`. In pattern contexts, a record pattern is `(upper_name | qualified_constructor), "with", block(record_pattern_field)`, where `record_pattern_field = ident, "=", pattern`; it follows the constructor-pattern grouping rules of Section 24.1. Parse field patterns uniformly, then require an uppercase type-member slot to contain a bare lowercase type binder during semantic validation. This preserves ordinary constructor patterns in lowercase value fields. Explicit braces delimit record patterns; record construction retains its existing explicit/layout field blocks. Type-expression arrows in uppercase construction fields stay inside the field until its separator or closing delimiter.
 
 All supplied labels must be distinct and belong to the record. In construction, check each supplied type against the member's kind and check value fields against that witness, irrespective of field order. In a pattern, `Err = e` binds a fresh abstract witness, never tests for equality with a concrete type; `Err = String` is invalid there. Type members are not ordinary record type parameters, so `SomeException @String` cannot supply the hidden witness. Ordinary `@` type application still applies to explicitly quantified parameters, not record members.
 
-Type members occupy no positional constructor or pattern slots. Value fields retain their positional slots in declaration order: `SomeException ((e : String) -> e)` infers the witness, and `SomeException se` opens it anonymously without binding a type name. Named patterns may omit type members and value fields; `SomeException with { showErr = se }` also leaves the witness unnamed. Every unpacking enforces witness non-escape. Only a named `with` type-member pattern can give that witness a source name. The previous alternative of positional type-member arguments is excluded; positional value-only matching is retained. Detailed witness inference and records with only type members remain open. Updates of existential records remain open. See [TAPL, Chapter 24](https://www.cis.upenn.edu/~bcpierce/tapl/contents.pdf).
+Type members occupy no positional constructor or pattern slots. Value fields retain their positional slots in declaration order: `SomeException ((e : String) -> e)` infers the witness, and `SomeException se` opens it anonymously without binding a type name. Named patterns may omit type members and value fields; `SomeException with { showErr = se }` also leaves the witness unnamed. Every unpacking introduces fresh abstract types, including when the same package is unpacked twice. These types cannot occur in the result, exported bindings, or enclosing type variables. A function/lambda parameter scopes its named witnesses over the remaining value patterns, body, and attached `where` group; a match clause scopes them over its value patterns, guard, and body. A sequential pattern declaration scopes its witnesses over the remaining block; a `where` pattern declaration scopes them over its group and owning body. A top-level pattern declaration cannot export witness-dependent values. Repacking into another existential record is permitted. Fields whose types mention hidden members require unpacking; independent value fields retain ordinary projection. Every unpacking enforces witness non-escape. Only a named `with` type-member pattern can give that witness a source name. The previous alternative of positional type-member arguments is excluded; positional value-only matching is retained. Omitted construction witnesses are inferred by unifying the supplied value fields against one shared instantiation of the declaration. Type members support declared higher kinds. Records with only type members and updates of existential records remain open and are rejected. See [TAPL, Chapter 24](https://www.cis.upenn.edu/~bcpierce/tapl/contents.pdf).
+
+Packaged operations may capture trait dictionaries supplied at construction. For example, a polymorphic factory constrained by `Show a` may store `show` in a field of type `Err -> String` while setting `Err = a`; unpacking can invoke that operation without knowing the representation. The implementation must preserve this captured evidence through Core and Runtime. A bare type member of kind `Type` does not itself grant any trait evidence to clients; operations requiring hidden evidence must be supplied by the package's interface.
 
 Existentials could also support a `SomeException`-like package for heterogeneous errors in v1+. If adopted, it may change the v1+ exception interface above and the v2+ concurrency interface (Section 25.4), including the current `Fiber e a`/`join` result types. That possibility does not commit to an existential error API yet.
 
@@ -1741,7 +1743,7 @@ v3+ considers a WebAssembly GC backend or an LLVM backend. Selection, runtime re
 
 ## 27. Remaining open design decisions
 
-Open language decisions include updates of existential records, existential record syntax, exhaustiveness for uninhabited subpatterns, and reference atomicity and interaction with fibers. The value restriction applies from v0 onward.
+Open language decisions include updates of existential records, records containing only type members, exhaustiveness for uninhabited subpatterns, and reference atomicity and interaction with fibers. The value restriction applies from v0 onward.
 
 Entry-point argument, reporting, and exit-status conventions remain open. Compiler artifact schemas and other implementation questions are tracked in [IMPL.md](IMPL.md).
 

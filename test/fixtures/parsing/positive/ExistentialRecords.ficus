@@ -1,0 +1,11 @@
+type SomeException =
+    Err : Type
+    showErr : Err -> String
+type Higher = { value : F Int; F : Type -> Type }
+type Result = { Ok Int; Err String }
+make = SomeException with { showErr = (e : String) -> e; Err = String }
+qualified = M.Package with { Err = M.TypeName; value = x }
+types = Package with { Err = Eq a => a -> a * [a]; value = x }
+nested = Box with { item = Package with { Err = Int -> Int; value = x } }
+match p = with p { M.Package with { Err = e; value = Just x } -> x }
+whereField = Package with { Err = Int; value = helper where { helper = 1 } }

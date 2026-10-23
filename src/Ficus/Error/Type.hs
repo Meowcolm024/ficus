@@ -25,6 +25,9 @@ data TypeCode
   | NonRecordReceiver
   | UnknownField
   | DuplicateField
+  | EscapingExistential
+  | ExistentialProjection
+  | ExistentialUpdate
   | MissingField
   | UnsatisfiedConstraint
   | AmbiguousConstraint
@@ -65,6 +68,9 @@ renderTypeCode = \case
   UnknownField -> "T0302"
   DuplicateField -> "T0303"
   MissingField -> "T0304"
+  EscapingExistential -> "T0305"
+  ExistentialProjection -> "T0306"
+  ExistentialUpdate -> "T0307"
   UnsatisfiedConstraint -> "T0401"
   AmbiguousConstraint -> "T0402"
   InvalidImplementation -> "T0403"

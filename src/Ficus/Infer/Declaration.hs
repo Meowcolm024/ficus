@@ -81,7 +81,7 @@ prepareDeclarationsWithConfig config imported tree = do
     (emit (E.diagnostic E.BuiltinContractMismatch (A.abstractSpan tree) "conflicting visible EXCEPTION trait associations"))
   forM_ (Map.toList localData) $ \(key, ident) -> do
     let location = maybe (A.abstractSpan tree) A.entitySpan (Map.lookup ident (A.abstractEntities tree))
-        validType = Map.lookup ident (typeKinds (declarationTypes prepared)) == Just TypeKind && any ((== ident) . C.constructorOwner . C.nodeValue) (Map.elems (constructorDeclarations prepared)) && any (\source -> case A.nodeValue source of A.DataDefinition owner _ _ _ -> owner == ident; A.RecordDefinition owner _ _ _ _ -> owner == ident; _ -> False) declarations
+        validType = Map.lookup ident (typeKinds (declarationTypes prepared)) == Just TypeKind && any ((== ident) . C.constructorOwner . C.nodeValue) (Map.elems (constructorDeclarations prepared)) && any (\source -> case A.nodeValue source of A.DataDefinition owner _ _ _ -> owner == ident; A.RecordDefinition owner _ _ _ _ _ -> owner == ident; _ -> False) declarations
         validConstructor owner fields = case (Map.lookup owner associations, Map.lookup (C.DataConstructor ident) (constructorDeclarations prepared)) of
           (Just ty, Just node) -> let descriptor = C.nodeValue node; scheme = C.constructorScheme descriptor in null (quantifiers scheme) && null (schemePredicates scheme) && schemeType scheme == foldr function (Constructor ty TypeKind) (map primitive fields)
           _ -> False
@@ -117,19 +117,21 @@ prepareDeclarationsWithConfig config imported tree = do
         entries <- forM constructors $ \constructor -> do
           let (name, fields) = A.nodeValue constructor
           arguments <- mapM (readTypeAt (declarationTypes environment) scope False TypeKind) fields
-          let descriptor = C.ConstructorDescriptor (Scheme [] quantified [] (foldr function result arguments)) (length arguments) ident
+          let descriptor = C.ConstructorDescriptor (Scheme [] quantified [] (foldr function result arguments)) (length arguments) ident []
           pure (C.DataConstructor name, coreNode constructor descriptor)
         pure environment {constructorDeclarations = Map.fromList entries `Map.union` constructorDeclarations environment, uninhabitedTypes = if null constructors then Set.insert ident (uninhabitedTypes environment) else uninhabitedTypes environment}
-      A.RecordDefinition ident parameters _ constructor fields -> do
+      A.RecordDefinition ident parameters _ constructor fields members -> do
         (quantified, scope) <- bindQuantifiers (declarationTypes environment) parameters
+        (hidden, hiddenScope) <- bindQuantifiers (declarationTypes environment) members
         let result = appliedType environment ident quantified
+            completeScope = hiddenScope `Map.union` scope
         entries <- forM fields $ \field -> do
           let (name, sourceType) = A.nodeValue field
-          ty <- readTypeAt (declarationTypes environment) scope False TypeKind sourceType
+          ty <- readTypeAt (declarationTypes environment) completeScope False TypeKind sourceType
           pure (field, name, ty)
-        let scheme = Scheme [] quantified [] (foldr function result [ty | (_, _, ty) <- entries])
-            descriptor = C.ConstructorDescriptor scheme (length fields) ident
-            record = C.RecordDescriptor (C.DataConstructor constructor) [coreNode field (name, Scheme [] quantified [] (function result ty)) | (field, name, ty) <- entries]
+        let scheme = Scheme [] (quantified ++ hidden) [] (foldr function result [ty | (_, _, ty) <- entries])
+            descriptor = C.ConstructorDescriptor scheme (length fields) ident hidden
+            record = C.RecordDescriptor (C.DataConstructor constructor) [coreNode field (name, Scheme [] (quantified ++ [q | q <- hidden, Bound (quantifierId q) `Set.member` freeVariables ty]) [] (function result ty)) | (field, name, ty) <- entries] [coreNode member (quantifierName q, q) | (member, q) <- zip members hidden]
         pure environment {constructorDeclarations = Map.insert (C.DataConstructor constructor) (coreNode source descriptor) (constructorDeclarations environment), recordDeclarations = Map.insert ident (coreNode source record) (recordDeclarations environment)}
       A.TraitDefinition ident parameter supers members -> do
         (parameters, scope) <- bindQuantifiers (declarationTypes environment) [parameter]
@@ -256,7 +258,7 @@ regularityDiagnostics environment sources = nub (concatMap check (Map.toList def
         ]
     nominal source = case A.nodeValue source of
       A.DataDefinition owner _ _ constructors -> Just (owner, [(ident, map A.nodeSpan fields) | constructor <- constructors, let (ident, fields) = A.nodeValue constructor])
-      A.RecordDefinition owner _ _ constructor fields -> Just (owner, [(constructor, map (A.nodeSpan . snd . A.nodeValue) fields)])
+      A.RecordDefinition owner _ _ constructor fields _ -> Just (owner, [(constructor, map (A.nodeSpan . snd . A.nodeValue) fields)])
       _ -> Nothing
     arguments ty = case functionParts ty of Nothing -> []; Just (input, output) -> input : arguments output
     check (owner, entries) =

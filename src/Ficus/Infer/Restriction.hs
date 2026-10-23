@@ -23,6 +23,7 @@ nonExpansive expression = case A.nodeValue expression of
   A.Product fields -> all nonExpansive fields
   A.List fields -> all nonExpansive fields
   A.Unit -> True
+  A.PackRecord _ _ fields -> all (nonExpansive . snd . A.nodeValue) fields
   A.ConstructRecord _ fields -> all (nonExpansive . snd . A.nodeValue) fields
   A.Where _ bindings body -> all ((== Nothing) . initializerExpansiveOrigin) (A.declarations bindings) && nonExpansive body
   A.Negate body -> numericLiteral body
@@ -105,6 +106,7 @@ unprotectedReferences cyclic = declaration False
       A.Sequence statements body -> concatMap (statement delayed . A.nodeValue) statements ++ expression delayed body
       A.Where _ bindings body -> group delayed bindings ++ expression delayed body
       A.Project receiver _ -> expression delayed receiver
+      A.PackRecord _ _ fields -> concatMap (expression delayed . snd . A.nodeValue) fields
       A.ConstructRecord _ fields -> concatMap (expression delayed . snd . A.nodeValue) fields
       A.UpdateRecord receiver fields -> expression delayed receiver ++ concatMap (expression delayed . snd . A.nodeValue) fields
       A.Product fields -> concatMap (expression delayed) fields

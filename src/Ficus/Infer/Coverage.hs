@@ -102,6 +102,7 @@ normalize :: A.Pattern -> Pattern
 normalize source = case A.nodeValue source of
   A.Bind _ -> Any
   A.Wildcard -> Any
+  A.OpenPattern _ body -> normalize body
   A.ConstructorPattern ident fields -> Tagged (C.DataConstructor ident) (map normalize fields)
   A.LiteralPattern literal -> Literal literal
   A.ProductPattern fields -> productPattern (map normalize fields)

@@ -17,6 +17,7 @@ data ResolveCode
   | ClauseArityMismatch
   | UnknownRecordPatternField
   | DuplicateRecordPatternField
+  | InvalidTypeMemberPattern
   | RecursiveRecordPattern
   | InvalidAbstractTree
   | UnknownPragma
@@ -58,6 +59,7 @@ renderResolveCode = \case
   UnknownRecordPatternField -> "N0013"
   DuplicateRecordPatternField -> "N0014"
   RecursiveRecordPattern -> "N0015"
+  InvalidTypeMemberPattern -> "N0016"
   InvalidAbstractTree -> "N0099"
   UnknownPragma -> "N0101"
   UnsupportedFeature -> "N0102"

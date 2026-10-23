@@ -282,24 +282,30 @@ lowerCase context receiver alternatives fallback = do
   value <- expression context receiver
   case alternatives of
     first : _
-      | (C.ConstructorTest constructor _ [binder], body) <- C.nodeValue first ->
+      | Just (constructor, [binder]) <- constructorPayload (fst (C.nodeValue first)) ->
           representation context first constructor >>= \case
             Erased -> do
-              result <- expression (withFrame [C.binderReference binder] context) body
+              result <- expression (withFrame [C.binderReference binder] context) (snd (C.nodeValue first))
               pure (R.Node (R.Let (R.Node (R.Binding value False)) result))
             _ -> ordinary value
     _ -> ordinary value
   where
+    constructorPayload = \case
+      C.ConstructorTest constructor _ binders -> Just (constructor, binders)
+      C.OpenConstructorTest _ constructor _ binders -> Just (constructor, binders)
+      C.LiteralTest _ -> Nothing
+    runtimeConstructor arm constructor binders =
+      representation context arm constructor >>= \case
+        Immediate literal -> pure (R.LiteralTest literal, [])
+        Boxed tag -> pure (R.ConstructorTest tag (R.FrameSize (length binders)), map C.binderReference binders)
+        Erased -> failure E.InvalidCore arm "wrapper alternative has invalid fields"
     ordinary value = do
       arms <- forM alternatives $ \arm -> do
         let (test, body) = C.nodeValue arm
         (runtimeTest, references) <- case test of
           C.LiteralTest literal -> (,[]) . R.LiteralTest <$> decodeLiteral arm literal
-          C.ConstructorTest constructor _ binders ->
-            representation context arm constructor >>= \case
-              Immediate literal -> pure (R.LiteralTest literal, [])
-              Boxed tag -> pure (R.ConstructorTest tag (R.FrameSize (length binders)), map C.binderReference binders)
-              Erased -> failure E.InvalidCore arm "wrapper alternative has invalid fields"
+          C.ConstructorTest constructor _ binders -> runtimeConstructor arm constructor binders
+          C.OpenConstructorTest _ constructor _ binders -> runtimeConstructor arm constructor binders
         branch <- expression (withFrame references context) body
         pure (R.Node (runtimeTest, branch))
       rest <- expression context fallback
@@ -338,7 +344,7 @@ freeReferences source = case C.formOf source of
   C.Lambda binder body -> Set.delete (C.binderReference binder) (freeReferences body)
   C.Let binding body -> freeReferences (C.bindingBody (C.nodeValue binding)) `Set.union` Set.delete (C.bindingReference (C.nodeValue binding)) (freeReferences body)
   C.LetRec bindings body -> Set.unions (freeReferences body : map (freeReferences . C.bindingBody . C.nodeValue) (NE.toList bindings)) `Set.difference` Set.fromList (map (C.bindingReference . C.nodeValue) (NE.toList bindings))
-  C.Case receiver alternatives fallback -> Set.unions (freeReferences receiver : freeReferences fallback : [freeReferences body `Set.difference` Set.fromList (case test of C.ConstructorTest _ _ binders -> map C.binderReference binders; _ -> []) | arm <- alternatives, let (test, body) = C.nodeValue arm])
+  C.Case receiver alternatives fallback -> Set.unions (freeReferences receiver : freeReferences fallback : [freeReferences body `Set.difference` Set.fromList (case test of C.ConstructorTest _ _ binders -> map C.binderReference binders; C.OpenConstructorTest _ _ _ binders -> map C.binderReference binders; _ -> []) | arm <- alternatives, let (test, body) = C.nodeValue arm])
   _ -> Set.unions (map freeReferences (C.children source))
 
 decodeLiteral :: C.Node a -> L.Literal -> Lower R.RuntimeLiteral

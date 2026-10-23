@@ -160,7 +160,7 @@ constructorVisible names entity = case entityOwner entity of
 patternNames :: C.Pattern -> [C.Name]
 patternNames p = case C.concrete p of
   C.IdentP n | C.nameSpace n == C.LowerName && C.nameText n /= "_" -> [n]
-  C.RecordP _ fields -> concat [patternNames q | C.Located _ _ (C.PatternField _ q) <- C.blockItems fields]
+  C.RecordP _ fields -> concat [patternNames q | C.Located _ _ (C.PatternField label q) <- C.blockItems fields, C.nameSpace label == C.LowerName]
   C.ConstructorP f xs -> concatMap patternNames (f : xs)
   C.OpAppP a _ b -> patternNames a ++ patternNames b
   C.ParenP a -> patternNames a

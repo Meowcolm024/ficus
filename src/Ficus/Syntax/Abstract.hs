@@ -34,6 +34,7 @@ data ExprF
   | Where WherePlan BindingGroup Expr
   | Project Expr (Node Text)
   | ConstructRecord GlobalId [FieldAssignment]
+  | PackRecord GlobalId [Node (Text, TypeSyntax)] [FieldAssignment]
   | UpdateRecord Expr [FieldAssignment]
   | Product [Expr]
   | List [Expr]
@@ -55,7 +56,7 @@ data StatementF = Effect Expr | BindStatement BindingGroup deriving (Eq, Show)
 
 type Pattern = Node PatternF
 
-data PatternF = Bind Binder | Wildcard | ConstructorPattern GlobalId [Pattern] | LiteralPattern Literal | ProductPattern [Pattern] | ListPattern [Pattern] | UnitPattern | AnnotatedPattern Pattern TypeSyntax | NegatedPattern Pattern deriving (Eq, Show)
+data PatternF = Bind Binder | Wildcard | ConstructorPattern GlobalId [Pattern] | LiteralPattern Literal | ProductPattern [Pattern] | ListPattern [Pattern] | UnitPattern | AnnotatedPattern Pattern TypeSyntax | NegatedPattern Pattern | OpenPattern [(Text, TypeBinder)] Pattern deriving (Eq, Show)
 
 type TypeSyntax = Node TypeF
 
@@ -91,7 +92,7 @@ data DeclarationF
   | PatternDefinition Pattern Expr
   | AliasDefinition GlobalId [TypeBinder] (Maybe KindSyntax) TypeSyntax
   | DataDefinition GlobalId [TypeBinder] (Maybe KindSyntax) [Node (GlobalId, [TypeSyntax])]
-  | RecordDefinition GlobalId [TypeBinder] (Maybe KindSyntax) GlobalId [Node (Text, TypeSyntax)]
+  | RecordDefinition GlobalId [TypeBinder] (Maybe KindSyntax) GlobalId [Node (Text, TypeSyntax)] [TypeBinder]
   | OpaqueBuiltinType GlobalId Text KindSyntax
   | TraitDefinition GlobalId TypeBinder [Predicate] [Declaration]
   | MethodDefinition GlobalId Scheme
@@ -115,3 +116,14 @@ data AbstractModule = AbstractModule
     builtinAssociations :: Map Text GlobalId
   }
   deriving (Eq, Show)
+
+-- Named witnesses are scoped over the value patterns and their continuation.
+patternTypeBinders :: Pattern -> [TypeBinder]
+patternTypeBinders source = case nodeValue source of
+  OpenPattern witnesses body -> map snd witnesses ++ patternTypeBinders body
+  ConstructorPattern _ ps -> concatMap patternTypeBinders ps
+  ProductPattern ps -> concatMap patternTypeBinders ps
+  ListPattern ps -> concatMap patternTypeBinders ps
+  AnnotatedPattern p _ -> patternTypeBinders p
+  NegatedPattern p -> patternTypeBinders p
+  _ -> []

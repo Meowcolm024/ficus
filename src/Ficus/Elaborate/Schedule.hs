@@ -28,6 +28,7 @@ referencedValues expression = case C.formOf expression of
       (C.ConstructorTest _ _ binders, body) ->
         referencedValues body
           `Set.difference` Set.fromList (map C.binderReference binders)
+      (C.OpenConstructorTest _ _ _ binders, body) -> referencedValues body `Set.difference` Set.fromList (map C.binderReference binders)
       (C.LiteralTest _, body) -> referencedValues body
 
 -- Evidence lambdas may defer initialization, but they do not make a recursive

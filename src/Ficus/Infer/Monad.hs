@@ -57,6 +57,7 @@ data InferState = InferState
     checkedGoals :: Map HoleId (C.Node (C.HoleGoal InferType)),
     pendingFields :: [FieldWanted],
     checkedFields :: Map NodeId C.FieldId,
+    openedWitnesses :: Map NodeId [InferType],
     checkedEvidence :: [(Wanted, Evidence)],
     pendingNegations :: Map NodeId (C.Node InferType)
   }
@@ -84,6 +85,7 @@ initialState =
       checkedGoals = Map.empty,
       pendingFields = [],
       checkedFields = Map.empty,
+      openedWitnesses = Map.empty,
       checkedEvidence = [],
       pendingNegations = Map.empty
     }

@@ -128,6 +128,9 @@ unitTests =
         out <- inMemory [("Main", "{-# NO_IMPLICIT_PRELUDE #-}\na = absent\nb = other\nc = 3\n")]
         length [d | ResolutionDiagnostic d <- frontendDiagnostics out, diagnosticCode d == UnresolvedName] @?= 2
         Map.null (frontendModules out) @?= True,
+      testCase "type-member patterns cannot match concrete types" $ do
+        out <- inMemory [("Main", "{-# NO_IMPLICIT_PRELUDE #-}\ntype SomeException = { Err : Type; value : Err }\nf p = with p { SomeException with { Err = Int } -> () }\n")]
+        [coordinates (primarySpan d) | ResolutionDiagnostic d <- frontendDiagnostics out, diagnosticCode d == InvalidTypeMemberPattern] @?= [[3, 43, 3, 45]],
       testCase "sequential self reference sees the previous scope" $ do
         out <- inMemory [("Main", "{-# NO_IMPLICIT_PRELUDE #-}\nf = { x = x; x }\n")]
         assertBool "unresolved initializer" (any (\case ResolutionDiagnostic d -> diagnosticCode d == UnresolvedName; _ -> False) (frontendDiagnostics out)),

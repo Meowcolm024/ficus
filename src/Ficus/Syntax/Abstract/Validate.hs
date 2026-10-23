@@ -87,6 +87,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
     patternNode = onNode $ \case
       Bind b -> binder b
       Wildcard -> pure ()
+      OpenPattern witnesses body -> binders (map snd witnesses) (patternNode body)
       ConstructorPattern gid ps -> role gid [ConstructorRole, RecordConstructorRole] >> mapM_ patternNode ps
       LiteralPattern _ -> pure ()
       ProductPattern ps -> mapM_ patternNode ps
@@ -96,6 +97,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       NegatedPattern p -> patternNode p
     patternIds p = case nodeValue p of
       Bind b -> [fst (nodeValue b)]
+      OpenPattern _ body -> patternIds body
       ConstructorPattern _ ps -> concatMap patternIds ps
       ProductPattern ps -> concatMap patternIds ps
       ListPattern ps -> concatMap patternIds ps
@@ -106,8 +108,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
     patterns ps action = do
       let ids = concatMap patternIds ps
       unless (length ids == Set.size (Set.fromList ids)) (bad "duplicate pattern binder identity")
-      mapM_ patternNode ps
-      withValues (Set.fromList ids) action
+      binders (concatMap patternTypeBinders ps) (mapM_ patternNode ps >> withValues (Set.fromList ids) action)
     expr = onNode $ \case
       Ref ref -> reference ref
       Constructor gid -> role gid [ConstructorRole, RecordConstructorRole]
@@ -124,8 +125,9 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       Sequence ss e -> statements ss (expr e)
       Where p g e -> do
         case p of AfterValueParameters n | n <= 0 -> bad "invalid where timing"; _ -> pure ()
-        withValues (groupIds g) (group g >> expr e)
+        withTypes (groupTypeIds g) (withValues (groupIds g) (group g >> expr e))
       Project e selector -> expr e >> onNode validName selector
+      PackRecord gid ts fs -> role gid [RecordConstructorRole] >> mapM_ (onNode (\(label, t) -> validName label >> ty t)) ts >> mapM_ assignment fs
       ConstructRecord gid fs -> role gid [RecordConstructorRole] >> mapM_ assignment fs
       UpdateRecord e fs -> expr e >> mapM_ assignment fs
       Product es -> mapM_ expr es
@@ -141,9 +143,10 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       onNode
         ( \case
             Effect e -> expr e >> statements ss rest
-            BindStatement g -> group g >> withValues (groupIds g) (statements ss rest)
+            BindStatement g -> group g >> withTypes (groupTypeIds g) (withValues (groupIds g) (statements ss rest))
         )
         s
+    groupTypeIds g = typeIds [b | d <- declarations g, PatternDefinition p _ <- [nodeValue d], b <- patternTypeBinders p]
     groupIds g = Set.fromList (concatMap declared (declarations g))
     declared d = case nodeValue d of
       ValueDefinition (LocalRef i) _ _ -> [i]
@@ -160,7 +163,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       PatternDefinition p e -> expr e >> patterns [p] (pure ())
       AliasDefinition gid bs k t -> role gid [AliasRole] >> mapM_ kind k >> binders bs (ty t)
       DataDefinition gid bs k cs -> role gid [DataRole] >> mapM_ kind k >> binders bs (mapM_ (onNode (\(c, ts) -> role c [ConstructorRole] >> mapM_ ty ts)) cs)
-      RecordDefinition gid bs k ctor fs -> role gid [RecordRole] >> role ctor [RecordConstructorRole] >> mapM_ kind k >> binders bs (mapM_ (onNode (\(label, t) -> validName label >> ty t)) fs)
+      RecordDefinition gid bs k ctor fs members -> role gid [RecordRole] >> role ctor [RecordConstructorRole] >> mapM_ kind k >> binders (bs ++ members) (mapM_ (onNode (\(label, t) -> validName label >> ty t)) fs)
       OpaqueBuiltinType gid _ k -> global gid >> kind k
       TraitDefinition gid b supers methods -> role gid [TraitRole] >> binders [b] (mapM_ predicate supers >> mapM_ declaration methods)
       MethodDefinition gid s -> role gid [MethodRole] >> scheme s
@@ -170,6 +173,6 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
         ( \cl -> do
             unless (length (clausePatterns cl) == arity) (bad "nonuniform written clause arity")
             unless (clauseWherePlan cl == (if arity == 0 then AtInitialization else AfterValueParameters arity)) (bad "invalid clause where timing")
-            binders (clauseTypes cl) (patterns (clausePatterns cl) (withValues (groupIds (clauseWhere cl)) (group (clauseWhere cl) >> expr (clauseBody cl))))
+            binders (clauseTypes cl) (patterns (clausePatterns cl) (withTypes (groupTypeIds (clauseWhere cl)) (withValues (groupIds (clauseWhere cl)) (group (clauseWhere cl) >> expr (clauseBody cl)))))
         )
         c

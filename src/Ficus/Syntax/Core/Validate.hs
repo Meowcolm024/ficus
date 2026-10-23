@@ -48,8 +48,16 @@ validateCore tree =
        in checkNode descriptor
             ++ checkScheme tree Map.empty (nodeSpan descriptor) scheme
             ++ require (nodeSpan descriptor) (constructorArity value == length (fst (splitArrows (schemeType scheme)))) "constructor arity differs from its scheme"
+            ++ require (nodeSpan descriptor) (all (`elem` quantifiers scheme) (constructorExistentials value) && all (\q -> BoundVariable (quantifierId q) `notElem` foldr (:) [] result) (constructorExistentials value)) "hidden constructor types must be quantified and absent from its result"
             ++ require (nodeSpan descriptor) (typeHead result == Just (constructorOwner value)) "constructor has the wrong nominal result"
-    checkRecord descriptor = checkNode descriptor ++ concatMap (\field -> checkNode field ++ checkScheme tree Map.empty (nodeSpan field) (snd (nodeValue field))) (recordFields (nodeValue descriptor))
+    checkRecord descriptor =
+      let value = nodeValue descriptor
+          members = recordTypeMembers value
+          hidden = maybe [] (constructorExistentials . nodeValue) (Map.lookup (recordConstructor value) (coreConstructors tree))
+       in checkNode descriptor
+            ++ concatMap checkNode members
+            ++ require (nodeSpan descriptor) (map (snd . nodeValue) members == hidden && all (\member -> let (name, q) = nodeValue member in name == quantifierName q) members) "record type members differ from the constructor's existential layout"
+            ++ concatMap (\field -> checkNode field ++ checkScheme tree Map.empty (nodeSpan field) (snd (nodeValue field))) (recordFields value)
     checkDictionary (ident, descriptor) =
       let value = nodeValue descriptor
           parameter = dictionaryParameter value
@@ -199,21 +207,37 @@ checkExpression tree environment scope expression =
     checkArm arm = let (condition, body) = nodeValue arm in checkNode arm ++ check condition ++ check body ++ sameType (nodeSpan condition) (primitive BoolType) (typeOf condition) ++ same ty (typeOf body)
     checkAlternative receiver alternative =
       let (test, body) = nodeValue alternative
-          (binders, errors) = case test of
-            LiteralTest literal -> ([], sameType (nodeSpan alternative) (typeOf receiver) (literalType literal))
-            ConstructorTest constructor arguments bs ->
-              ( bs,
-                concatMap (checkType tree scope (nodeSpan alternative)) arguments ++ case lookupConstructor tree constructor arguments of
-                  Left message -> invalid (nodeSpan alternative) message
-                  Right (fields, result) -> sameType (nodeSpan alternative) (typeOf receiver) result ++ require (nodeSpan alternative) (length fields == length bs) "case binder arity mismatch" ++ concat (zipWith (sameType (nodeSpan alternative)) fields (map binderType bs))
-              )
+          (witnesses, constructorTest) = case test of
+            OpenConstructorTest localWitnesses constructor arguments bs -> (localWitnesses, Just (constructor, arguments, bs))
+            ConstructorTest constructor arguments bs -> ([], Just (constructor, arguments, bs))
+            LiteralTest _ -> ([], Nothing)
+          qs = map nodeValue witnesses
+          ids = map quantifierId qs
+          innerScope = Map.fromList [(quantifierId q, quantifierKind q) | q <- qs] `Map.union` scope
+          (binders, errors) = case constructorTest of
+            Nothing -> case test of LiteralTest literal -> ([], sameType (nodeSpan alternative) (typeOf receiver) (literalType literal)); _ -> ([], invalid (nodeSpan alternative) "missing constructor test")
+            Just (constructor, arguments, bs) ->
+              let descriptor = nodeValue <$> Map.lookup constructor (coreConstructors tree)
+                  hidden = maybe [] constructorExistentials descriptor
+                  quantifiers' = maybe [] (quantifiers . constructorScheme) descriptor
+                  suppliedHidden = [argument | (q, argument) <- zip quantifiers' arguments, q `elem` hidden]
+                  expectedHidden = [Variable (BoundVariable (quantifierId q)) (quantifierKind q) | q <- qs]
+               in ( bs,
+                    require (nodeSpan alternative) (map quantifierKind hidden == map quantifierKind qs && suppliedHidden == expectedHidden) "existential cases require fresh abstract witness binders, never concrete type tests"
+                      ++ concatMap (checkType tree innerScope (nodeSpan alternative)) arguments
+                      ++ case lookupConstructor tree constructor arguments of
+                        Left message -> invalid (nodeSpan alternative) message
+                        Right (fields, result) -> sameType (nodeSpan alternative) (typeOf receiver) result ++ require (nodeSpan alternative) (length fields == length bs) "case binder arity mismatch" ++ concat (zipWith (sameType (nodeSpan alternative)) fields (map binderType bs))
+                  )
           names = map binderReference binders
           extended = Map.fromList [(binderReference b, monomorphic (binderType b)) | b <- binders] `Map.union` environment
        in checkNode alternative
+            ++ concatMap checkNode witnesses
+            ++ require (nodeSpan alternative) (length ids == length (nub ids) && all (`Map.notMember` scope) ids) "duplicate or capturing existential witness"
             ++ errors
             ++ require (nodeSpan alternative) (length names == length (nub names) && all (`Map.notMember` environment) names) "duplicate case binder"
-            ++ concatMap (checkBinder tree scope) binders
-            ++ checkExpression tree extended scope body
+            ++ concatMap (checkBinder tree innerScope) binders
+            ++ checkExpression tree extended innerScope body
             ++ same ty (typeOf body)
 
 checkBinder :: CoreModule CoreType -> TypeScope -> Binder CoreType -> [E.Diagnostic]

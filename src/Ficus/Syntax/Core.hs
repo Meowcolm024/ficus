@@ -75,6 +75,7 @@ type Alternative ty = Node (CaseTest ty, Expr ty)
 
 data CaseTest ty
   = ConstructorTest ConstructorId [ty] [Binder ty]
+  | OpenConstructorTest [Node Quantifier] ConstructorId [ty] [Binder ty]
   | LiteralTest Literal
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
@@ -102,14 +103,17 @@ data BindingGroup ty = NonRecursive (Binding ty) | Recursive (NonEmpty (Binding 
 data ConstructorDescriptor ty = ConstructorDescriptor
   { constructorScheme :: Scheme ty,
     constructorArity :: Int,
-    constructorOwner :: GlobalId
+    constructorOwner :: GlobalId,
+    constructorExistentials :: [Quantifier]
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
--- Field schemes have the form forall parameters. Record parameters -> Field.
+-- Field schemes have the form forall parameters and used witnesses.
+-- Record parameters -> Field. Dependent fields require existential unpacking.
 data RecordDescriptor ty = RecordDescriptor
   { recordConstructor :: ConstructorId,
-    recordFields :: [Node (Text, Scheme ty)]
+    recordFields :: [Node (Text, Scheme ty)],
+    recordTypeMembers :: [Node (Text, Quantifier)]
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 

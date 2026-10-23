@@ -92,7 +92,20 @@ tests :: TestTree
 tests =
   testGroup
     "Core validation"
-    [ testCase "existential cases bind fresh types and cannot test concrete witnesses" $ do
+    [ testCase "lazy Core arrows require explicit thunks at both boundaries" $ do
+        let ty = arrow NameArrow int int
+            result = expr 1 int (Literal (L.IntegerLiteral "1"))
+            thunkType = parameterType NameArrow int
+            binder input = node 2 (LocalId 0, "argument", ValueBinder, input)
+            lazy = expr 3 ty (Lambda (binder thunkType) result)
+            eager = expr 3 ty (Lambda (binder int) result)
+            thunk = expr 4 thunkType (Lambda (node 5 (LocalId 1, "unit", ValueBinder, primitive UnitType)) result)
+            call argument = moduleWith (monomorphic int) (expr 6 int (Apply lazy argument))
+        validateCore (moduleWith (monomorphic ty) lazy) @?= []
+        validateCore (call thunk) @?= []
+        assertInvalid (moduleWith (monomorphic ty) eager)
+        assertInvalid (call result),
+      testCase "existential cases bind fresh types and cannot test concrete witnesses" $ do
         let (tree, constructor, _, packed, opened) = existentialFixture
             concreteBinder = node 30 (LocalId 30, "value", ValueBinder, int)
             result = expr 31 int (Literal (L.IntegerLiteral "2"))

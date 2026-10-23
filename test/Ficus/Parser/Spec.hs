@@ -61,6 +61,7 @@ tests = do
                      [("TypeMemberAtConstructionV1.ficus", [1, 29, 1, 29]), ("TypeMemberAtPatternV1.ficus", [1, 37, 1, 37]), ("MissingFieldEqualsV1.ficus", [1, 35, 1, 35])]
                  ]
           ),
+        testGroup "lazy arrow syntax" [acceptFixture ("test/fixtures/lazy-arrows/" </> f) | f <- ["ParsingV2.ficus", "CallByNameV2.ficus", "ArrowMismatchV2.ficus", "Execution.ficus", "Contextual.ficus", "Provenance.ficus"]],
         structuralTests,
         Pretty.tests,
         testGroup
@@ -249,7 +250,8 @@ instance Arbitrary Source where
             (\a b -> "(" <> a <> ") + (" <> b <> ")") <$> term (n - 1) <*> term (n - 1),
             (\a -> "if { True -> " <> a <> "; _ -> x }") <$> term (n - 1),
             (\a -> "Package with { Err = Int -> Int; value = " <> a <> " }") <$> term (n - 1),
-            (\a -> "{ local = " <> a <> "; local }") <$> term (n - 1)
+            (\a -> "{ local = " <> a <> "; local }") <$> term (n - 1),
+            (\a -> "(" <> a <> " : Int ~> Bool -> (Int ~> Int))") <$> term (n - 1)
           ]
 
 roundTrip :: Source -> Property

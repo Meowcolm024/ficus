@@ -130,7 +130,7 @@ lexSource file input = case snd (runParser' (scan <* eof) initialState) of
           txt <- takeWhile1P Nothing (\x -> operatorChar x && x /= '.')
           suffix <- embedded
           let full = txt <> suffix
-          Token (if full `elem` ["@", ":", "=", "->", "<-", "=>"] then Punctuation else Symbol) full <$> spanFrom file a
+          Token (if full `elem` ["@", ":", "=", "->", "~>", "<-", "=>"] then Punctuation else Symbol) full <$> spanFrom file a
         _ -> do
           void anySingle
           s <- spanFrom file a

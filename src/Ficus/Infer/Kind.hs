@@ -170,6 +170,7 @@ typeSyntax source = do
       unify (A.nodeSpan x) fk (Arrow xk result)
       pure result
     A.ArrowType a b -> ordinary a >> ordinary b >> pure Star
+    A.LazyArrowType a b -> ordinary a >> ordinary b >> pure Star
     A.QualifiedType predicates body -> mapM_ predicate predicates >> typeSyntax body
     A.TypeHole _ -> fresh (A.nodeSpan source) False
   modify' (\s -> s {syntax = Map.insert (A.nodeId source) kind (syntax s)})

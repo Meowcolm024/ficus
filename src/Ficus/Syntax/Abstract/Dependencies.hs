@@ -116,6 +116,7 @@ ty t = case nodeValue t of
   TypeConstructor gid -> typeEdge gid
   TypeApplication a b -> ty a <> ty b
   ArrowType a b -> ty a <> ty b
+  LazyArrowType a b -> ty a <> ty b
   QualifiedType cs a -> foldMap predicate cs <> ty a
   TypeVariable ident -> Dependencies Set.empty Set.empty (Set.singleton ident)
   TypeHole _ -> mempty

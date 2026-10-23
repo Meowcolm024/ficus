@@ -30,7 +30,15 @@ tests :: TestTree
 tests =
   testGroup
     "semantic types and inference solver"
-    [ testCase "occurs check prevents infinite types" $
+    [ testCase "lazy arrows have distinct types and render with their associativity" $ do
+        let lazy = arrow NameArrow int bool
+            strict = function int bool
+        kindOf lazy @?= Right TypeKind
+        assertBool "strict and lazy cannot unify" (case unify lazy strict of Left _ -> True; Right _ -> False)
+        assertBool "lazy and strict cannot unify" (case unify strict lazy of Left _ -> True; Right _ -> False)
+        renderType (const "a") (arrow NameArrow int (function bool lazy)) @?= "Int ~> Bool -> Int ~> Bool"
+        renderType (const "a") (function lazy int) @?= "(Int ~> Bool) -> Int",
+      testCase "occurs check prevents infinite types" $
         unify (meta 0) (function (meta 0) int) @?= Left (InfiniteType (MetaId 0) (function (meta 0) int)),
       testCase "signature skolems are rigid" $
         unify (Variable (Skolem (SkolemId 0)) TypeKind) int @?= Left (TypesDiffer (Variable (Skolem (SkolemId 0)) TypeKind) int),

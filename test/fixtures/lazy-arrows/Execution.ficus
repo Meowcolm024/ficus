@@ -1,0 +1,87 @@
+use Prelude (Ref, newRef, readRef, modifyRef)
+
+twice : Int ~> Int
+twice x = x + x
+skip : Int ~> Int
+skip _ = 0
+once : Int ~> Int
+once x = { value = x; value + value }
+trace label = { print label; 1 }
+type Box = Box Int
+unpack : Box ~> Int
+unpack (Box x) = x + x
+ignoreBox : Box ~> Int
+ignoreBox (Box _) = 0
+ignoreUnit : Unit ~> Int
+ignoreUnit () = 0
+box () = { print "box"; Box 1 }
+repeated () = twice (trace "demand")
+skipped () = skip (trace "wrong")
+shared () = once (trace "demand")
+patternOnce () = unpack (box ())
+patternUnused () = ignoreBox (box ())
+wildcardConstructor () = (((Box _) -> 0) : Box ~> Int) (box ())
+unitDemand () = ignoreUnit ({ print "unit"; () })
+operandOrder () = twice (trace "left" + trace "right" + 1)
+forward : Int ~> Int
+forward x = twice x
+forwarded () = forward (trace "demand")
+mix : Int ~> Int -> Int ~> Int
+mix x y z = x + y + z + x + z
+mixedOrder () = mix (trace "left") (trace "strict") (trace "right")
+partial : Int ~> Int -> Unit -> Int
+partial x y () = x + y
+partialCalls () = { f = partial (trace "demand") (trace "strict"); f () + f () }
+captured () = { x = 5; f = partial x 0; g x = f (); g 100 + g 200 }
+bump cell = { modifyRef cell (n -> n + 1); readRef cell }
+changing () = { cell = newRef 0; twice (bump cell) }
+save : Int ~> Unit -> Int
+save x () = x
+closureDemand () = { cell = newRef 0; f = save (bump cell); f () + f () }
+recoverTwice : Int ~> Int
+recoverTwice x = catch (_ -> x) ((e : Int) -> e) + catch (_ -> x) ((e : Int) -> e)
+repeatedFailure () = { cell = newRef 0; recoverTwice ({ print "throw"; throw (bump cell) }) }
+skipFailure () = skip (throw 1)
+loop () = loop ()
+skipDivergence () = skip (loop ())
+pick : Int ~> Int
+pick 0 = 0
+pick x = x
+clauseAttempts () = { cell = newRef 0; pick (bump cell) }
+clauses : Int ~> Int -> Int
+clauses 0 y = 0
+clauses 1 y = y
+clauseOrder () = clauses (trace "first") 7
+lazyLambda : Int ~> Int
+lazyLambda = x -> x + x
+lambda () = lazyLambda (trace "demand")
+annotatedLambda () = ((x -> x + x) : Int ~> Int) (trace "demand")
+annotatedVariable () = (((x : Int) -> x + x) : Int ~> Int) (trace "demand")
+annotatedWildcard () = (((_ : Int) -> 0) : Int ~> Int) (trace "wrong")
+lambdaPattern () = (((Box x) -> 0) : Box ~> Int) (box ())
+useLazy : (Int ~> Int) -> Int
+useLazy f = f (trace "demand")
+higherOrder () = useLazy (x -> x + x)
+identity @a x = x
+typeApplication () = identity @(Int ~> Int) skip (trace "wrong")
+keep : {a} -> a ~> a
+keep @a x = x
+polymorphic () = keep @Int 8
+trait Repeat a = { repeat : a ~> a }
+impl Repeat Int = { repeat x = x + x }
+method () = repeat (trace "demand")
+type Holder = { run : Int ~> Int }
+holder = Holder with { run = skip }
+recordField () = holder.run (trace "wrong")
+match : Int ~> Int
+match x = with x { _ -> 0 }
+strictMatch () = match (trace "demand")
+and : Bool ~> Bool ~> Bool
+and x y = with x { True -> y; False -> False }
+shortCircuit () = if { and False (throw 1) -> 1; _ -> 0 }
+select () = { print "callee"; twice }
+calleeOrder () = select () (trace "demand")
+earlyMatch : Box ~> Int -> Int
+earlyMatch (Box _) y = y
+patternBeforeStrict () = earlyMatch (box ()) (trace "strict")
+property n = { cell = newRef n; twice (bump cell) }

@@ -81,6 +81,7 @@ validateAbstract m = runReaderT check (Scope Set.empty Set.empty)
       TypeConstructor gid -> role gid [AliasRole, DataRole, RecordRole, TraitRole]
       TypeApplication a b -> ty a >> ty b
       ArrowType a b -> ty a >> ty b
+      LazyArrowType a b -> ty a >> ty b
       QualifiedType cs t -> mapM_ predicate cs >> ty t
       TypeHole _ -> pure ()
     predicate = onNode (\(gid, t) -> role gid [TraitRole] >> ty t)

@@ -330,6 +330,7 @@ typeNode implicit t =
       fx <- sourceNode t (A.TypeApplication f x)
       A.TypeApplication fx <$> typeNode implicit b
     C.ArrowT a b -> A.ArrowType <$> typeNode implicit a <*> typeNode implicit b
+    C.LazyArrowT a b -> A.LazyArrowType <$> typeNode implicit a <*> typeNode implicit b
     C.ProductT a b -> intrinsicApplication ProductType [a, b]
     C.ListT a -> intrinsicApplication ListType [a]
     C.ConstrainedT cs body -> A.QualifiedType <$> mapM (predicate implicit) cs <*> typeNode implicit body
@@ -337,6 +338,7 @@ typeNode implicit t =
     C.ListConstructor -> pure (A.TypeConstructor (IntrinsicId ListType))
     C.ProductConstructor -> pure (A.TypeConstructor (IntrinsicId ProductType))
     C.FunctionConstructor -> pure (A.TypeConstructor (IntrinsicId FunctionType))
+    C.LazyFunctionConstructor -> pure (A.TypeConstructor (IntrinsicId LazyFunctionType))
   where
     intrinsicApplication key args = do
       f <- generated "type constructor" (C.location t) (A.TypeConstructor (IntrinsicId key))
@@ -357,6 +359,7 @@ freeTypes t = case C.concrete t of
   C.AppT a b -> freeTypes a ++ freeTypes b
   C.OpAppT a _ b -> freeTypes a ++ freeTypes b
   C.ArrowT a b -> freeTypes a ++ freeTypes b
+  C.LazyArrowT a b -> freeTypes a ++ freeTypes b
   C.ProductT a b -> freeTypes a ++ freeTypes b
   C.ConstrainedT cs a -> concat [freeTypes x | C.Located _ _ (C.Constraint _ x) <- cs] ++ freeTypes a
   C.ParenT a -> freeTypes a

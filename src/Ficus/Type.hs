@@ -62,7 +62,21 @@ primitive :: Intrinsic -> Type v
 primitive p = Constructor (IntrinsicId p) (primitiveKind p)
 
 function :: Type v -> Type v -> Type v
-function a b = Application (Application (primitive FunctionType) a) b
+function = arrow StrictArrow
+
+data ArrowMode = StrictArrow | NameArrow deriving (Eq, Ord, Show)
+
+arrow :: ArrowMode -> Type v -> Type v -> Type v
+arrow mode a b = Application (Application (primitive constructor) a) b
+  where
+    constructor = case mode of StrictArrow -> FunctionType; NameArrow -> LazyFunctionType
+
+arrowParts :: Type v -> Maybe (ArrowMode, Type v, Type v)
+arrowParts (Application (Application (Constructor (IntrinsicId constructor) _) a) b) = case constructor of
+  FunctionType -> Just (StrictArrow, a, b)
+  LazyFunctionType -> Just (NameArrow, a, b)
+  _ -> Nothing
+arrowParts _ = Nothing
 
 list :: Type v -> Type v
 list = Application (primitive ListType)
@@ -93,6 +107,8 @@ renderType variable = render 0
       Constructor gid _ -> renderConstructor gid
       Application (Application (Constructor (IntrinsicId FunctionType) _) a) b ->
         parens (precedence > 0) (render 1 a <> " -> " <> render 0 b)
+      Application (Application (Constructor (IntrinsicId LazyFunctionType) _) a) b ->
+        parens (precedence > 0) (render 1 a <> " ~> " <> render 0 b)
       Application (Application (Constructor (IntrinsicId ProductType) _) a) b ->
         parens (precedence > 1) (render 2 a <> " * " <> render 1 b)
       Application (Constructor (IntrinsicId ListType) _) a -> "[" <> render 0 a <> "]"
@@ -112,6 +128,7 @@ renderConstructor (IntrinsicId p) = case p of
   ListType -> "[]"
   ProductType -> "(*)"
   FunctionType -> "(->)"
+  LazyFunctionType -> "(~>)"
   N.TypeKind -> "Type"
   TrueConstructor -> "True"
   FalseConstructor -> "False"

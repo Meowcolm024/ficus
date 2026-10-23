@@ -8,7 +8,7 @@ import Data.Text (Text)
 import Ficus.CompilationConfig
 import Ficus.Syntax.Literal (Literal)
 import Ficus.Syntax.Name
-import Ficus.Type (BoundId, Kind, Quantifier, Scheme, Type)
+import Ficus.Type (ArrowMode (..), BoundId, Kind, Quantifier, Scheme, Type, function, primitive)
 import Ficus.Util.Source
 
 data Node a = Node
@@ -58,6 +58,12 @@ data ExprF ty
   | Primitive PrimitiveId [Expr ty]
   | Fail
   deriving (Eq, Show, Functor, Foldable, Traversable)
+
+-- | Arrow modes survive in Core types. Lazy Lambda binders and Apply operands
+-- carry explicit Unit -> argument thunks; demands are ordinary strict calls.
+parameterType :: ArrowMode -> Type v -> Type v
+parameterType StrictArrow input = input
+parameterType NameArrow input = function (primitive UnitType) input
 
 -- | Method-local quantification is confined to dictionary fields. ScopeTypes
 -- binds erased internal types that do not occur in its expression's result.

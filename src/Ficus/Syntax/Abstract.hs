@@ -63,7 +63,7 @@ type TypeSyntax = Node TypeF
 -- Retain the @-argument site separately from the enclosed type's location.
 type TypeArgument = Node TypeSyntax
 
-data TypeF = TypeVariable TypeVarId | TypeConstructor GlobalId | TypeApplication TypeSyntax TypeSyntax | ArrowType TypeSyntax TypeSyntax | QualifiedType [Predicate] TypeSyntax | TypeHole HoleId deriving (Eq, Show)
+data TypeF = TypeVariable TypeVarId | TypeConstructor GlobalId | TypeApplication TypeSyntax TypeSyntax | ArrowType TypeSyntax TypeSyntax | LazyArrowType TypeSyntax TypeSyntax | QualifiedType [Predicate] TypeSyntax | TypeHole HoleId deriving (Eq, Show)
 
 type KindSyntax = Node KindF
 

@@ -231,13 +231,14 @@ Lists, binary products, and functions expose first-class type constructors:
 []  : Type -> Type
 (*) : Type -> Type -> Type
 (->): Type -> Type -> Type
+(~>): Type -> Type -> Type
 
 impl Functor [] = ...
 impl Bifunctor (*) = ...
 impl Functor ((->) r) = ...
 ```
 
-`[a]`, `a * b`, and `a -> b` are the applied forms of `[]`, `(*)`, and `(->)` respectively. These type-constructor names cannot be rebound; value-level multiplication remains an ordinary operator.
+`[a]`, `a * b`, `a -> b`, and `a ~> b` are the applied forms of `[]`, `(*)`, `(->)`, and `(~>)` respectively. These type-constructor names cannot be rebound; value-level multiplication remains an ordinary operator.
 
 ## 8. Types and annotations
 
@@ -499,7 +500,7 @@ The superclass graph must be acyclic; direct and indirect superclass cycles are 
 
 Trait bodies contain signatures only and every `impl` supplies every declared member. Operations that would be default instance methods in Haskell are ordinary constrained functions outside the trait: `(/=)` derives from `(==)` under an `Eq` constraint, and `(<)` derives from `compare` under an `Ord` constraint. Callers use these functions directly; instances do not declare them or provide forwarding definitions. Default member bodies and fallback instance implementations are unsupported. The initial design also excludes overlapping implementations, multiparameter traits, associated types, and type families.
 
-An implementation must be defined in the module that owns its trait or its outer type constructor. No module owns `[]`, `(*)`, `(->)`, `Int`, `Float`, `Bool`, `Char`, `String`, or `Unit`, so implementations for these belong to the trait owner.
+An implementation must be defined in the module that owns its trait or its outer type constructor. No module owns `[]`, `(*)`, `(->)`, `(~>)`, `Int`, `Float`, `Bool`, `Char`, `String`, or `Unit`, so implementations for these belong to the trait owner.
 
 Top-level definitions require non-expansive initializers by default, with the v1+ acyclic standalone exception; implementation members always retain this requirement. Lambdas, literals, variables, constructors, and aggregates of such values are allowed; effectful applications are allowed only inside a lambda body. This prevents observable effects while trait dictionaries initialize.
 
@@ -619,13 +620,13 @@ The initial language excludes:
 
 Private/definition pragmas and ETA remain planned for v1+. Empty types and matches, mutable references, and typed exceptions are implemented extensions; see SPEC for their current contracts. Initial deriving is limited to structural traits such as `Show` and `Eq`. The v1+ module pragma `{-# STANDALONE #-}` permits expansive acyclic top-level initializers and prevents imports of that module. It may import ordinary modules, retains Prelude, and neither selects an entry nor requires main; ordinary main validation applies if explicitly selected for execution.
 
-Lazy arrows move to v2+ and must be explicit; inference continues to default to strict `->`. The reserved `~>` token will be right-associative type punctuation, not an ordinary symbolic operator:
+Lazy arrows are an implemented v2+ feature and must be explicit; inference continues to default to strict `->`. The reserved `~>` token is right-associative type punctuation:
 
 ```text
 and : Bool ~> Bool ~> Bool
 ```
 
-They use call-by-name thunks: each demanded variable use re-evaluates the captured argument, without memoization; unused arguments do not run. Non-variable/non-wildcard parameter patterns demand once per matching attempt. Effects and failures repeat with demands. Neither lazy nor strict arrows are subtypes of each other, and no implicit coercion is inserted. Concrete Core representation remains open.
+They use call-by-name thunks: each demanded variable use re-evaluates the captured argument, without memoization; unused arguments do not run. Non-variable/non-wildcard parameter patterns demand once per matching attempt. Effects and failures repeat with demands. Neither lazy nor strict arrows are subtypes of each other, and no implicit coercion is inserted. Core retains arrow modes with explicit `Unit -> A` thunk operands and strict applications at demands (IMPL §10.3).
 
 The initial v2+ builtin-backed concurrency module provides:
 

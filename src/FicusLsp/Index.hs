@@ -83,7 +83,8 @@ buildIndex result = Map.fromListWith (++) [(sourceFile (symbolSpan symbol), [sym
         localTypes = Map.fromList [(C.bindingReference (C.nodeValue binding), sourceScheme binding) | binding <- bindings]
         expressions = maybe [] (concatMap (concatMap (allExpressions . C.bindingBody . C.nodeValue) . C.groupBindings) . C.coreBindings) core
         expressionTypes = Map.fromListWith (\_ first -> first) [(C.nodeSpan expression, C.typeOf expression) | expression <- expressions]
-        referenceTypes = Map.fromListWith (\_ first -> first) [(reference, C.typeOf expression) | expression <- expressions, C.Var reference _ <- [C.formOf expression]]
+        parameterTypes = Map.fromList [(C.binderReference binder, input) | expression <- expressions, C.Lambda binder _ <- [C.formOf expression], Just (Ty.NameArrow, input, _) <- [Ty.arrowParts (C.typeOf expression)]]
+        referenceTypes = parameterTypes `Map.union` Map.fromListWith (\_ first -> first) [(reference, C.typeOf expression) | expression <- expressions, C.Var reference _ <- [C.formOf expression]]
         sourceDefinitions = declarations tokens (A.abstractDeclarations tree)
         localDefinitions = Map.fromListWith (\_ first -> first) [(reference, (name, precise name location, role)) | (reference, name, location, role) <- sourceDefinitions]
         declaredGlobals =
@@ -164,7 +165,7 @@ globalName = Ty.renderConstructor
 
 roleClass :: Role -> Maybe Text -> TokenClass
 roleClass role ty = case role of
-  ValueRole -> if maybe False (T.isInfixOf " -> ") ty then Function else Variable
+  ValueRole -> if maybe False (\value -> T.isInfixOf " -> " value || T.isInfixOf " ~> " value) ty then Function else Variable
   MethodRole -> Function
   AliasRole -> TypeName
   DataRole -> TypeName

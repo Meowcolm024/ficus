@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.39.1.
+-- This file has been generated from package.yaml by hpack version 0.38.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -162,7 +162,13 @@ extra-source-files:
     test/fixtures/eta/NonFunction.ficus
     test/fixtures/lazy-arrows/ArrowMismatchV2.ficus
     test/fixtures/lazy-arrows/CallByNameV2.ficus
+    test/fixtures/lazy-arrows/Contextual.ficus
+    test/fixtures/lazy-arrows/Execution.ficus
+    test/fixtures/lazy-arrows/InferredStrict.ficus
     test/fixtures/lazy-arrows/ParsingV2.ficus
+    test/fixtures/lazy-arrows/Provenance.ficus
+    test/fixtures/lazy-arrows/WrongLazy.ficus
+    test/fixtures/lazy-arrows/WrongStrict.ficus
     test/fixtures/parsing/negative/BareAnnotatedLambda.ficus
     test/fixtures/parsing/negative/BareOperatorPragmaArgument.ficus
     test/fixtures/parsing/negative/BarePrefixOperator.ficus
@@ -788,6 +794,7 @@ test-suite ficus-test
       FicusBackend.DriverSpec
       FicusBackend.ExceptionSpec
       FicusBackend.FileIOSpec
+      FicusBackend.LazyArrowSpec
       FicusBackend.RecordPatternSpec
       FicusBackend.RefSpec
       FicusBackend.Runtime.Direct

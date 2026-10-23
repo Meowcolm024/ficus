@@ -168,6 +168,7 @@ typeShape source = case Concrete.concrete source of
   Concrete.AppT f x -> Apply <$> typeShape f <*> typeShape x
   Concrete.OpAppT a op b -> binary (Concrete.nameText op) a b
   Concrete.ArrowT a b -> binary "(->)" a b
+  Concrete.LazyArrowT a b -> binary "(~>)" a b
   Concrete.ProductT a b -> binary "(*)" a b
   Concrete.ConstrainedT predicates body -> Qualified <$> mapM (\p -> let Concrete.Constraint name argument = Concrete.concrete p in (Concrete.nameText name,) <$> typeShape argument) predicates <*> typeShape body
   Concrete.ParenT body -> typeShape body
@@ -175,5 +176,6 @@ typeShape source = case Concrete.concrete source of
   Concrete.ListConstructor -> pure (Name "[]")
   Concrete.ProductConstructor -> pure (Name "(*)")
   Concrete.FunctionConstructor -> pure (Name "(->)")
+  Concrete.LazyFunctionConstructor -> pure (Name "(~>)")
   where
     binary name a b = Apply <$> (Apply (Name name) <$> typeShape a) <*> typeShape b

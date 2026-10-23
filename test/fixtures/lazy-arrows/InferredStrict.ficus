@@ -1,0 +1,4 @@
+inferred x = x
+run : (Int ~> Int) -> Int
+run f = f 1
+bad = run inferred

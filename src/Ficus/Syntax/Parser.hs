@@ -414,11 +414,18 @@ kindExpression = rightArrow ArrowK kindAtom
 typeExpression :: Parser TypeExpr
 typeExpression = do
   ctx <- optionalContext
-  ty <- rightArrow ArrowT productType
+  ty <- functionType
   case ctx of
     [] -> pure ty
     c : _ -> pure (at ((location c) {end = end (location ty)}) (ConstrainedT ctx ty))
   where
+    functionType = do
+      input <- productType
+      rest <- optional $ do
+        constructor <- (text "->" *> pure ArrowT) <|> (text "~>" *> pure LazyArrowT)
+        output <- functionType
+        pure (binary constructor input output)
+      pure (maybe input id rest)
     productType = do
       first <- typeOperators
       rest <- optional (text "*" *> productType)
@@ -452,6 +459,7 @@ typeAtom =
     parenType =
       try (located (text "(" *> text "*" *> text ")" *> pure ProductConstructor))
         <|> try (located (text "(" *> text "->" *> text ")" *> pure FunctionConstructor))
+        <|> try (located (text "(" *> text "~>" *> text ")" *> pure LazyFunctionConstructor))
         <|> located (ParenT <$> unrestricted (text "(" *> typeExpression <* text ")"))
 
 qualifiedUpper :: Parser [Name]
@@ -482,6 +490,7 @@ expression = do
     -- type must be parenthesized here, or the whole annotation delimited.
     case concrete ty of
       ArrowT {} -> empty
+      LazyArrowT {} -> empty
       ConstrainedT {} -> empty
       _ -> pure ty
   pure $ case annotation of

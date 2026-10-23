@@ -1,0 +1,4 @@
+twice : Int ~> Int
+twice x = x + x
+trace () = 1
+run () = twice (trace ())

@@ -43,6 +43,7 @@ data Context = Context
     mapping :: S.Substitution InferVariable,
     givens :: [(Predicate InferType, C.Binder InferType)],
     boundValues :: Set.Set Reference,
+    lazyValues :: Map Reference (C.Binder InferType),
     memberReferences :: Map GlobalId (Predicate InferType, Reference)
   }
 
@@ -50,7 +51,7 @@ lowerModule :: Inference -> A.AbstractModule -> (Either E.Diagnostic (C.CoreModu
 lowerModule inferred source = runInferFrom (inferenceState inferred) (runExceptT action)
   where
     prepared = inferredDeclarations inferred
-    context = Context prepared (checkedBindingSchemes (inferenceState inferred) `Map.union` Map.map signatureScheme (valueSignatures prepared)) S.empty [] Set.empty Map.empty
+    context = Context prepared (checkedBindingSchemes (inferenceState inferred) `Map.union` Map.map signatureScheme (valueSignatures prepared)) S.empty [] Set.empty Map.empty Map.empty
     action = do
       dictionaries <- lift (dictionaryDescriptors prepared)
       bindings <- lowerTop context (A.abstractDeclarations source)
@@ -128,9 +129,50 @@ letValue source value continuation = do
   makeExpression source (C.typeOf body) (C.Let binding body)
 
 apply :: A.Node a -> C.Expr InferType -> C.Expr InferType -> Lower (C.Expr InferType)
-apply source f x = case functionParts (C.typeOf f) of
-  Just (_, result) -> makeExpression source result (C.Apply f x)
+apply source f x = case arrowParts (C.typeOf f) of
+  Just (mode, _, result) -> do
+    argument <- delayArgument source mode x
+    makeExpression source result (C.Apply f argument)
   Nothing -> failure source "checked application has no function type"
+
+delayArgument :: A.Node a -> ArrowMode -> C.Expr InferType -> Lower (C.Expr InferType)
+delayArgument _ StrictArrow value = pure value
+delayArgument source NameArrow value = do
+  binder <- freshBinder source "$delay" C.ValueBinder (primitive UnitType)
+  generated source "call-by-name argument" (C.TypedExpr (C.parameterType NameArrow (C.typeOf value)) (C.Lambda binder value))
+
+demand :: A.Node a -> C.Binder InferType -> Lower (C.Expr InferType)
+demand source binder = do
+  thunk <- binderUse source binder
+  unit <- makeExpression source (primitive UnitType) (C.Construct C.UnitConstructor [] [])
+  apply source thunk unit
+
+-- An annotation does not change the underlying pattern's demand behavior.
+undemandingPattern :: A.Pattern -> Maybe (Maybe A.Binder)
+undemandingPattern source = case A.nodeValue source of
+  A.Bind binder -> Just (Just binder)
+  A.Wildcard -> Just Nothing
+  A.AnnotatedPattern pattern' _ -> undemandingPattern pattern'
+  _ -> Nothing
+
+bindLazyPattern :: Context -> C.Binder InferType -> Maybe A.Binder -> Context
+bindLazyPattern context _ Nothing = context
+bindLazyPattern context thunk (Just binder) = context {lazyValues = Map.insert (LocalRef (fst (A.nodeValue binder))) thunk (lazyValues context)}
+
+sourceBinder :: A.Binder -> InferType -> C.Binder InferType
+sourceBinder binder ty =
+  let (ident, name) = A.nodeValue binder
+   in C.Node (A.nodeId binder) (A.nodeSpan binder) (A.nodeOrigin binder) (ident, name, C.ValueBinder, ty)
+
+-- Only resolver-generated parameter matches may skip a variable/wildcard
+-- demand. An explicit `with x { _ -> ... }` still evaluates its receiver.
+lazyLambdaPattern :: A.Expr -> Maybe (Maybe A.Binder, A.Expr)
+lazyLambdaPattern body = case (A.nodeOrigin body, A.nodeValue body) of
+  (GeneratedOrigin "lambda pattern match" _, A.Match _ _ [clause])
+    | (pattern', Nothing, result) <- A.nodeValue clause,
+      Just binding <- undemandingPattern pattern' ->
+        Just (binding, result)
+  _ -> Nothing
 
 expression :: Context -> A.Expr -> Lower (C.Expr InferType)
 expression context source = do
@@ -150,7 +192,9 @@ expression context source = do
     A.Apply f x -> do
       function' <- expression context f
       argument <- expression context x
-      sourced (C.Apply function' argument)
+      case arrowParts (C.typeOf function') of
+        Just (mode, _, _) -> delayArgument x mode argument >>= sourced . C.Apply function'
+        Nothing -> failure source "checked application has no function type"
     A.TypeApply body _ -> case A.nodeValue body of
       A.Ref reference -> referenceUse context source reference
       A.Method ident -> referenceUse context source (GlobalRef ident)
@@ -162,9 +206,16 @@ expression context source = do
       expression (context {mapping = S.compose (mapping context) instantiated}) body
     A.Lambda binder body -> do
       input <- nodeType context binder
-      let (ident, name) = A.nodeValue binder
-          checked = C.Node (A.nodeId binder) (A.nodeSpan binder) (A.nodeOrigin binder) (ident, name, C.ValueBinder, input)
-      result <- expression (context {boundValues = Set.insert (LocalRef ident) (boundValues context)}) body
+      mode <- case arrowParts ty of Just (mode, _, _) -> pure mode; Nothing -> failure source "lambda has no function type"
+      let ident = fst (A.nodeValue binder)
+          lazyPattern = if mode == NameArrow then lazyLambdaPattern body else Nothing
+          parameter = case lazyPattern of Just (Just named, _) -> named; _ -> binder
+          checked = sourceBinder parameter (C.parameterType mode input)
+          bound = context {boundValues = Set.insert (LocalRef ident) (boundValues context)}
+          inner = if mode == NameArrow then bindLazyPattern bound checked (Just binder) else bound
+      result <- case lazyPattern of
+        Just (binding, result) -> expression (bindLazyPattern inner checked binding) result
+        _ -> expression inner body
       sourced (C.Lambda checked result)
     A.Match _ receiver clauses -> do
       value <- expression context receiver
@@ -214,6 +265,9 @@ useArguments context source scheme wanted = do
         Right substitution' -> pure (map (S.apply substitution') arguments)
 
 referenceUse :: Context -> A.Expr -> Reference -> Lower (C.Expr InferType)
+referenceUse context source reference | Just binder <- Map.lookup reference (lazyValues context) = do
+  ty <- resolved context (C.binderType binder)
+  demand source (fmap (\(ident, name, role, _) -> (ident, name, role, ty)) binder)
 referenceUse context source reference = do
   ty <- nodeType context source
   let scheme = Map.findWithDefault (monomorphic ty) reference (schemes context)
@@ -578,19 +632,28 @@ valueBody context source ty = case A.nodeValue source of
     foldM clause fallback (reverse (NE.toList clauses))
   _ -> failure source "value body expected"
   where
-    clause fallback node = parameters [] ty (A.clausePatterns (A.nodeValue node))
+    clause fallback node = parameters context [] ty (A.clausePatterns (A.nodeValue node))
       where
-        parameters supplied current patterns = case patterns of
-          [] -> lowerGroup context (A.clauseWhere (A.nodeValue node)) (expression context (A.clauseBody (A.nodeValue node)))
-          pattern' : rest -> case functionParts current of
+        parameters inner supplied current patterns = case patterns of
+          [] -> lowerGroup inner (A.clauseWhere (A.nodeValue node)) (expression inner (A.clauseBody (A.nodeValue node)))
+          pattern' : rest -> case arrowParts current of
             Nothing -> failure node "written parameters exceed checked function arity"
-            Just (input, output) -> do
-              binder <- freshBinder pattern' "$parameter" C.ValueBinder input
-              reference <- binderUse pattern' binder
-              success <- parameters (supplied ++ [binder]) output rest
-              arguments <- mapM (binderUse node) (supplied ++ [binder])
+            Just (mode, input, output) -> do
+              let lazyBinding = if mode == NameArrow then undemandingPattern pattern' else Nothing
+              binder <- case lazyBinding of
+                Just (Just named) -> pure (sourceBinder named (C.parameterType mode input))
+                _ -> freshBinder pattern' "$parameter" C.ValueBinder (C.parameterType mode input)
+              let extended = maybe inner (bindLazyPattern inner binder) lazyBinding
+                  supplied' = supplied ++ [(mode, binder)]
+                  argument (StrictArrow, parameter) = binderUse node parameter
+                  argument (NameArrow, parameter) = demand node parameter
+              reference <- case mode of StrictArrow -> binderUse pattern' binder; NameArrow -> demand pattern' binder
+              success <- parameters extended supplied' output rest
+              arguments <- mapM argument supplied'
               onFailure <- foldM (apply node) fallback arguments
-              match <- matchPattern context reference pattern' success onFailure
+              match <- case lazyBinding of
+                Just _ -> pure success
+                Nothing -> matchPattern inner reference pattern' success onFailure
               makeExpression node current (C.Lambda binder match)
 
 -- These variables are local to the derivation, e.g. the ignored argument in

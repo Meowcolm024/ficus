@@ -186,6 +186,14 @@ tests =
         names @?= [(2, Index.Function, True), (3, Index.Function, True)]
         fmap hoverText (Protocol.hoverAt source index (L.Position 1 1)) @?= Just "```ficus\nidentity : Int -> Int\n```"
         fmap hoverText (Protocol.hoverAt source index (L.Position 2 1)) @?= Just "```ficus\nidentity : Int -> Int\n```",
+      testCase "lazy arrow hover displays source types rather than thunk parameters" $ do
+        let source = prefix <> "identity : Int ~> Int\nidentity x = x\nlambda : Int ~> Int\nlambda = (x : Int) -> x\n"
+        result <- checked [(file, source)]
+        diagnostics result @?= []
+        let index = Map.findWithDefault [] file (Index.buildIndex (compilation result))
+        fmap hoverText (Protocol.hoverAt source index (L.Position 1 1)) @?= Just "```ficus\nidentity : Int ~> Int\n```"
+        mapM_ (\position -> fmap hoverText (Protocol.hoverAt source index position) @?= Just "```ficus\nx : Int\n```") [L.Position 2 9, L.Position 2 13, L.Position 4 10, L.Position 4 22]
+        assertBool "lazy functions are highlighted" (any (\(location, role, _) -> S.line (S.start location) == 2 && role == Index.Function) (Index.semanticSpans file source index)),
       testCase "every function clause has the signature's semantic role and canonical definition" $ do
         let source = prefix <> "choose : Bool -> Int\nchoose True = 1\nchoose False = 0\n"
         result <- checked [(file, source)]

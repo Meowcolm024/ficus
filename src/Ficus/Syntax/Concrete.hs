@@ -158,6 +158,7 @@ data TypeF
   | AppT TypeExpr TypeExpr
   | OpAppT TypeExpr Name TypeExpr
   | ArrowT TypeExpr TypeExpr
+  | LazyArrowT TypeExpr TypeExpr
   | ProductT TypeExpr TypeExpr
   | ConstrainedT [Constraint] TypeExpr
   | ParenT TypeExpr
@@ -165,6 +166,7 @@ data TypeF
   | ListConstructor
   | ProductConstructor
   | FunctionConstructor
+  | LazyFunctionConstructor
   deriving (Eq, Show)
 
 type KindExpr = Located KindF
@@ -378,6 +380,7 @@ validateConcrete m = do
       AppT a b -> typeExpr a *> typeExpr b
       OpAppT a op b -> typeExpr a *> name op *> typeExpr b
       ArrowT a b -> typeExpr a *> typeExpr b
+      LazyArrowT a b -> typeExpr a *> typeExpr b
       ProductT a b -> typeExpr a *> typeExpr b
       ConstrainedT cs t -> mapM_ constraint cs *> typeExpr t
       ParenT t -> typeExpr t
@@ -385,6 +388,7 @@ validateConcrete m = do
       ListConstructor -> Right ()
       ProductConstructor -> Right ()
       FunctionConstructor -> Right ()
+      LazyFunctionConstructor -> Right ()
     kindExpr = node $ \case
       IdentK n -> name n
       DottedK ns -> mapM_ name ns

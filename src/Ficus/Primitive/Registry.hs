@@ -5,11 +5,11 @@ module Ficus.Primitive.Registry where
 import Data.List (elemIndex)
 import Data.Text (Text)
 
-data Intrinsic = IntType | FloatType | BoolType | CharType | StringType | UnitType | ListType | ProductType | FunctionType | TypeKind | TrueConstructor | FalseConstructor | ConsConstructor | NilConstructor deriving (Eq, Ord, Show)
+data Intrinsic = IntType | FloatType | BoolType | CharType | StringType | UnitType | ListType | ProductType | FunctionType | LazyFunctionType | TypeKind | TrueConstructor | FalseConstructor | ConsConstructor | NilConstructor deriving (Eq, Ord, Show)
 
 -- Reserved source spellings are metadata; Name builds their ordinary identities.
 intrinsicTypes :: [(Text, Intrinsic)]
-intrinsicTypes = [("Int", IntType), ("Float", FloatType), ("Bool", BoolType), ("Char", CharType), ("String", StringType), ("Unit", UnitType), ("[]", ListType), ("(*)", ProductType), ("(->)", FunctionType)]
+intrinsicTypes = [("Int", IntType), ("Float", FloatType), ("Bool", BoolType), ("Char", CharType), ("String", StringType), ("Unit", UnitType), ("[]", ListType), ("(*)", ProductType), ("(->)", FunctionType), ("(~>)", LazyFunctionType)]
 
 intrinsicConstructors :: [(Text, Intrinsic)]
 intrinsicConstructors = [("True", TrueConstructor), ("False", FalseConstructor), ("::", ConsConstructor), ("[]", NilConstructor)]
@@ -22,6 +22,7 @@ intrinsicArity intrinsic = case intrinsic of
   ListType -> 1
   ProductType -> 2
   FunctionType -> 2
+  LazyFunctionType -> 2
   _ -> 0
 
 data Primitive nominal

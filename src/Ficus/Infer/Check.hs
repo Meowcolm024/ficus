@@ -121,6 +121,17 @@ bindLocal binder ty context = do
   let (ident, name) = A.nodeValue binder
   pure (bindValue (LocalRef ident) name (A.nodeSpan binder) (monomorphic ty) context)
 
+-- Preserve written lazy modes when checking values inside aggregate types.
+-- Other expressions retain ordinary inference and its diagnostic ordering.
+lazyExpectation :: InferType -> Infer (Maybe InferType)
+lazyExpectation ty = do
+  checked <- zonk ty
+  pure (if containsLazy checked then Just checked else Nothing)
+  where
+    containsLazy (Constructor (IntrinsicId LazyFunctionType) _) = True
+    containsLazy (Application f x) = containsLazy f || containsLazy x
+    containsLazy _ = False
+
 expression :: Context -> Maybe InferType -> A.Expr -> Infer Judgement
 expression context expected source = do
   result <- inferForm
@@ -150,15 +161,17 @@ expression context expected source = do
         forM_ expected $ \ty -> void (equate origin ty output)
         -- Infer fields in source order. Solve their equalities from the known
         -- tail back toward the head, so e.g. True :: anIntList blames True.
-        inferred <- forM fields $ \(_, _, argument) -> expression context Nothing argument
+        inferred <- forM fields $ \(input, _, argument) -> do
+          expectedArgument <- lazyExpectation input
+          expression context expectedArgument argument
         forM_ (reverse (zip fields inferred)) $ \((input, _, argument), value) -> void (equate (A.nodeSpan argument) input (judgementType value))
         pure (Judgement output (judgementWanteds use ++ concatMap judgementWanteds inferred))
       A.Apply f x -> do
         functionResult <- expression context Nothing f
         functionType <- zonk (judgementType functionResult)
         let functionWanted = [wanted {wantedOrigin = origin} | wanted <- judgementWanteds functionResult]
-        case functionParts functionType of
-          Just (input, output) -> do
+        case arrowParts functionType of
+          Just (_, input, output) -> do
             argument <- expression context (Just input) x
             pure (Judgement output (functionWanted ++ judgementWanteds argument))
           Nothing -> do
@@ -178,16 +191,16 @@ expression context expected source = do
       A.Annotated body binders annotation -> do
         scope <- freshTypeScope context binders
         (predicates, written) <- readQualified types (scope `Map.union` contextTypes context) True annotation
-        inferred <- expression context Nothing body
+        lazyType <- lazyExpectation written
+        inferred <- expression context (case A.nodeValue body of A.Lambda {} -> Just written; _ -> lazyType) body
         void (equateWith E.InvalidAnnotation origin written (judgementType inferred))
         pure inferred {judgementType = written, judgementWanteds = judgementWanteds inferred ++ [Wanted (A.nodeId source) origin predicate | predicate <- predicates]}
       A.Lambda binder body -> do
-        input <- newType
-        output <- newType
-        forM_ expected $ \ty -> void (equate origin ty (function input output))
+        ty <- resultType >>= zonk
+        (mode, input, output) <- parameterArrow origin ty
         inner <- bindLocal binder input context
         result <- expression inner (Just output) body
-        pure (Judgement (function input output) (judgementWanteds result))
+        pure (Judgement (arrow mode input output) (judgementWanteds result))
       A.TypeLambda binders body -> do
         (quantified, _) <- bindQuantifiers types binders
         skolems <- mapM (freshSkolem . quantifierKind) quantified
@@ -234,10 +247,19 @@ expression context expected source = do
         pending <- finishOpened context inner (A.nodeSpan body) [judgementType result] (constraints ++ judgementWanteds result)
         pure result {judgementWanteds = pending}
       A.Product components -> do
-        results <- mapM (expression context Nothing) components
+        lazyType <- maybe (pure Nothing) lazyExpectation expected
+        inputs <- case lazyType of
+          Nothing -> pure (replicate (length components) Nothing)
+          Just ty -> do
+            fields <- mapM (const newType) components
+            void (equate origin ty (tupleType fields))
+            pure (map Just fields)
+        results <- sequence [expression context input component | (input, component) <- zip inputs components]
         pure (Judgement (tupleType (map judgementType results)) (concatMap judgementWanteds results))
       A.List components -> do
         element <- newType
+        lazyType <- maybe (pure Nothing) lazyExpectation expected
+        forM_ lazyType $ \ty -> void (equate origin ty (list element))
         results <- mapM (expression context (Just element)) components
         pure (Judgement (list element) (concatMap judgementWanteds results))
       A.Unit -> pure (Judgement (primitive UnitType) [])
@@ -262,8 +284,11 @@ expression context expected source = do
         checkDuplicateFields fields
         constraints <- forM fields $ \field -> do
           let (name, body) = A.nodeValue field
-          result <- expression context Nothing body
-          addField context (A.nodeId field) (labelSpan field) (A.nodeSpan receiver) (A.nodeSpan body) (judgementType value) name (judgementType result) True
+          fieldType <- newType
+          addField context (A.nodeId field) (labelSpan field) (A.nodeSpan receiver) (A.nodeSpan body) (judgementType value) name fieldType True
+          expectedField <- lazyExpectation fieldType
+          result <- expression context expectedField body
+          void (equate (A.nodeSpan body) fieldType (judgementType result))
           pure (judgementWanteds result)
         pure (Judgement (judgementType value) (judgementWanteds value ++ concat constraints))
     statement (current, constraints) sourceStatement = case A.nodeValue sourceStatement of
@@ -537,6 +562,18 @@ bindingGroup topLevel context group = case schedule group of
         Infer (modify' (\s -> s {checkedBindingSchemes = Map.insert reference scheme (checkedBindingSchemes s), checkedDeclarations = Map.insert (A.nodeId source) scheme (checkedDeclarations s), bindingSubstitutions = Map.insert (A.nodeId source) mapping (bindingSubstitutions s), bindingWanteds = Map.insert (A.nodeId source) retained (bindingWanteds s)}))
         pure (bindValue reference name origin scheme current, accumulated ++ if completeSignature then [] else remaining)
 
+-- Written arrows guide lambda checking; unconstrained parameters remain strict.
+parameterArrow :: Span -> InferType -> Infer (ArrowMode, InferType, InferType)
+parameterArrow origin ty = do
+  checked <- zonk ty
+  case arrowParts checked of
+    Just parts -> pure parts
+    Nothing -> do
+      input <- fresh origin TypeKind
+      output <- fresh origin TypeKind
+      void (equate origin ty (function input output))
+      pure (StrictArrow, input, output)
+
 valueBody :: Context -> A.Declaration -> InferType -> [InferType] -> Infer Judgement
 valueBody context source expected explicit = case A.nodeValue source of
   A.ValueDefinition reference annotation (A.BuiltinBody key) -> do
@@ -563,9 +600,14 @@ valueBody context source expected explicit = case A.nodeValue source of
         void (equateWith E.BuiltinContractMismatch (A.nodeSpan source) contractType expected)
     pure (Judgement expected [])
   A.ValueDefinition _ _ (A.ClausesBody arity clauses) -> do
-    parameterTypes <- mapM (const (fresh (A.nodeSpan source) TypeKind)) [1 .. arity]
-    resultType <- fresh (A.nodeSpan source) TypeKind
-    void (equate (A.nodeSpan source) expected (foldr function resultType parameterTypes))
+    (parameterTypes, resultType) <-
+      foldM
+        ( \(inputs, remaining) _ -> do
+            (_, input, output) <- parameterArrow (A.nodeSpan source) remaining
+            pure (inputs ++ [input], output)
+        )
+        ([], expected)
+        [1 .. arity]
     wanted <- forM clauses $ \clause -> do
       let value = A.nodeValue clause
       typed <- scopedTypes context (A.clauseTypes value) explicit
@@ -752,8 +794,10 @@ constructRecord context source constructor witnesses fields = do
   when (any (`notElem` supplied) declared) (emit (E.diagnostic E.MissingField (constructorSpan source constructor) "named construction must supply every value field"))
   constraints <- forM fields $ \field -> do
     let (name, body) = A.nodeValue field
-    value <- expression context Nothing body
-    case [(index, ty) | (index, (label, ty)) <- zip [0 ..] (zip declared fieldTypes), name == label] of
+        matching = [(index, ty) | (index, (label, ty)) <- zip [0 ..] (zip declared fieldTypes), name == label]
+    expectedField <- case matching of (_, ty) : _ -> lazyExpectation ty; [] -> pure Nothing
+    value <- expression context expectedField body
+    case matching of
       [] -> emit (E.diagnostic E.UnknownField (labelSpan field) "record has no value field with this label")
       (index, ty) : _ -> do
         void (equate (A.nodeSpan body) ty (judgementType value))

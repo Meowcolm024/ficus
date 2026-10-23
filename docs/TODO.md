@@ -51,7 +51,7 @@ Unchecked items are pending; a settled design is not a completed feature.
 
 ## v2
 
-- [ ] Call-by-name `~>` arrows, distinct arrow types, and explicit non-memoizing thunks.
+- [x] Call-by-name `~>` arrows, distinct arrow types, and explicit non-memoizing thunks.
 - [ ] JavaScript backend with evaluator-equivalence checks.
 - [ ] Tail-call optimization and a specified constant-stack guarantee.
 - [ ] Build system, package configuration, dependency resolution, and libraries beyond Prelude.

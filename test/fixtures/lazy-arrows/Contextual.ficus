@@ -1,0 +1,24 @@
+type Holder = { run : Int ~> Int }
+type Box = Box (Int ~> Int)
+named = Holder with { run = x -> x + x }
+positional = Holder (x -> x + x)
+boxed = Box (x -> x + x)
+values : [Int ~> Int]
+values = [x -> x + x]
+pair : (Int ~> Int) * Int
+pair = (x -> x + x, 1)
+conditional () = ((if { True -> (x -> x + x); _ -> (x -> 0) }) : Int ~> Int)
+sequence () = (({ print "setup"; x -> x + x }) : Int ~> Int)
+trace () = { print "demand"; 1 }
+check () = named.run (trace ())
+checkPositional () = positional.run (trace ())
+checkBox () = with boxed { Box f -> f (trace ()) }
+checkList () = with values { f :: _ -> f (trace ()); [] -> 0 }
+checkProduct () = with pair { (f, _) -> f (trace ()) }
+checkConditional () = conditional () (trace ())
+checkSequence () = sequence () (trace ())
+checkUpdate () = { changed = named with { run = x -> x + x }; changed.run (trace ()) }
+Lazy = (~>) Int
+alias : Lazy Int
+alias x = x + x
+checkAlias () = alias (trace ())

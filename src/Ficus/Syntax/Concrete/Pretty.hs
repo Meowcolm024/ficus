@@ -183,6 +183,7 @@ typeDoc t = case concrete t of
   AppT f x -> spaces [typeDoc f, typeDoc x]
   OpAppT a op b -> spaces [typeDoc a, chunk (nameText op), typeDoc b]
   ArrowT a b -> spaces [typeDoc a, chunk "->", typeDoc b]
+  LazyArrowT a b -> spaces [typeDoc a, chunk "~>", typeDoc b]
   ProductT a b -> spaces [typeDoc a, chunk "*", typeDoc b]
   ConstrainedT cs x -> spaces [context cs, typeDoc x]
   ParenT x -> parens (typeDoc x)
@@ -190,6 +191,7 @@ typeDoc t = case concrete t of
   ListConstructor -> chunk "[]"
   ProductConstructor -> chunk "(*)"
   FunctionConstructor -> chunk "(->)"
+  LazyFunctionConstructor -> chunk "(~>)"
 
 kindDoc :: KindExpr -> Doc
 kindDoc k = case concrete k of

@@ -19,6 +19,7 @@ import Ficus.Resolve.WildcardSpec qualified as Wildcard
 import FicusBackend.DriverSpec qualified as Driver
 import FicusBackend.ExceptionSpec qualified as Exception
 import FicusBackend.FileIOSpec qualified as FileIO
+import FicusBackend.LazyArrowSpec qualified as LazyArrow
 import FicusBackend.RecordPatternSpec qualified as RecordPattern
 import FicusBackend.RefSpec qualified as Ref
 import FicusBackend.Runtime.Spec qualified as Runtime
@@ -35,7 +36,7 @@ main = do
     ( testGroup
         "Ficus"
         [ testGroup "frontend" [Builtin.tests, parser, resolution, Wildcard.tests, Compile.tests, ErrorParser.tests, ErrorPretty.tests, InferType.tests, Core.tests, Restriction.tests, Finalize.tests, Kind.tests, Declaration.tests, Check.tests, corpus, Elaborate.tests],
-          testGroup "backend" [Runtime.tests, Driver.tests, FileIO.tests, Exception.tests, RecordPattern.tests, Ref.tests, V1.tests],
+          testGroup "backend" [Runtime.tests, Driver.tests, FileIO.tests, Exception.tests, LazyArrow.tests, RecordPattern.tests, Ref.tests, V1.tests],
           Lsp.tests
         ]
     )

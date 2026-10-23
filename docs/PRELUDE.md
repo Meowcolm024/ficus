@@ -362,16 +362,16 @@ and : Bool -> Bool -> Bool
 or : Bool -> Bool -> Bool
 ```
 
-Because function arguments are strict, `and` and `or` initially evaluate both arguments. Short-circuiting control flow should use `if`.
+These strict-arrow signatures make `and` and `or` evaluate both arguments. Short-circuiting control flow should use `if`.
 
-Lazy arrows are deferred to v2+. Their reserved syntax is `~>`, replacing the earlier prefix-`~` proposal:
+The implemented v2+ lazy-arrow syntax is `~>`, replacing the earlier prefix-`~` proposal. User-defined functions can use these signatures:
 
 ```text
 and : Bool ~> Bool ~> Bool
 or : Bool ~> Bool ~> Bool
 ```
 
-Once supported, these signatures can provide short-circuiting without exposing explicit thunks. Lazy arguments use call-by-name without memoization: each demand evaluates again, and unused arguments are skipped. Lazy and strict arrows are distinct types with no subtyping or implicit coercion.
+These signatures provide short-circuiting without exposing explicit thunks; the library exports above retain their strict types. Lazy arguments use call-by-name without memoization: each demand evaluates again, and unused arguments are skipped. Lazy and strict arrows are distinct types with no subtyping or implicit coercion.
 
 ## 10. List functions
 

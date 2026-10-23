@@ -281,6 +281,16 @@ tests =
             (next, _) <- Repl.submit quiet current "double x = x + x" >>= requireRight
             result next "double 21" "42"
             Repl.inspectType next "double" >>= (@?= Right "double : Add a => a -> a"),
+          testCase "lazy arrows survive interactive definitions and later calls" $ do
+            current <- session
+            (defined, _) <- Repl.submit quiet current "twice : Int ~> Int\ntwice x = x + x" >>= requireRight
+            Repl.inspectType defined "twice" >>= (@?= Right "twice : Int ~> Int")
+            result defined "twice 21" "42"
+            output <- newIORef []
+            let effects = R.Effects (\_ text -> modifyIORef' output (<> [text])) (\_ _ -> pure "")
+            (_, value) <- Repl.submit effects defined "twice ({ print \"demand\"; 1 })" >>= requireRight
+            value @?= Just "2"
+            readIORef output >>= (@?= ["demand", "demand"]),
           testCase "type inspection retains polymorphism and constraints" $ do
             current <- session
             Repl.inspectType current "id" >>= (@?= Right "id : {a} -> a -> a")

@@ -131,6 +131,7 @@ readType environment scope holesAllowed source = case typeSpine source of
       checkWellKinded (A.nodeSpan source) result
       pure result
     A.ArrowType a b -> function <$> readTypeAt environment scope holesAllowed TypeKind a <*> readTypeAt environment scope holesAllowed TypeKind b
+    A.LazyArrowType a b -> arrow NameArrow <$> readTypeAt environment scope holesAllowed TypeKind a <*> readTypeAt environment scope holesAllowed TypeKind b
     A.QualifiedType _ body -> do
       emit (E.diagnostic E.InvalidAnnotation (A.nodeSpan source) "constraints must occur at the outermost type level")
       readType environment scope holesAllowed body
@@ -166,5 +167,6 @@ hasHoles source = case A.nodeValue source of
   A.TypeHole _ -> True
   A.TypeApplication a b -> hasHoles a || hasHoles b
   A.ArrowType a b -> hasHoles a || hasHoles b
+  A.LazyArrowType a b -> hasHoles a || hasHoles b
   A.QualifiedType predicates body -> any (hasHoles . snd . A.nodeValue) predicates || hasHoles body
   _ -> False

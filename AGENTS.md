@@ -16,7 +16,7 @@ Never change language behavior without updating SPEC.md in the same change.
 - Dotted chains stay uncommitted in the Concrete AST. Only name resolution decides module prefix vs. field projection.
 - `if` stays a distinct node through Core. Do not desugar it to `with`.
 - Runtime AST does no string-based name lookup.
-- Evaluation order is strict and left-to-right everywhere. Preserve it in any optimization.
+- Evaluation order is strict and left-to-right except at explicit call-by-name `~>` arrows. Preserve demand order and non-memoization in any optimization.
 - Expression holes may appear in Core for continuing elaboration and diagnostics. Elaboration reports them as hard errors; Runtime lowering independently rejects every hole and never emits a Runtime hole or stub.
 
 ## Testing

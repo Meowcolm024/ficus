@@ -83,7 +83,7 @@ Line comments begin with `--` only when it is not followed by another operator c
 
 Literals include decimal integers and floats, characters in single quotes, and strings in double quotes. An integer literal such as `1` has type `Int`; a literal with a decimal point such as `1.0` has type `Float`. Numeric literals are not overloaded. `Int` values are signed 64-bit integers, and integer arithmetic wraps modulo 2^64. `Float` values use IEEE 754 binary64. Character and string escapes include `\\`, `\'`, `\"`, `\n`, `\r`, and `\t`. Strings additionally accept `\{` and `\}` for literal braces.
 
-A symbolic operator is a nonempty sequence of operator characters, using maximal munch after comment and reserved-token recognition. A dot may occur within an operator only when flanked on both sides by non-dot operator characters, as in `+.+`; it cannot begin or end one. A colon-led operator is an upper operator; every other operator is a value operator. Bare `@`, `:`, `=`, `->`, `<-`, `=>`, and `.` are reserved in their grammatical roles. `..` is reserved for import lists and is invalid as an expression operator. `::` is lexed and parsed as an ordinary upper operator but has reserved list-constructor semantics.
+A symbolic operator is a nonempty sequence of operator characters, using maximal munch after comment and reserved-token recognition. A dot may occur within an operator only when flanked on both sides by non-dot operator characters, as in `+.+`; it cannot begin or end one. A colon-led operator is an upper operator; every other operator is a value operator. Bare `@`, `:`, `=`, `->`, `~>`, `<-`, `=>`, and `.` are reserved in their grammatical roles. `..` is reserved for import lists and is invalid as an expression operator. `::` is lexed and parsed as an ordinary upper operator but has reserved list-constructor semantics.
 
 A qualification or field-projection dot permits surrounding whitespace, subject to layout and block boundaries. `x.field`, `x .field`, `x. field`, and `x . field` have the same meaning. This also applies to module paths and qualified names, such as `People . default . name`. `1.foo` and `1 . foo` are syntactically projections but fail typing because `Int` has no fields. Float tokens, `..`, and dots embedded in symbolic operators such as `+.+` retain their lexical meanings.
 
@@ -231,7 +231,7 @@ literal_pattern = literal | negative_number ;
 negative_number = "-", (integer | float) ;
 
 type_expr       = [ constraints, "=>" ], function_type ;
-function_type   = product_type, [ "->", function_type ] ;
+function_type   = product_type, [ ("->" | "~>"), function_type ] ;
 product_type    = type_operator_expr, { "*", type_operator_expr } ;
 type_operator_expr = type_application, { upper_operator, type_application } ;
 type_application= type_atom, { type_atom } ;
@@ -240,7 +240,7 @@ type_atom       = lower_ident | upper_name | qualified_type
                 | "(", type_expr, ")" ;
 list_constructor = "[", "]" ;
 product_constructor = "(", "*", ")" ;
-function_constructor = "(", "->", ")" ;
+function_constructor = "(", ("->" | "~>"), ")" ;
 qualified_type  = module_name, ".", upper_name ;
 list_type       = "[", type_expr, "]" ;
 
@@ -362,9 +362,10 @@ Lists, binary products, and functions also expose their constructors as type ato
 []  : Type -> Type
 (*) : Type -> Type -> Type
 (->): Type -> Type -> Type
+(~>): Type -> Type -> Type
 ```
 
-`[a]` is equivalent to `[] a`, `a * b` to `(*) a b`, and `a -> b` to `(->) a b`. The constructor forms allow partial application and implementation heads such as:
+`[a]` is equivalent to `[] a`, `a * b` to `(*) a b`, `a -> b` to `(->) a b`, and `a ~> b` to `(~>) a b`. The constructor forms allow partial application and implementation heads such as:
 
 ```text
 impl Functor [] = ...
@@ -372,7 +373,7 @@ impl Bifunctor (*) = ...
 impl Functor ((->) r) = ...
 ```
 
-`[]`, `(*)`, and `(->)` are reserved built-in type-constructor names and cannot be rebound in the type namespace. This does not reserve the value-level multiplication operator `(*)`.
+`[]`, `(*)`, `(->)`, and `(~>)` are reserved built-in type-constructor names and cannot be rebound in the type namespace. This does not reserve the value-level multiplication operator `(*)`.
 
 ### 7.1 Algebraic data types
 
@@ -612,9 +613,9 @@ List literals denote nested `::` ending in `[]`; elements evaluate left-to-right
 
 ## 9. Expressions and bindings
 
-Evaluation is strict, call-by-value, deterministic, and left-to-right.
+Evaluation is deterministic and left-to-right. It is strict and call-by-value except at explicitly typed call-by-name arrows `~>` (Section 25.1).
 
-Application is curried and binds tighter than infix operators. `f a b` evaluates `f`, then `a`, applies, then evaluates `b` and applies again. Written parameters are nested lambdas; attached `where` initialization follows Section 12. Lambdas capture lexical scope. A failed parameter pattern raises a runtime match error.
+Application is curried and binds tighter than infix operators. For strict arrows, `f a b` evaluates `f`, then `a`, applies, then evaluates `b` and applies again. At a `~>` arrow, application instead captures the argument expression and its lexical environment; evaluation occurs at each demand. Written parameters are nested lambdas; attached `where` initialization follows Section 12. Lambdas capture lexical scope. A failed parameter pattern raises a runtime match error.
 
 An expression block evaluates items in order and returns its last expression. A block containing exactly one expression and no declarations is equivalent to that expression, including for initialization and generalization restrictions (Sections 12, 15–16). A local named declaration evaluates its right side immediately and binds the name; a local pattern declaration evaluates its right side once, matches the non-infix head pattern, then binds its variables for later items. A failed local pattern is a runtime match error. Sequential shadowing is permitted with a warning as specified in Section 6.
 
@@ -836,7 +837,7 @@ trait Bind f =
 trait (Applicative f, Bind f) => Monad f = {}
 ```
 
-`Seq` and `Alternative.orElse` use ordinary explicit `Unit -> ...` thunks for their second operands. Calls and operators do not implicitly thunk arguments; `seq mf (_ -> mx)` delays evaluation of `mx`, while all ordinary call arguments still evaluate strictly left-to-right. The operation's implementation decides when to invoke the thunk; thunks do not imply automatic memoization. `Alternative` extends `Applicative`:
+`Seq` and `Alternative.orElse` use ordinary explicit `Unit -> ...` thunks for their second operands. Calls and operators with strict arrows do not implicitly thunk arguments; `seq mf (_ -> mx)` delays evaluation of `mx`, while arguments at strict arrows still evaluate strictly left-to-right. The operation's implementation decides when to invoke the thunk; thunks do not imply automatic memoization. `Alternative` extends `Applicative`:
 
 ```text
 trait Applicative f => Alternative f =
@@ -891,7 +892,7 @@ impl Bifunctor (*) = ...             -- valid: product type constructor
 impl Functor ((->) r) = ...          -- valid: function type constructor
 ```
 
-Type aliases are expanded before this check and cannot be used to evade it. The defining module must own either `C` or the outer constructor `T`. No module owns the built-in `[]`, `(*)`, or `(->)` constructors or the primitive types `Int`, `Float`, `Bool`, `Char`, `String`, and `Unit`. Implementations for any of these must therefore be declared by the module that owns the trait. This rule does not apply to ordinary library-defined types such as `Byte`, `Vec`, and `Void`, whose defining modules own them.
+Type aliases are expanded before this check and cannot be used to evade it. The defining module must own either `C` or the outer constructor `T`. No module owns the built-in `[]`, `(*)`, `(->)`, or `(~>)` constructors or the primitive types `Int`, `Float`, `Bool`, `Char`, `String`, and `Unit`. Implementations for any of these must therefore be declared by the module that owns the trait. This rule does not apply to ordinary library-defined types such as `Byte`, `Vec`, and `Void`, whose defining modules own them.
 
 ### Use-site predicates
 
@@ -1707,9 +1708,9 @@ The builtin `SomeException` package additionally carries `Exception` evidence as
 
 ## 25. v2+ language and library work
 
-### 25.1 Lazy arrows (v2+)
+### 25.1 Call-by-name arrows (implemented v2+ feature)
 
-The planned v2+ lazy function arrow is `~>`. When introduced, it will be type punctuation rather than an ordinary symbolic operator and will associate right like `->`. It is distinct from the strict arrow; neither `A ~> B` nor `A -> B` is a subtype of the other, and there is no implicit coercion between them. Type equality and unification distinguish the two arrows. Inference defaults to `->`, and every lazy arrow must be written explicitly in a signature.
+The lazy function arrow is `~>`. It is type punctuation rather than an ordinary symbolic operator and associates right at the same precedence as `->`. Its type constructor is `(~>) : Type -> Type -> Type`. It is distinct from the strict arrow; neither `A ~> B` nor `A -> B` is a subtype of the other, and there is no implicit coercion between them. Type equality and unification distinguish the two arrows. Inference defaults to `->`, and every lazy arrow must be written explicitly in a signature or type annotation. A written expected type guides lambda checking, including lambdas inside records, constructors, products, lists, and conditional branches; it does not coerce an existing strict function value.
 
 ```text
 and : Bool ~> Bool ~> Bool
@@ -1720,7 +1721,7 @@ and x y = with x
 
 Lazy arrows use **call-by-name**, without memoization. Each demanded use of a lazy parameter evaluates the original argument expression again in its captured lexical environment. An unused argument is not evaluated. Effects, errors, and divergence therefore recur at each demanded use; the results of separate demands are not shared. Each demanded evaluation follows the ordinary strict, left-to-right rules, and surrounding strict arguments retain their ordinary evaluation order. An explicit strict local binding can evaluate a demand once and reuse its result.
 
-Matching a lazy argument against a variable or wildcard does not demand it. Any other parameter pattern demands the argument once for that matching attempt; its bound value components come from that evaluated value. Repeated references to a variable parameter demand it separately. Pattern coverage proofs do not remove observable demands. No automatic sharing, eager evaluation, or arrow coercion may change this behavior.
+Matching a lazy argument against a variable or wildcard does not demand it; a type annotation on that pattern does not change this rule. Any other parameter pattern demands the argument once for that matching attempt; its bound value components come from that evaluated value. Repeated references to a variable parameter demand it separately. Pattern coverage proofs do not remove observable demands. No automatic sharing, eager evaluation, or arrow coercion may change this behavior.
 
 ### 25.2 JavaScript backend and tail calls
 

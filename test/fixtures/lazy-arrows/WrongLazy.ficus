@@ -1,0 +1,6 @@
+strict : Int -> Int
+strict x = x
+lazy : Int ~> Int
+lazy x = x
+wrongLazy : Int ~> Int
+wrongLazy = strict

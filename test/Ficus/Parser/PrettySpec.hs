@@ -218,6 +218,7 @@ normalize m =
       AppT a b -> AppT (typeExpr a) (typeExpr b)
       OpAppT a op b -> OpAppT (typeExpr a) (name op) (typeExpr b)
       ArrowT a b -> ArrowT (typeExpr a) (typeExpr b)
+      LazyArrowT a b -> LazyArrowT (typeExpr a) (typeExpr b)
       ProductT a b -> ProductT (typeExpr a) (typeExpr b)
       ConstrainedT cs t -> ConstrainedT (map constraint cs) (typeExpr t)
       ParenT t -> ParenT (typeExpr t)
@@ -225,6 +226,7 @@ normalize m =
       ListConstructor -> ListConstructor
       ProductConstructor -> ProductConstructor
       FunctionConstructor -> FunctionConstructor
+      LazyFunctionConstructor -> LazyFunctionConstructor
     kindExpr = node $ \case
       IdentK n -> IdentK (name n)
       DottedK ns -> DottedK (map name ns)

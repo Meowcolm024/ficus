@@ -134,9 +134,9 @@ checkExpression tree environment scope expression =
       Lambda binder body ->
         checkBinder tree scope binder
           ++ require (nodeSpan binder) (Map.notMember (binderReference binder) environment) "duplicate lambda binder"
-          ++ same ty (function (binderType binder) (typeOf body))
+          ++ checkArrow ty (binderType binder) (typeOf body)
           ++ checkExpression tree (Map.insert (binderReference binder) (monomorphic (binderType binder)) environment) scope body
-      Apply f x -> check f ++ check x ++ same (typeOf f) (function (typeOf x) ty)
+      Apply f x -> check f ++ check x ++ checkArrow (typeOf f) (typeOf x) ty
       Let binding body ->
         require (nodeSpan binding) (Map.notMember (bindingReference (nodeValue binding)) environment) "duplicate let binder"
           ++ checkBinding tree environment scope binding
@@ -211,6 +211,9 @@ checkExpression tree environment scope expression =
       Primitive primitiveId arguments ->
         maybe [] (\owner -> require location (isException tree owner) "exception primitive requires a marker trait") (P.exceptionTrait primitiveId) ++ concatMap check arguments ++ require location (matchesPrimitive primitiveId (map typeOf arguments) ty) "primitive arguments or result differ from its contract"
       Fail -> []
+    checkArrow functionType input output = case arrowParts functionType of
+      Nothing -> invalid location "expected a Core function arrow"
+      Just (mode, domain, result) -> same (parameterType mode domain) input ++ same result output
     checkMethod expected actual =
       let (scheme, body) = nodeValue actual
        in checkNode actual
@@ -274,7 +277,7 @@ checkType tree scope origin ty = case ty of
   Variable (BoundVariable ident) kind -> require origin (Map.lookup ident scope == Just kind) "unbound type variable or inconsistent variable kind"
   Variable (DiagnosticVariable _) _ -> []
   Constructor gid kind -> case gid of
-    IntrinsicId p -> require origin (p `elem` [IntType, FloatType, BoolType, CharType, StringType, UnitType, ListType, ProductType, FunctionType] && kind == primitiveKind p) "invalid intrinsic type or kind"
+    IntrinsicId p -> require origin (p `elem` [IntType, FloatType, BoolType, CharType, StringType, UnitType, ListType, ProductType, FunctionType, LazyFunctionType] && kind == primitiveKind p) "invalid intrinsic type or kind"
     _ -> require origin (Map.lookup gid (coreKinds tree) == Just kind) "unknown type constructor or kind"
   Application a b -> checkType tree scope origin a ++ checkType tree scope origin b ++ either (const (invalid origin "ill-kinded type application")) (const []) (kindOf ty)
 

@@ -46,6 +46,7 @@ import Ficus.Syntax.Parser (parseModule)
 import Ficus.Type
 import Ficus.Util.Source
 import FicusBackend.Lower.Runtime
+import FicusBackend.Pipeline (optimizeProgram)
 import FicusBackend.Runtime qualified as R
 import FicusBackend.Runtime.AST qualified as Runtime
 import System.Directory (getCurrentDirectory, makeAbsolute)
@@ -257,9 +258,13 @@ lowerSession session result
       either
         (Left . map D.toDiagnostic)
         Right
-        ( lowerProgramWithLayouts
-            (sessionLayouts session)
-            [validatedModule (checkedCore checked) | owner <- C.compileOrder result, Just checked <- [Map.lookup owner (C.compileModules result)]]
+        ( do
+            lowered <-
+              lowerProgramWithLayouts
+                (sessionLayouts session)
+                [validatedModule (checkedCore checked) | owner <- C.compileOrder result, Just checked <- [Map.lookup owner (C.compileModules result)]]
+            optimized <- optimizeProgram (loweredProgram lowered)
+            pure lowered {loweredProgram = optimized}
         )
 
 initializeSession :: R.Effects -> Session -> LoweredProgram -> IO (Either [D.Diagnostic] R.Instance)

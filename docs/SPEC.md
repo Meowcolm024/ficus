@@ -718,7 +718,7 @@ Observable effects occur in this order:
 
 Optimizations must preserve this behavior.
 
-v0 does not guarantee constant stack use for tail-recursive calls.
+The optimized backends implement tail calls as described in Section 25.2.
 
 ## 14. Operators
 
@@ -1753,9 +1753,31 @@ Lazy arrows use **call-by-name**, without memoization. Each demanded use of a la
 
 Matching a lazy argument against a variable or wildcard does not demand it; a type annotation on that pattern does not change this rule. Any other parameter pattern demands the argument once for that matching attempt; its bound value components come from that evaluated value. Repeated references to a variable parameter demand it separately. Pattern coverage proofs do not remove observable demands. No automatic sharing, eager evaluation, or arrow coercion may change this behavior.
 
-### 25.2 JavaScript backend and tail calls
+### 25.2 JavaScript backend and tail calls (implemented)
 
-v2+ adds a simple JavaScript backend and tail-call optimization. The backend must preserve strict left-to-right evaluation, nominal identities, and initialization semantics. Tail-call coverage and the scope of any constant-stack guarantee remain to be specified; do not assume JavaScript engines provide the needed optimization. Backend implementation choices are recorded in IMPL.md.
+The interpreter and JavaScript backend share normalization and tail-call
+optimization passes after representation lowering. A function's final call,
+including calls in the result branches of matches and conditionals and the body
+of local binding groups, transfers control without retaining the caller's host
+stack frame. This applies to self recursion, mutual recursion, and calls through
+function values or dictionary methods. A chain of such tail transfers uses
+constant host stack space. Argument evaluation, non-tail calls, and pending
+primitive work (including dynamically active catch handlers and reference
+updates) are outside this guarantee. Call-by-name demands remain non-memoized.
+
+All passes preserve strict left-to-right evaluation, intervening applications in
+curried calls, nominal identities, exception-handler extent, and initialization
+semantics. No JavaScript engine tail-call optimization is assumed.
+
+`ficus compile FILE --target js -o OUTPUT.mjs` compiles one selected entry
+module and its dependencies to a standalone Node.js ES module. Running
+`node OUTPUT.mjs ARGS...` follows Section 22's entry, argument, output, and exit
+status contracts. The generated program includes its runtime and requires no
+Ficus installation. Its primitives support the same language features as the
+interpreter, including signed 64-bit wrapping integers, Unicode code-point
+strings, mutable references, typed exceptions, and synchronous UTF-8 file IO.
+Without `--target js`, `ficus compile FILE...` continues to check modules without
+emitting an artifact. Backend implementation choices are recorded in IMPL.md.
 
 ### 25.3 Packages and foreign interfaces
 

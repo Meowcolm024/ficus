@@ -2,7 +2,7 @@
 
 A small, strictly evaluated functional scripting language with type inference,
 algebraic data types, records, traits, and a bundled standard library. Programs
-execute through a closure-threaded interpreter.
+execute through a closure-threaded interpreter or compile to standalone JavaScript.
 
 ## Build and test
 
@@ -119,7 +119,19 @@ stack exec ficus -- --version
 ```
 
 `compile FILE...` checks modules in dependency order and produces validated Core
-through the compiler API. It emits no artifacts and does not execute `main`.
+through the compiler API. By default it emits no artifacts and does not execute
+`main`. To compile an executable for Node.js (18 or newer):
+
+```sh
+stack exec ficus -- compile examples/Main.ficus --target js -o Main.mjs
+node Main.mjs hello world
+```
+
+The generated module includes the runtime. The interpreter and JavaScript
+backend share block ANF normalization and tail-call optimization; self, mutual,
+and indirect tail-call chains use constant host stack space. JavaScript tests
+require `node` on PATH.
+
 `format [FILE]` writes formatted source to stdout; omit FILE or use `-` to read
 stdin. Input files are never overwritten.
 
@@ -156,7 +168,9 @@ for reload and stable constructor layouts; Core is temporary compilation data.
 
 For interpreter embedding, use `FicusBackend.Lower.Runtime` and
 `FicusBackend.Runtime` to lower dependency-ordered Core modules, select an
-address, and execute with supplied effects. See [the Runtime API](docs/RUNTIME.md#7-embedding-api).
+address, and execute with supplied effects. Apply
+`FicusBackend.Pipeline.optimizeProgram` before evaluator compilation to enable
+normalization and tail-call optimization. See [the Runtime API](docs/RUNTIME.md#7-embedding-api).
 
 [Feature checklist](docs/TODO.md) · [Specification](docs/SPEC.md) · [Implementation](docs/IMPL.md) ·
 [Runtime design](docs/RUNTIME.md) · [Tests](test/fixtures/parsing/README.md)

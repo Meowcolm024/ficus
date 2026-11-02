@@ -18,6 +18,7 @@ extra-source-files:
   - test/fixtures/**/README.md
 
 data-files:
+  - runtime/javascript.mjs
   - library/**/*.ficus
   - library/README.md
 

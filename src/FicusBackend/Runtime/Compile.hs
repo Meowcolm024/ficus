@@ -41,7 +41,7 @@ compileProgram :: ValidatedProgram -> Executable
 compileProgram checked = Executable program functions initializers
   where
     program = validatedProgram checked
-    functions = V.fromList (strictMap (\node -> let function = nodeValue node in FunctionCode (functionArity function) (compileExpr program (functionBody function))) (V.toList (programFunctions program)))
+    functions = V.fromList (strictMap (\node -> let function = nodeValue node in TailFunctionCode (functionArity function) (compileStep program (functionBody function))) (V.toList (programFunctions program)))
     initializers = strictMap compileBinding [(ident, binding) | group <- programInitialization program, (ident, binding) <- NE.toList (groupBindings (nodeValue group))]
     compileBinding (ident, binding) = let !evaluator = compileExpr program (bindingBody (nodeValue binding)) in (ident, evaluator)
 
@@ -74,22 +74,31 @@ runProgram effects executable@(Executable program _ _) entry@(Entry (GlobalIndex
 -- The program must have passed validateProgram. Public execution accepts only
 -- Executable, constructed from the opaque validation witness above.
 compileExpr :: Program -> Expr -> Eval
-compileExpr program source = case nodeValue source of
-  Load address -> \env -> addressCell env address >>= readCell
-  Global (GlobalIndex slot) -> \env -> index (envGlobals env) slot >>= readCell
-  Literal value -> \_ -> pure (LiteralValue value)
-  Closure function captures -> let !sources = strictMap nodeValue captures in \env -> makeClosure env function sources
+compileExpr program source = let !body = compileStep program source in \env -> body env >>= finishStep
+
+compileStep :: Program -> Expr -> Env -> EvalM Step
+compileStep program source = case nodeValue source of
+  Load address -> \env -> Done <$> (addressCell env address >>= readCell)
+  Global (GlobalIndex slot) -> \env -> Done <$> (index (envGlobals env) slot >>= readCell)
+  Literal value -> \_ -> pure (Done (LiteralValue value))
+  Closure function captures -> let !sources = strictMap nodeValue captures in \env -> Done <$> makeClosure env function sources
   Call function arguments ->
     let !callee = compile function
         !operands = strictMap compile (NE.toList arguments)
      in \env -> do
           initial <- callee env
-          foldM (\value operand -> operand env >>= applyValueWithEffects (envEffects env) value) initial operands
+          Done <$> foldM (\value operand -> operand env >>= applyValueWithEffects (envEffects env) value) initial operands
+  TailCall function argument ->
+    let !callee = compile function; !operand = compile argument
+     in \env -> do
+          value <- callee env
+          actual <- operand env
+          pure (Transfer (envEffects env) value actual)
   Let binding body ->
-    let !initializer = compile (bindingBody (nodeValue binding)); !rest = compile body
+    let !initializer = compile (bindingBody (nodeValue binding)); !rest = compileStep program body
      in \env -> do value <- initializer env; frame <- valueFrame [value]; rest (pushFrame frame env)
   LetRec bindings body ->
-    let !initializers = strictMap (compile . bindingBody . nodeValue) (NE.toList bindings); !rest = compile body
+    let !initializers = strictMap (compile . bindingBody . nodeValue) (NE.toList bindings); !rest = compileStep program body
      in \env -> do
           frame <- emptyFrame (length initializers)
           let recursive = pushFrame frame env
@@ -98,20 +107,20 @@ compileExpr program source = case nodeValue source of
             cell <- index frame slot
             writeCell cell value
           rest recursive
-  TypeToken constructor fields -> let !operands = strictMap compile fields in \env -> mapM ($ env) operands >>= makeTypeToken constructor
-  Construct constructor fields -> let !operands = strictMap compile fields in \env -> Aggregate constructor . V.fromList <$> mapM ($ env) operands
+  TypeToken constructor fields -> let !operands = strictMap compile fields in \env -> Done <$> (mapM ($ env) operands >>= makeTypeToken constructor)
+  Construct constructor fields -> let !operands = strictMap compile fields in \env -> Done . Aggregate constructor . V.fromList <$> mapM ($ env) operands
   Case receiver alternatives fallback ->
     let !scrutinee = compile receiver
-        !arms = strictMap (\arm -> let (test, body) = nodeValue arm; !evaluator = compile body in (test, evaluator)) alternatives
-        !failure = compile fallback
+        !arms = strictMap (\arm -> let (test, body) = nodeValue arm; !evaluator = compileStep program body in (test, evaluator)) alternatives
+        !failure = compileStep program fallback
         choose env _ [] = failure env
         choose env value ((test, body) : rest) = case testValue test value of
           Nothing -> choose env value rest
           Just fields -> do frame <- valueFrame fields; body (pushFrame frame env)
      in \env -> scrutinee env >>= \value -> choose env value arms
   If arms fallback ->
-    let !conditions = strictMap (\arm -> let (test, body) = nodeValue arm; !condition = compile test; !result = compile body in (condition, result)) arms
-        !failure = compile fallback
+    let !conditions = strictMap (\arm -> let (test, body) = nodeValue arm; !condition = compile test; !result = compileStep program body in (condition, result)) arms
+        !failure = compileStep program fallback
         choose env [] = failure env
         choose env ((test, body) : rest) =
           test env >>= \case
@@ -119,13 +128,13 @@ compileExpr program source = case nodeValue source of
             LiteralValue (Boolean False) -> choose env rest
             _ -> invalidValue "conditional requires Bool"
      in \env -> choose env conditions
-  Select receiver owner field -> let !evaluate = compile receiver in \env -> evaluate env >>= selectField owner field
+  Select receiver owner field -> let !evaluate = compile receiver in \env -> Done <$> (evaluate env >>= selectField owner field)
   Primitive (PrimitiveIndex ident) arguments context ->
     let !operands = strictMap compile arguments
         !operation = programPrimitives program V.!? ident
      in \env -> do
           values <- mapM ($ env) operands
-          maybe (invalidValue "unknown runtime primitive") (\primitive -> evaluatePrimitive (programErrors program) (programFileModes program) (programSomeException program) (\(GlobalIndex slot) -> index (envGlobals env) slot >>= readCell) context (envEffects env) primitive values) operation
+          Done <$> maybe (invalidValue "unknown runtime primitive") (\primitive -> evaluatePrimitive (programErrors program) (programFileModes program) (programSomeException program) (\(GlobalIndex slot) -> index (envGlobals env) slot >>= readCell) context (envEffects env) primitive values) operation
   where
     compile = compileExpr program
 

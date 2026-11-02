@@ -52,8 +52,8 @@ Unchecked items are pending; a settled design is not a completed feature.
 ## v2
 
 - [x] Call-by-name `~>` arrows, distinct arrow types, and explicit non-memoizing thunks.
-- [ ] JavaScript backend with evaluator-equivalence checks.
-- [ ] Tail-call optimization and a specified constant-stack guarantee.
+- [x] JavaScript backend with evaluator-equivalence checks.
+- [x] Tail-call optimization and a specified constant-stack guarantee.
 - [ ] Build system, package configuration, dependency resolution, and libraries beyond Prelude.
 - [ ] `FOREIGN` declarations, backend support, conversions, and calling conventions.
 - [ ] Fibers and typed channels: settle scheduling, buffering, cancellation, and reference interactions.

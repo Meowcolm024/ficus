@@ -11,8 +11,10 @@ exceptions, and the bundled Prelude.
 Tests include source-to-execution fixtures, a direct Runtime interpreter, and
 generated programs checked against an independent arithmetic/effect oracle.
 Evidence is retained conservatively; static types and single-field nominal
-wrappers are erased. Backend drivers provide `run` and `repl`; serialization
-and constant-stack tail calls remain subsequent work.
+wrappers are erased. Backend drivers provide `run`, `repl`, and standalone
+JavaScript compilation. Shared normalization and tail-call passes are described
+in [IMPL §6](IMPL.md#6-backend-passes-and-javascript). Object serialization remains
+subsequent work.
 
 ## 1. Module boundaries
 
@@ -78,6 +80,7 @@ data ExprF
   | Literal RuntimeLiteral
   | Closure FunctionIndex [CaptureSource]
   | Call Expr (NonEmpty Expr)
+  | TailCall Expr Expr
   | Let Expr Expr
   | LetRec (NonEmpty Expr) Expr
   | Construct ConstructorIndex [Expr]
@@ -203,9 +206,10 @@ initializers are bare functions. Select the concrete storage mechanism when
 implementing the evaluator; do not rely accidentally on Haskell laziness,
 especially under the project's `StrictData` policy.
 
-Tail position is structurally apparent, but this initial interpreter does not
-promise constant-stack tail calls. Bytecode, ANF, or a trampoline can be evaluated
-later without replacing typed Core.
+The shared pipeline normalizes Runtime to block ANF and marks tail transfers.
+The evaluator compiles function bodies to `Step` closures and drains transfers
+with a trampoline. The JavaScript backend uses the same markers with an explicit
+loop. See SPEC §25.2 for the constant-stack guarantee and its limits.
 
 ## 5. Validation and tests
 
@@ -250,8 +254,8 @@ Implemented:
 Record concrete implementation conventions in IMPL.md as they land. Update
 SPEC.md in the same change if any decision changes observable language behavior.
 CLI execution is implemented by `FicusBackend.Driver.Run` and
-`FicusBackend.Driver.Repl`; see SPEC §22 and IMPL §8. Object serialization and
-tail-call optimization remain subsequent work.
+`FicusBackend.Driver.Repl`; JavaScript compilation uses `Driver.JavaScript`.
+See SPEC §22/§25.2 and IMPL §6/§8. Object serialization remains subsequent work.
 
 ## 7. Embedding API
 
@@ -262,7 +266,10 @@ a validation witness. Every imported value needs a linked definition with a
 compatible scheme. The result contains a `ValidatedProgram` and a map from
 canonical global identities to runtime addresses.
 
-Select an address using `selectEntry`, then call
+For optimized execution, pass the result through
+`FicusBackend.Pipeline.optimizeProgram`; this performs normalization and tail
+marking with validation at both boundaries. Select an address using `selectEntry`,
+then call
 `runProgram effects (compileProgram checked) entry arguments`. `Effects`
 supplies `writeHandle :: StandardHandle -> Text -> IO ()` and
 `readHandle :: StandardHandle -> Int64 -> IO Text`; `ioEffects` maps the three

@@ -1,5 +1,5 @@
 -- | Source entry validation and runtime invocation, outside the Runtime stage.
-module FicusBackend.Driver.Run (RunPlan, prepareRun, executeRun, lowerCompilation) where
+module FicusBackend.Driver.Run (RunPlan, ReturnForm (..), prepareEntry, prepareRun, executeRun, lowerCompilation) where
 
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
@@ -16,6 +16,7 @@ import Ficus.Type hiding (TypeKind)
 import Ficus.Type qualified as T
 import Ficus.Util.Source
 import FicusBackend.Lower.Runtime
+import FicusBackend.Pipeline (optimizeProgram)
 import FicusBackend.Runtime qualified as R
 import FicusBackend.Runtime.AST qualified as A
 
@@ -29,10 +30,18 @@ lowerCompilation result
   | not (compileSucceeded result) = Left (compileDiagnostics result)
   | otherwise = case lowerProgram [validatedModule (checkedCore checked) | owner <- compileOrder result, Just checked <- [Map.lookup owner (compileModules result)]] of
       Left errors -> Left (map D.toDiagnostic errors)
-      Right program -> Right program
+      Right program -> case optimizeProgram (loweredProgram program) of
+        Left errors -> Left (map D.toDiagnostic errors)
+        Right optimized -> Right program {loweredProgram = optimized}
 
 prepareRun :: ModuleId -> CompileResult -> Either [D.Diagnostic] RunPlan
-prepareRun owner result
+prepareRun owner result = do
+  (lowered, address, form, origin) <- prepareEntry owner result
+  entry <- either (Left . pure . D.toDiagnostic) Right (R.selectEntry (loweredProgram lowered) address)
+  pure (RunPlan (R.compileProgram (loweredProgram lowered)) entry form origin)
+
+prepareEntry :: ModuleId -> CompileResult -> Either [D.Diagnostic] (LoweredProgram, A.GlobalIndex, ReturnForm, Span)
+prepareEntry owner result
   | not (compileSucceeded result) = Left (compileDiagnostics result)
   | otherwise = do
       checked <- maybe (Left [entryError fallback "selected entry module did not compile"]) Right (Map.lookup owner (compileModules result))
@@ -52,9 +61,8 @@ prepareRun owner result
         _ -> Left [entryError origin "main must have type [String] -> Unit or [String] -> Result String Unit"]
       lowered <- lowerCompilation result
       address <- maybe (Left [entryError origin "main has no runtime address"]) Right (Map.lookup ident (loweredGlobals lowered))
-      entry <- either (Left . pure . D.toDiagnostic) Right (R.selectEntry (loweredProgram lowered) address)
       form <- if output == unit then Right UnitReturn else ResultReturn <$> tag lowered origin "Err" <*> tag lowered origin "Ok"
-      pure (RunPlan (R.compileProgram (loweredProgram lowered)) entry form origin)
+      pure (lowered, address, form, origin)
   where
     fallback = Span "<entry>" (Position 1 1 0) (Position 1 1 0)
     unlessEntry origin valid = if valid then Right () else Left [entryError origin "main must be monomorphic and have no trait constraints"]

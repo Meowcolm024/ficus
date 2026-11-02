@@ -25,6 +25,7 @@ import Ficus.Type qualified as Type
 import Ficus.Util.Source
 import FicusBackend.Error qualified as B
 import FicusBackend.Lower.Runtime
+import FicusBackend.Pipeline (optimizeProgram)
 import FicusBackend.Runtime qualified as Runtime
 import FicusBackend.Runtime.AST qualified as R
 import FicusBackend.Runtime.Direct
@@ -103,6 +104,9 @@ compareEvaluatorsWithInput input checked ident arguments = do
   compiled <- captureInput input (execute checked ident arguments)
   direct <- captureInput input (\effects -> runDirect effects checked ident arguments)
   compiled @?= direct
+  optimized <- either (\problems -> assertFailure (show problems) >> fail "optimization failed") pure (optimizeProgram checked)
+  optimizedResult <- captureInput input (execute optimized ident arguments)
+  optimizedResult @?= direct
   pure compiled
 
 checkedSource :: Text -> IO LoweredProgram

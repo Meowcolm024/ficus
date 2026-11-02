@@ -1,0 +1,20 @@
+{-# STANDALONE #-}
+use Control.Exception (..)
+use Data.Ref (newRef, readRef, modifyRef)
+second = { print "second"; first }
+first = { print "first"; 1 }
+make () = { print "callee"; x -> { print "apply"; y -> x } }
+argument label value = { print label; value }
+ordered () = make () (argument "left" 7) (argument "right" True)
+early True y = y
+failure () = early False (argument "wrong" 1)
+whereFirst x = y -> x where { _ = print "where" }
+whereLast x y = x where { _ = print "where" }
+firstBoundary () = { f = whereFirst 7; print "between"; f True }
+lastBoundary () = { f = whereLast 7; print "between"; f True }
+capture () = { x = 10; f y = { z = x + y; w -> z + w }; f 2 3 }
+type Pair = { a : Int; b : Int }
+record () = { p = Pair 1 2; q = p with { b = argument "b" 4; a = argument "a" 3 }; q.a + q.b }
+failedStore () = { r = newRef 1; catch (_ -> { modifyRef r (x -> { modifyRef r (_ -> 5); throw 2 }); 0 }) ((e : Int) -> readRef r) }
+main : [String] -> Unit
+main _ = println (show (ordered ()))

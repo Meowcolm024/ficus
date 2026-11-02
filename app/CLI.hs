@@ -19,6 +19,7 @@ import Ficus.Syntax.Concrete.Pretty (prettyModule)
 import Ficus.Syntax.Name (ModuleId)
 import Ficus.Syntax.Parser (parseModule)
 import Ficus.Util.Source (Position (..), Span (..))
+import FicusBackend.Driver.JavaScript qualified as JavaScript
 import FicusBackend.Driver.Repl qualified as Repl
 import FicusBackend.Driver.Run qualified as Run
 import FicusBackend.Runtime qualified as Runtime
@@ -33,7 +34,9 @@ import System.FilePath (normalise)
 import System.IO (stderr)
 import System.IO.Error (tryIOError)
 
-data Command = Format (Maybe FilePath) | Compile (NonEmpty FilePath) ModuleOptions | Run FilePath [String] ModuleOptions | Repl (Maybe FilePath) ModuleOptions | Lsp ModuleOptions
+data Target = CheckTarget | JavaScriptTarget
+
+data Command = Format (Maybe FilePath) | Compile (NonEmpty FilePath) ModuleOptions Target (Maybe FilePath) | Run FilePath [String] ModuleOptions | Repl (Maybe FilePath) ModuleOptions | Lsp ModuleOptions
 
 data CLIOptions = CLIOptions Bool Command
 
@@ -46,12 +49,34 @@ main = do
       configured <- configure options
       status <- Lsp.run configured
       if status == 0 then pure () else exitWith (ExitFailure status)
-    Compile files options -> do
+    Compile files options target output -> do
+      case (target, output, files) of
+        (CheckTarget, Nothing, _) -> pure ()
+        (JavaScriptTarget, Just _, _ :| []) -> pure ()
+        (JavaScriptTarget, Nothing, _) -> T.hPutStrLn stderr "JavaScript compilation requires -o OUTPUT.mjs" >> exitFailure
+        (JavaScriptTarget, _, _) -> T.hPutStrLn stderr "JavaScript compilation selects exactly one entry file" >> exitFailure
+        (CheckTarget, Just _, _) -> T.hPutStrLn stderr "-o requires --target js" >> exitFailure
       configured <- configure options
       result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry configured files
       directory <- getCurrentDirectory
       mapM_ (printDiagnostic diagnosticStyle directory (Compile.compileSources result)) (Compile.compileDiagnostics result)
-      if Compile.compileSucceeded result then pure () else exitFailure
+      if not (Compile.compileSucceeded result)
+        then exitFailure
+        else case (target, output) of
+          (JavaScriptTarget, Just destination) -> do
+            owner <- selectedModule (NE.head files) result
+            runtimePath <- Paths.getDataFileName "runtime/javascript.mjs"
+            runtime <- tryIOError (T.readFile runtimePath)
+            case runtime of
+              Left problem -> T.hPutStrLn stderr (T.pack (show problem)) >> exitFailure
+              Right support -> case owner >>= (\ident -> JavaScript.compileJavaScript support ident result) of
+                Left errors -> report diagnosticStyle (Compile.compileSources result) errors >> exitFailure
+                Right code -> do
+                  absolute <- normalise <$> makeAbsolute destination
+                  if Map.member absolute (Compile.compileSources result)
+                    then T.hPutStrLn stderr "output would overwrite a source file" >> exitFailure
+                    else tryIOError (T.writeFile destination code) >>= either (\problem -> T.hPutStrLn stderr (T.pack (show problem)) >> exitFailure) pure
+          _ -> pure ()
     Run file arguments options -> do
       configured <- configure options
       result <- Compile.compileFiles libraryResolveConfig librarySugarRegistry configured (file :| [])
@@ -115,7 +140,7 @@ commandInfo =
             <> command "run" (info runCommand (progDesc "Run a file with a valid main entry point"))
             <> command "repl" (info replCommand (progDesc "Start an interactive session, optionally loading a file"))
             <> command "lsp" (info (Lsp <$> searchOptions) (progDesc "Start the Language Server Protocol server on stdin/stdout"))
-            <> command "compile" (info compileCommand (progDesc "Typecheck and elaborate source modules; emit no artifacts" <> footer "Library discovery options are for early development and are subject to change."))
+            <> command "compile" (info compileCommand (progDesc "Check modules or compile one entry module to JavaScript" <> footer "Library discovery options are for early development and are subject to change."))
         )
     formatCommand = Format <$> optional (strArgument (metavar "FILE" <> help "Source file; omit or use - for stdin")) <**> helper
     -- some rejects empty input and renders one repeated-argument help entry;
@@ -124,6 +149,8 @@ commandInfo =
       Compile
         <$> (NE.fromList <$> some inputFile)
         <*> searchOptions
+        <*> option (eitherReader (\targetName -> case targetName of "check" -> Right CheckTarget; "js" -> Right JavaScriptTarget; _ -> Left "target must be check or js")) (long "target" <> metavar "check|js" <> value CheckTarget <> help "Compilation target (default: check)")
+        <*> optional (strOption (short 'o' <> long "output" <> metavar "OUTPUT.mjs" <> help "JavaScript output file"))
 
     inputFile = strArgument (metavar "FILE..." <> help "Ficus source files to check")
 

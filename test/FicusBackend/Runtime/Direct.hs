@@ -34,6 +34,7 @@ interpret program source env = case nodeValue source of
   Call function arguments -> do
     value <- interpret program function env
     foldM (\current argument -> interpret program argument env >>= applyValueWithEffects (envEffects env) current) value arguments
+  TailCall function argument -> interpret program (Node (Call function (argument NE.:| []))) env
   Let binding body -> do
     value <- interpret program (bindingBody (nodeValue binding)) env
     frame <- valueFrame [value]

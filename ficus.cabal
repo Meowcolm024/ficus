@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.38.1.
+-- This file has been generated from package.yaml by hpack version 0.39.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -20,6 +20,11 @@ extra-source-files:
     CHANGELOG.md
     docs/SPEC.md
     docs/ERRORS.md
+    test/fixtures/backend/compiler/FileMain.ficus
+    test/fixtures/backend/compiler/InputMain.ficus
+    test/fixtures/backend/compiler/Order.ficus
+    test/fixtures/backend/compiler/Primitives.ficus
+    test/fixtures/backend/compiler/TailCalls.ficus
     test/fixtures/backend/driver/ArgsMain.ficus
     test/fixtures/backend/driver/BadMain.ficus
     test/fixtures/backend/driver/Coverage.ficus
@@ -571,6 +576,7 @@ extra-source-files:
     test/fixtures/semantics/type-checking/reference/WeakAliasPolymorphism.ml.txt
     test/fixtures/semantics/type-checking/reference/WeakAliasSolved.ml.txt
     test/fixtures/semantics/type-checking/verify-references.py
+    test/fixtures/backend/compiler/README.md
     test/fixtures/compile/builtin-methods/README.md
     test/fixtures/desugaring/pattern-lambdas/README.md
     test/fixtures/eta/README.md
@@ -584,6 +590,7 @@ extra-source-files:
     test/fixtures/support/README.md
     test/fixtures/type-application/README.md
 data-files:
+    runtime/javascript.mjs
     library/Class/Add.ficus
     library/Class/Alternative.ficus
     library/Class/Applicative.ficus
@@ -701,10 +708,16 @@ library
       Ficus.Type
       Ficus.Type.Substitution
       Ficus.Util.Source
+      FicusBackend.Driver.JavaScript
       FicusBackend.Driver.Repl
       FicusBackend.Driver.Run
       FicusBackend.Error
+      FicusBackend.JavaScript.Emit
       FicusBackend.Lower.Runtime
+      FicusBackend.Pass.Normalize
+      FicusBackend.Pass.TailCalls
+      FicusBackend.Pass.Traversal
+      FicusBackend.Pipeline
       FicusBackend.Runtime
       FicusBackend.Runtime.AST
       FicusBackend.Runtime.Compile
@@ -815,6 +828,7 @@ test-suite ficus-test
       Ficus.Resolve.Spec
       Ficus.Resolve.Support
       Ficus.Resolve.WildcardSpec
+      FicusBackend.CompilerSpec
       FicusBackend.DriverSpec
       FicusBackend.ExceptionSpec
       FicusBackend.FileIOSpec

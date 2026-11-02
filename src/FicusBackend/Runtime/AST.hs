@@ -55,6 +55,7 @@ data ExprF
   | Literal RuntimeLiteral
   | Closure FunctionIndex [Node Address]
   | Call Expr (NonEmpty Expr)
+  | TailCall Expr Expr
   | Let Binding Expr
   | LetRec (NonEmpty Binding) Expr
   | Construct ConstructorIndex [Expr]

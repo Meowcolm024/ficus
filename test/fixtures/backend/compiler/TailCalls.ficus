@@ -1,0 +1,23 @@
+use Control.Exception (..)
+self : Int -> Int -> Int
+self n acc = if { n == 0 -> acc; _ -> self (n - 1) (acc + 1) }
+mutual n = if { n == 0 -> 7; _ -> other (n - 1) }
+other n = if { n == 0 -> 8; _ -> mutual (n - 1) }
+local n = even n where
+    even x = if { x == 0 -> 9; _ -> odd (x - 1) }
+    odd x = if { x == 0 -> 10; _ -> even (x - 1) }
+applyNext f n = f n
+indirect n = if { n == 0 -> 11; _ -> applyNext indirect (n - 1) }
+swap n left right = if { n == 0 -> left * 10 + right; _ -> swap (n - 1) right left }
+trait Walk a = { walk : a -> Int }
+impl Walk Int = { walk n = if { n == 0 -> 12; _ -> walk (n - 1) } }
+dictionary : Int -> Int
+dictionary n = walk n
+lazy : Int ~> Int -> Int
+lazy ignored n = if { n == 0 -> 13; _ -> lazy ignored (n - 1) }
+lazyChain n = lazy (throw 100) n
+pending n = if { n == 0 -> 0; _ -> 1 + pending (n - 1) }
+throwing n = if { n == 0 -> throw 19; _ -> throwing (n - 1) }
+protected n = catch (_ -> throwing n) ((value : Int) -> value)
+main : [String] -> Unit
+main _ = println (show (self 200000 0))

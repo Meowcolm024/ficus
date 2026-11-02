@@ -56,7 +56,26 @@ data Env = Env
     envEffects :: Effects
   }
 
-data FunctionCode = FunctionCode {codeArity :: Arity, codeBody :: Eval}
+-- Control transfers are separate from language values and never escape an
+-- evaluation boundary. Legacy evaluator closures remain usable by embedders.
+data Step = Done Value | Transfer Effects Value Value
+
+data FunctionCode = FunctionCode Arity Eval | TailFunctionCode Arity (Env -> EvalM Step)
+
+codeArity :: FunctionCode -> Arity
+codeArity (FunctionCode arity _) = arity
+codeArity (TailFunctionCode arity _) = arity
+
+codeBody :: FunctionCode -> Eval
+codeBody code env = enterCode code env >>= finishStep
+
+enterCode :: FunctionCode -> Env -> EvalM Step
+enterCode (FunctionCode _ body) env = Done <$> body env
+enterCode (TailFunctionCode _ body) env = body env
+
+finishStep :: Step -> EvalM Value
+finishStep (Done value) = pure value
+finishStep (Transfer effects function argument) = applyStep effects function argument >>= finishStep
 
 data ClosureValue = ClosureValue
   { closureCode :: FunctionCode,
@@ -119,26 +138,29 @@ makeClosure env (FunctionIndex ident) sources = do
 
 applyValue :: Value -> Value -> EvalM Value
 applyValue function argument = case function of
+  FunctionValue closure -> applyValueWithEffects (envEffects (closureEnvironment closure)) function argument
+  _ -> invalidValue "application requires a function"
+
+-- Retained closures keep lexical cells and code; effects belong to this call.
+applyValueWithEffects :: Effects -> Value -> Value -> EvalM Value
+applyValueWithEffects effects function argument = applyStep effects function argument >>= finishStep
+
+applyStep :: Effects -> Value -> Value -> EvalM Step
+applyStep effects function argument = case function of
   FunctionValue closure -> do
     let arguments = V.snoc (closureArguments closure) argument
         code = closureCode closure
         Arity arity = codeArity code
+        environment = (closureEnvironment closure) {envEffects = effects}
     if V.length arguments < arity
-      then pure (FunctionValue closure {closureArguments = arguments})
+      then pure (Done (FunctionValue closure {closureArguments = arguments, closureEnvironment = environment}))
       else
         if V.length arguments == arity
           then do
             frame <- valueFrame (V.toList arguments)
-            codeBody code (pushFrame frame (closureEnvironment closure))
+            enterCode code (pushFrame frame environment)
           else invalidValue "closure received too many stored arguments"
   _ -> invalidValue "application requires a function"
-
--- Retained interactive closures keep lexical cells and code, while effects
--- belong to the current invocation rather than the session that created them.
-applyValueWithEffects :: Effects -> Value -> Value -> EvalM Value
-applyValueWithEffects effects function argument = case function of
-  FunctionValue closure -> applyValue (FunctionValue closure {closureEnvironment = (closureEnvironment closure) {envEffects = effects}}) argument
-  _ -> applyValue function argument
 
 selectField :: ConstructorIndex -> FieldIndex -> Value -> EvalM Value
 selectField owner (FieldIndex field) value = case value of

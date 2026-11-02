@@ -1,0 +1,3 @@
+use System.IO (read, stdin)
+main : [String] -> Unit
+main _ = { print (read stdin 2); print (read stdin 0); print (read stdin 20) }

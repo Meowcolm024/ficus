@@ -27,6 +27,8 @@ validateProgram program = case errors of [] -> Right (ValidatedProgram program);
         ++ concat [layoutArity E.runtimeSpan tag 0 | ConstructorIndex tag <- Map.keys (programFileModes program)]
         ++ maybe [] checkPackage (programSomeException program)
         ++ concatMap checkFunction (programFunctions program)
+        ++ concatMap (tailPositions True . functionBody . nodeValue) (programFunctions program)
+        ++ concat [tailPositions False (bindingBody (nodeValue binding)) | group <- programInitialization program, (_, binding) <- NE.toList (groupBindings (nodeValue group))]
         ++ snd (foldl checkGroup (Set.empty, []) (programInitialization program))
         ++ require (E.runtimeSpan) (Set.fromList initialized == Set.fromList [GlobalIndex n | n <- [0 .. programGlobalCount program - 1]] && length initialized == length (nub initialized)) "globals must be initialized exactly once"
     checkPackage layout =
@@ -57,6 +59,7 @@ validateProgram program = case errors of [] -> Right (ValidatedProgram program);
               Nothing -> []
               Just function -> require (E.runtimeSpan) (functionCaptures (nodeValue function) == CaptureLayout (length sources)) "closure capture count differs from function layout"
         Call f arguments -> expression frames captures f ++ concatMap (expression frames captures) arguments
+        TailCall f argument -> expression frames captures f ++ expression frames captures argument
         Let binding body -> bindingErrors frames captures binding ++ expression (1 : frames) captures body
         LetRec bindings body ->
           let count = NE.length bindings
@@ -136,6 +139,7 @@ children node = case nodeValue node of
   Literal _ -> []
   Closure _ _ -> []
   Call f arguments -> f : NE.toList arguments
+  TailCall f argument -> [f, argument]
   Let binding body -> [bindingBody (nodeValue binding), body]
   LetRec bindings body -> map (bindingBody . nodeValue) (NE.toList bindings) ++ [body]
   Construct _ fields -> fields
@@ -144,6 +148,19 @@ children node = case nodeValue node of
   If arms fallback -> concatMap (\arm -> let (a, b) = nodeValue arm in [a, b]) arms ++ [fallback]
   Select receiver _ _ -> [receiver]
   Primitive _ arguments _ -> arguments
+
+-- Tail transfers may only escape a function body, never an initializer,
+-- operand, or condition that still has work to perform.
+tailPositions :: Bool -> Expr -> [E.BackendError]
+tailPositions tailPosition node = case nodeValue node of
+  TailCall function argument -> require E.runtimeSpan tailPosition "tail call outside function tail position" ++ nested function ++ nested argument
+  Let binding body -> nested (bindingBody (nodeValue binding)) ++ tailPositions tailPosition body
+  LetRec bindings body -> concatMap (nested . bindingBody . nodeValue) bindings ++ tailPositions tailPosition body
+  Case receiver alternatives fallback -> nested receiver ++ concatMap (tailPositions tailPosition . snd . nodeValue) alternatives ++ tailPositions tailPosition fallback
+  If arms fallback -> concatMap (\arm -> let (condition, body) = nodeValue arm in nested condition ++ tailPositions tailPosition body) arms ++ tailPositions tailPosition fallback
+  _ -> concatMap nested (children node)
+  where
+    nested = tailPositions False
 
 dangerous :: [V.Vector Bool] -> V.Vector Bool -> Address -> Bool
 dangerous frames captures address = case address of

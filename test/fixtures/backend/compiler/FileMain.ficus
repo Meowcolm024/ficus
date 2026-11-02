@@ -1,0 +1,16 @@
+use Control.Exception (catch, IOError(..))
+use System.IO (openFile, close, read, write, IOMode(..))
+main : [String] -> Unit
+main args = with args
+    path :: _ ->
+        output = openFile path WriteMode
+        write output "a😀\r\nb"
+        close output
+        close output
+        input = openFile path ReadMode
+        println (read input 2)
+        println (read input 20)
+        close input
+        println (read input 0)
+        catch (_ -> println (read input 1)) ((e : IOError) -> with e { IOError operation message -> println operation })
+    [] -> ()

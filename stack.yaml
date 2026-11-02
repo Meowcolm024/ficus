@@ -1,3 +1,7 @@
 snapshot: lts-24.60
 packages:
 - .
+
+# Used by backend differential tests when Stack runs inside a Nix shell.
+nix:
+  packages: [nodejs]

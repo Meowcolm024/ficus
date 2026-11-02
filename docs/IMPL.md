@@ -4,7 +4,7 @@ This document records non-normative implementation choices, compiler tooling, an
 
 ## 1. Pipeline
 
-Ficus uses four AST stages:
+Ficus uses four AST representations, with independently checked backend passes:
 
 ```text
 source
@@ -15,8 +15,10 @@ source
 → type inference and elaboration
 → Core AST
 → erasure and runtime lowering
-→ Runtime AST
-→ evaluator compilation or code generation
+→ validated, closure-converted Runtime AST
+→ block ANF normalization (atomic operands, unary calls)
+→ tail-transfer marking
+→ evaluator compilation or JavaScript generation
 ```
 
 `Runtime AST` is untyped in the sense that static types and schemes are erased, but it remains a validated runtime IR rather than an unchecked source language.
@@ -26,7 +28,7 @@ This split is intentional:
 - Concrete AST faithfully preserves parsed source structure, comments, pragmas, and explicit versus indentation-based blocks for diagnostics and layout-aware pretty printing as a naive formatter.
 - Abstract AST removes syntactic sugar and resolves lexical references to canonical identities; typed field selection, pattern coverage, and evidence insertion remain inference/elaboration work.
 - Core AST is the small, typed, explicit result of inference and elaboration.
-- Runtime AST is optimized for simple and efficient interpretation.
+- Runtime AST is the shared, addressed backend representation. Its normalized and optimized forms are validated refinements, not copies of the typed Core tree.
 
 The reference implementation is written in Haskell. Each boundary should have a validator, focused tests, and a source map back to Concrete AST locations.
 
@@ -535,9 +537,9 @@ Runtime AST favors a small evaluator:
 - tail position is explicit or structurally apparent;
 - a validator rejects impossible states before execution.
 
-Tail position may support a backend-specific tail-call optimization, but Runtime AST and source semantics do not require every backend to provide constant-stack tail calls.
+The tail-call pass marks final applications with `TailCall`. Both implemented backends execute these transfers without retaining the caller stack frame; SPEC §25.2 defines the coverage and limits.
 
-Runtime AST is compiled compositionally before execution, so the hot path does not inspect AST constructors. ANF or compact bytecode may still be added if host-closure execution becomes the bottleneck. It should be derived from the Runtime AST, not replace the Core AST.
+Runtime AST is normalized into block ANF and compiled compositionally before execution, so the hot path does not inspect AST constructors. Compact bytecode remains a possible later target of the same pipeline.
 
 ### 4.4 Erasure and validation
 
@@ -615,7 +617,7 @@ compile (Fun arity body) =
     in \env -> pure (VClosure arity bodyEval env [])
 ```
 
-A lambda body is compiled to an `Eval` closure before any runtime function value is created. Evaluating the lambda packages that code closure with the current lexical environment. A partial application also stores supplied arguments; a saturated call creates the n-ary frame and invokes the stored evaluator directly.
+A lambda body is compiled to a step-producing host closure before any runtime function value is created. Evaluating the lambda packages that code closure with the current lexical environment. A partial application also stores supplied arguments; a saturated call creates the n-ary frame and invokes the stored evaluator directly.
 
 Calls, alternatives, constructor fields, primitive operands, and dictionary operations follow the same pattern: compile their subexpressions once, then combine the evaluator closures. Recursive function groups use precompiled bodies and explicitly shared cells.
 
@@ -625,9 +627,62 @@ Runtime AST is a good input because type checking, trait search, source names, a
 
 A direct AST interpreter may remain as a simple test oracle. The compiled evaluator must produce the same values, errors, and effect order.
 
-## 6. Future backends
+## 6. Backend passes and JavaScript
 
-The v2+ backend targets JavaScript and adds tail-call optimization. Generate from validated Runtime AST and preserve strict evaluation, closure capture, nominal identities, embedded error messages, and intermediate application work. Implement tail calls explicitly rather than relying on host-engine support; direct loops and trampolines are candidate strategies. Specify coverage for self, mutual, and higher-order tail calls before promising constant-stack execution.
+`FicusBackend.Pipeline.optimizeProgram` composes two target-independent passes:
+
+1. `Pass.Normalize` produces block ANF. Calls are unary; call, primitive,
+   construction, selection, match, and conditional operands are atomic. Ordered
+   `Let` temporaries snapshot intermediate values. Initializers can themselves
+   be blocks, retaining joins without duplicating continuations. Multi-argument
+   calls split into intervening unary applications before operands are named.
+   Later conditions stay inside their fallback branches. Lexical frame shifts
+   account for local bindings, recursive groups, pattern frames, and captures.
+2. `Pass.TailCalls` marks final applications in functions, descending only
+   through binding bodies and selected result branches. Initializers, operands,
+   guards, and primitive actions retain their work. It does not require callee
+   identity, so mutual, indirect, and dictionary calls use the same protocol.
+
+`NormalizedProgram` is an opaque refinement of `ValidatedProgram`, using the
+same Runtime AST. `validateNormalized` independently checks both addressing and
+normal-form invariants. `validateProgram` also rejects tail transfers outside
+function tail position. Each pass validates its output; both are idempotent.
+Core lowering remains available without optimization for tools and differential
+oracles. `run`, `repl`, and JavaScript compilation run the shared pipeline.
+Embedders call `optimizeProgram` explicitly before `compileProgram`.
+
+The organization follows the useful separation of representation lowering,
+small passes, and boundary checking found in [GHC's compiler debugging and lint
+interfaces](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/debugging.html).
+Ficus keeps its strict evaluation model and explicit call-by-name thunks; it
+needs neither STG's lazy update machinery nor a duplicate typed ANF language.
+
+The evaluator uses `Step = Done Value | Transfer Effects Value Value`.
+A saturated function can return a transfer; `finishStep` enters the next callee
+without retaining the previous caller's continuation. Control steps never become
+language values. Ordinary calls drain transfers before subsequent work proceeds.
+The primitive `catch` and `modifyRef` therefore retain their dynamic handlers and
+pending stores. The direct test interpreter treats markers as ordinary calls and
+remains an unoptimized semantic oracle.
+
+`JavaScript.Emit` emits statements and function bodies from checked block ANF.
+It does not serialize or interpret an AST. `runtime/javascript.mjs` supplies a
+synchronous Node.js runtime, embedded in every output artifact. Closures capture
+shared cells; aggregate tags and lexical/global slots are numeric. A loop in
+`apply` processes explicit tail transfers, independent of host-engine tail-call
+support. BigInt with signed 64-bit wrapping implements Int; Number implements
+Float. String operations use Unicode code points. Typed exception tokens,
+SomeException evidence, references, standard handles, and UTF-8 file operations
+follow the same layouts and contracts as the interpreter. Host IO messages may
+differ between platforms and backends.
+
+`Driver.JavaScript.compileJavaScript` takes the runtime support text, an entry
+module, and the checked frontend result. It shares `prepareEntry` with the run
+driver. The emitted ES module exports `createProgram` in the low-level emitter;
+each call initializes independent global storage. The executable driver appends
+argument conversion, main invocation, Result handling, and error reporting.
+Node.js 18 or newer is required to execute generated programs and the JavaScript
+differential tests. No additional npm packages are needed.
 
 v3+ considers WebAssembly GC or LLVM. Closure conversion, memory management, runtime services, and the backend choice remain open.
 
@@ -637,12 +692,13 @@ Optimized or generated code must remain observationally equivalent to the refere
 
 Execution takes an explicitly selected entry-module identity; do not discover an entry by searching for `main`. Resolve and validate a `main` defined by that module, reject missing or invalid entry functions, and retain its resolved identity/address for invocation rather than doing runtime string lookup. Do not require library modules to define `main` or invoke unselected entry candidates. Entry-point validation accepts exactly `main : [String] -> Unit` and `main : [String] -> Result String Unit` in v0. The backend driver passes command-line arguments and handles Unit/Result returns and exit reporting according to SPEC §22. Uncaught typed exceptions use the runtime error reporting boundary described in SPEC §24.3.
 
-v1+ compilation produces both module interface files and object files, each using Lisp-like syntax. The initial object files serialize Runtime AST as text; integration with v2+ generated JavaScript and later backend artifacts remains to be specified. The concrete schemas, file extensions, compatibility/versioning rules, output paths, and linking details remain to be specified.
+Separate module interface and object files remain planned, with Lisp-like syntax proposed. The initial object files serialize Runtime AST as text; integration with v2+ generated JavaScript and later backend artifacts remains to be specified. The concrete schemas, file extensions, compatibility/versioning rules, output paths, and linking details remain to be specified.
 
 ## 8. Initial v1+ CLI
 
 ```text
 ficus compile FILES
+ficus compile FILE --target js -o OUTPUT.mjs
 ficus run FILE
 ficus repl [FILE]
 ficus format [-f FILE]
@@ -653,8 +709,7 @@ The current early-development `compile FILE...` command runs discovery, parsing,
 name resolution, type inference, and elaboration to validated Core. It emits no
 artifacts and neither requires nor invokes `main`. `Ficus.Compile` has no backend
 dependency; backend drivers consume its checked modules and retained dependency
-order. Errors return nonzero; warnings do not fail the command. The future full compilation behavior below
-remains planned.
+order. `--target js -o OUTPUT.mjs` instead requires one entry file and emits a standalone Node.js program without executing it. Output may not overwrite a source file. Errors return nonzero; warnings do not fail the command. Separate interface/object artifacts remain planned.
 
 `--library DIR` replaces the default bundled library root and is repeatable.
 `--prelude FILE` overrides the source of canonical Prelude without renaming it;

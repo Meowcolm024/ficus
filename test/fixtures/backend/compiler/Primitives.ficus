@@ -1,0 +1,16 @@
+use Control.Exception (..)
+use Ficus.Builtin.Int (intToFloat)
+use Ficus.Builtin.Float (floatToInt)
+use Ficus.Builtin.Byte (intToByte, byteToInt)
+use Ficus.Builtin.Vec (listToVec, vecToList, vecLength)
+use Ficus.Builtin.String (stringLength, stringToChars, charsToString)
+integers () = [9223372036854775807 + 1, -(-9223372036854775808), -7 / 3, -7 % 3, -9223372036854775808 / -1, -9223372036854775808 % -1, byteToInt (intToByte (-1))]
+floats () = [show 0.0, show (-0.0), show 0.1, show 0.01, show 10000000.0, show (1.0 / 0.0), show (-1.0 / 0.0), show (0.0 / 0.0), show (intToFloat 9007199254740993), show (1.25 * 2.0 - 0.5)]
+unicode () = (stringLength "a😀é\r\n", charsToString (stringToChars "a😀é\r\n"), "😀" < "", '😀' > '')
+vectors () = (vecLength (listToVec [1, 2, 3]), vecToList (listToVec ["x", "😀"]))
+convert () = floatToInt (-7.9)
+conversionError () = catch (_ -> floatToInt (1.0 / 0.0)) ((e : ArithmeticError) -> 23)
+catchAll () = catch (_ -> { _ = 1 / 0; "wrong" }) ((e : SomeException) -> show e)
+matchError () = catch (_ -> with False { True -> 0 }) ((e : MatchError) -> 24)
+main : [String] -> Unit
+main _ = println (show (integers ()))
